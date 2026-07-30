@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Tarjeta, Dato, Chip } from "@/components/ui";
+import { Tarjeta, Dato } from "@/components/ui";
 
 type Panel = {
   rol: "ADMIN" | "SELLER";
@@ -25,10 +25,13 @@ export function Dashboard() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-black tracking-tight">Hola, {usuario?.name}</h1>
-        <Chip tono="ok">Caja cerrada</Chip>
-      </div>
+      {/*
+        Acá va el estado de la caja, y NO antes del Sprint 2: hasta que exista
+        `CashSession` el sistema no sabe si está abierta. Un chip verde escrito
+        a mano afirma algo que nadie verificó, y es justo lo que el brief llama
+        un estado confundible.
+      */}
+      <h1 className="text-2xl font-black tracking-tight">Hola, {usuario?.name}</h1>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Tarjeta titulo="Estación">

@@ -56,10 +56,17 @@
 ven dashboards distintos desde el mismo endpoint, el seed corre dos veces sin
 duplicar, y las fuentes se sirven desde el repo sin tocar internet.
 
-**Lo que quedó pendiente, y no bloquea el Sprint 1:**
-- No hay captura de la pantalla renderizada: la extensión de navegador no estaba
-  conectada. Se verificó por HTTP que los `.woff2` y los tokens se sirven, no que
-  se vean bien en el mesón. **Mirarlo en el navegador del terminal antes del S1.**
+**Verificado en pantalla** a 1366×768 con Chrome headless: login, dashboard de
+admin (5 tarjetas) y dashboard de vendedor (2 tarjetas, sin equipo ni alertas),
+con Archivo y el amarillo cargando desde el repo. La captura destapó un chip
+"Caja cerrada" escrito a mano en el dashboard: la caja recién existe en el
+Sprint 2, así que el sistema afirmaba en verde un estado que nadie había
+verificado. Eliminado.
+
+**Lo que queda pendiente, y no bloquea el Sprint 1:**
+- Mirarlo en el **monitor real de la tienda**. Chrome headless confirma que
+  renderiza y que las fuentes cargan; no que se lea a 1,5 m con el brillo y el
+  ángulo del mesón.
 - El `check:tokens` mira `apps/web/src`; si mañana hay colores en otro paquete,
   hay que ampliarlo.
 
