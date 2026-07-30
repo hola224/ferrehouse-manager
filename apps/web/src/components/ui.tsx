@@ -10,13 +10,12 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react
 
 type Variante = "principal" | "secundaria" | "fantasma";
 
-export function Boton({
-  variante = "secundaria",
-  className,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variante?: Variante }) {
+/** forwardRef por lo mismo que `Campo`: el foco se mueve solo, sin mouse. */
+export const Boton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variante?: Variante }>(
+  function Boton({ variante = "secundaria", className, ...props }, ref) {
   return (
     <button
+      ref={ref}
       className={clsx(
         "min-h-touch min-w-touch inline-flex items-center justify-center gap-2 rounded-[var(--fh-radio)]",
         "px-4 font-semibold transition-colors duration-100 disabled:opacity-40 disabled:cursor-not-allowed",
@@ -28,7 +27,7 @@ export function Boton({
       {...props}
     />
   );
-}
+});
 
 type CampoProps = InputHTMLAttributes<HTMLInputElement> & { etiqueta: string; hint?: string };
 

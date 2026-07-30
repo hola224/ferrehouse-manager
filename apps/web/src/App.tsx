@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
+import { Catalogo } from "@/pages/Catalogo";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -9,9 +10,16 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-3">
-        <Link to="/" className="text-lg font-black tracking-tight">
-          Ferrehouse
-        </Link>
+        <div className="flex items-center gap-6">
+          <Link to="/" className="text-lg font-black tracking-tight">
+            Ferrehouse
+          </Link>
+          <nav className="flex gap-4 text-sm">
+            <Link to="/catalogo" className="text-ink-soft hover:text-ink">
+              Catálogo
+            </Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-ink-soft">
             {usuario?.name} · {usuario?.role === "ADMIN" ? "administrador" : "vendedor"}
@@ -52,6 +60,14 @@ export function App() {
             element={
               <Privado>
                 <Dashboard />
+              </Privado>
+            }
+          />
+          <Route
+            path="/catalogo"
+            element={
+              <Privado>
+                <Catalogo />
               </Privado>
             }
           />

@@ -74,8 +74,9 @@ verificado. Eliminado.
 
 ## Sprint 1 — Catálogo (Semana 2) 🟡 servidor entregado el 2026-07-30
 
-> Las 8 tareas de servidor están hechas y probadas. **La interfaz espera el ok
-> al wireframe de la 1.7b**, que es una de las cinco pantallas clave.
+> Las 8 tareas de servidor están hechas y probadas. **Wireframe de la 1.7b
+> aprobado por Cristian el 2026-07-30**, junto con las cuatro preguntas
+> abiertas que quedaban. La interfaz ya no está bloqueada.
 
 **Objetivo:** poder crear, buscar y etiquetar productos. Sin esto no hay nada que vender.
 
@@ -88,7 +89,7 @@ verificado. Eliminado.
 | 1.5 ✅ | Búsqueda rápida: por escaneo, por nombre parcial, por SKU — **una sola caja de búsqueda** | POS-03 |
 | 1.6 ✅ | Importador Excel: plantilla descargable, validación con reporte de errores por fila, carga en lote **con reserva de rango de SKU** | CAT-11 |
 | 1.7 ✅ | Conversión de unidades en la UI: mostrar "se compra en Rollo 100 m, se vende en Metro" y validar que ambas sean del mismo grupo | CAT-04 |
-| 1.7b ⏸ | **Pantalla clave del sprint: búsqueda/catálogo.** Una sola caja que acepta escaneo, nombre parcial o SKU; resultados con precio y stock a la vista. Para el vendedor es solo lectura y **sin columna de costo**. Wireframe aprobado antes de codear | UI-BRIEF §5.3 |
+| 1.7b ✅ | **Pantalla clave del sprint: búsqueda/catálogo.** Una sola caja que acepta escaneo, nombre parcial o SKU; resultados con precio y stock a la vista. Para el vendedor es solo lectura y **sin columna de costo**. Wireframe aprobado antes de codear | UI-BRIEF §5.3 |
 | 1.8 ✅ | **CRUD de usuarios** (solo admin): crear, desactivar y cambiar PIN. El seed deja tres usuarios y ningún sprint permitía agregar un cuarto — si entra un vendedor nuevo, la alternativa era editar la base a mano | USR-01, USR-02 |
 
 **Invariantes que estrena este sprint:**
@@ -99,11 +100,16 @@ verificado. Eliminado.
 
 **Demo de cierre:** se escanea un producto real de la ferretería y aparece; se cargan 50 productos desde Excel; se imprime una etiqueta y el lector la lee de vuelta.
 
-**Cómo va:** 8 de 9 tareas. La capa de servidor está completa y probada —150
-tests en verde en todo el repo, 88 de ellos nuevos—. Lo que falta es la
-interfaz, y no por tiempo: la 1.7b es pantalla clave y el brief (§7.2) pide
-wireframe aprobado antes de codear. Sus decisiones de densidad y de columnas se
-propagan al formulario de producto y a la pantalla de importación.
+**Cómo va:** 9 de 9 tareas de servidor y la pantalla clave. **172 tests en
+verde.** La 1.7b se codeó después del ok de Cristian al wireframe y se verificó
+en pantalla a 1366×768 con los dos roles: el admin ve costo y margen, el
+vendedor no —ni las columnas ni los campos en el JSON—, el escaneo abre el
+producto sin lista intermedia y los estados de stock salen con color **y**
+palabra.
+
+Quedan sin interfaz, y no bloquean la demo de búsqueda: el formulario de alta
+de producto, la pantalla de importación y la de usuarios. Los tres endpoints
+están y probados; les falta la pantalla.
 
 **Lo que se agregó al plan sobre la marcha:**
 - **`Product.searchKey`, con migración propia.** El `LIKE` de SQLite ignora
@@ -159,7 +165,7 @@ en el Sprint 3 con el ticket, y el lector es físico.
 | 3.8 | Ticket ESC/POS + pulso de cajón en el mismo trabajo de impresión; integración real con la térmica USB | POS-06 |
 | 3.9 | Reimpresión de comprobante desde `PrintJob.saleId`, marcada con `isReprint` | POS-18 |
 | 3.10 | **Pantalla clave del sprint: la venta.** Dos columnas —líneas a la izquierda, total y cobro a la derecha— dentro de 1366×768. Total y vuelto en ≥40px. Wireframe aprobado antes de codear | UI-BRIEF §5.1 |
-| 3.11 | **Tabla canónica de atajos**, definida una vez en `packages/shared` y mostrada en pantalla: cobrar, editar cantidad, descuento, suspender, recuperar espera, buscar por nombre, quitar línea. **Antes de imprimirla hay que verificar en el navegador real de la tienda que cada tecla se puede cancelar** (F5, F3 y F11 se las queda el navegador; F10 le abre la barra de menú). Si una no sobrevive, se reemplaza — pero se decide ahora, no cuando el vendedor ya la aprendió | UI-BRIEF §2.1, pregunta abierta 4 |
+| 3.11 | **Tabla canónica de atajos**, definida una vez en `packages/shared` y mostrada en pantalla: cobrar, editar cantidad, descuento, suspender, recuperar espera, buscar por nombre, quitar línea. **Decidido el 2026-07-30**: los terminales corren Chrome en modo normal, así que las teclas son **F2, F4, F6 y F8**. F3, F5 y F11 se las queda el navegador y F10 le abre la barra de menú, así que quedan fuera. La tabla vive en `packages/shared/atajos.ts` desde el Sprint 1, porque la pantalla de catálogo ya las muestra | UI-BRIEF §2.1 |
 
 **Invariantes que estrena este sprint:**
 - `Σ SalePayment.amount = Sale.totalGross`, y `totalGross = subtotalGross − discountAmount + roundingAmount`.

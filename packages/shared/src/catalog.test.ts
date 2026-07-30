@@ -12,6 +12,8 @@ import {
   parseCantidadMilli,
   validarFraccion,
   supplierInputSchema,
+  costoPorUnidadDeVenta,
+  margenPorcentaje,
   type UnitLike,
 } from "./catalog.js";
 
@@ -175,5 +177,44 @@ describe("proveedor", () => {
 
   it("rechaza un RUT que no tiene forma de RUT", () => {
     expect(supplierInputSchema.safeParse({ name: "Vulco", rut: "76543210" }).success).toBe(false);
+  });
+});
+
+describe("costo y margen llevados a la misma unidad", () => {
+  const saco = { factorMilli: 25_000 }; // Saco 25 kg
+  const metro = { factorMilli: 1_000 };
+
+  /**
+   * El error que destapó la captura de la pantalla de catálogo: la columna
+   * COSTO mostraba pesos por unidad BASE al lado de un precio por unidad de
+   * VENTA, y el margen comparaba los dos sin convertir.
+   */
+  it("el cemento a $180 el kilo cuesta $4.500 el saco de 25", () => {
+    expect(costoPorUnidadDeVenta({ costNetMilliPeso: 180_000, saleUnit: saco })).toBe(4500);
+  });
+
+  it("cuando la unidad de venta es la base, no cambia nada", () => {
+    expect(costoPorUnidadDeVenta({ costNetMilliPeso: 410_000, saleUnit: metro })).toBe(410);
+  });
+
+  it("el margen del saco es 17,5% y no 96,7%", () => {
+    // Sin convertir: (5454 − 180) / 5454 = 96,7%, y el producto parecía un
+    // negocio redondo. Convertido: (5454 − 4500) / 5454 = 17,5%.
+    const m = margenPorcentaje({ priceGross: 6490, costNetMilliPeso: 180_000, saleUnit: saco })!;
+    expect(m).toBeGreaterThan(17);
+    expect(m).toBeLessThan(18);
+  });
+
+  it("el margen del cable, vendido en su unidad base, sigue igual", () => {
+    const m = margenPorcentaje({ priceGross: 690, costNetMilliPeso: 410_000, saleUnit: metro })!;
+    expect(m).toBeCloseTo(29.3, 0);
+  });
+
+  it("sin costo no hay margen: es lo que recibe el vendedor", () => {
+    expect(margenPorcentaje({ priceGross: 690, saleUnit: metro })).toBeNull();
+  });
+
+  it("un precio en cero no divide por cero", () => {
+    expect(margenPorcentaje({ priceGross: 0, costNetMilliPeso: 1000, saleUnit: metro })).toBeNull();
   });
 });

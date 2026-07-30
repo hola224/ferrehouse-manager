@@ -336,3 +336,56 @@ especificación— y se veía impecable en pantalla. La etiqueta impresa
 simplemente no habría leído.
 
 **92 tests en el servidor y 160 en el repo.**
+
+---
+
+## 2026-07-30 — Sprint 1: la pantalla de catálogo, y dos errores de unidad
+
+Cristian aprobó el wireframe y respondió las cuatro preguntas abiertas. **No
+queda ninguna pregunta abierta en el proyecto.**
+
+- **2 cajas en la misma tienda.** Cierra la más importante. El costo promedio
+  global deja de ser una decisión provisional y pasa a ser la correcta.
+- **Un turno, 1 o 2 personas.** Una apertura y un cierre de caja al día.
+- **Balanza aparte, el peso se digita.** Confirma lo asumido.
+- **Chrome en modo normal.** Los atajos quedan en F2, F4, F6 y F8; F3, F5, F10
+  y F11 se las queda el navegador. La tabla vive en `packages/shared/atajos.ts`
+  con un test que rechaza cualquier tecla que Chrome no suelte, y el brief se
+  corrigió: prometía F10.
+
+### El mismo error, dos veces, en dos lugares distintos
+
+La captura de la pantalla nueva mostró el cemento con **96,7% de margen**. El
+real es 17,5%. La columna COSTO traía pesos por unidad **base** y el precio de
+al lado, por unidad de **venta**: $180 el kilo contra $6.490 el saco de 25.
+
+Es exactamente el error que un día antes se había corregido en el importador, y
+lo volví a cometer al escribir la tabla — que es la mejor prueba de que no
+alcanza con saberlo. La conversión se mudó a `packages/shared`
+(`costoPorUnidadDeVenta`, `margenPorcentaje`), donde el reporte de margen del
+Sprint 4 y el inventario valorizado la van a encontrar hecha.
+
+### Los tokens llevaban todo el Sprint 0 sin poder tener opacidad
+
+El velo oscuro del diálogo no oscurecía nada. Al medir en el navegador:
+`bg-ink/40` daba `rgba(0,0,0,0)`, `bg-error/10` también, y `border-error/30`
+caía al gris por defecto de Tailwind.
+
+Causa: los tokens estaban en hexadecimal. Tailwind sirve `bg-ink/40` como
+`rgb(var(--fh-ink) / 0.4)`, y con `#16181a` adentro eso es CSS **inválido**, así
+que el navegador descarta la declaración entera sin decir nada. O sea que el
+`Chip` de estado —el componente que existe para cumplir "color + palabra", el
+principio 4 del brief— nunca tuvo color de fondo desde que se escribió.
+
+Los tokens ahora son canales (`--fh-ink: 22 24 26`) y Tailwind los pide con
+`<alpha-value>`. Hay un test que falla si alguien vuelve a poner un
+hexadecimal, porque el que existía comprobaba que la variable estuviera
+definida y eso no bastaba: estaba definida, y aun así no pintaba.
+
+**Los dos defectos se encontraron mirando una captura, no fallando un test.**
+
+### Una decisión de rol que la captura también corrigió
+
+Al vendedor se le imprimía "F6 imprimir etiqueta", pero el servidor exige
+administrador para encolar una etiqueta. Un atajo que responde "no autorizado"
+es peor que ninguno. Al vendedor le quedan ↑↓ y Enter.

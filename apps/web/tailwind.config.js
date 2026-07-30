@@ -2,6 +2,12 @@
  * Los colores NO se definen acá: se leen de tokens.css. Tailwind solo les pone
  * nombre. Así cambiar la dirección visual es editar un archivo, no cazar
  * hexadecimales por los componentes (UI-BRIEF §3).
+ *
+ * El `<alpha-value>` no es adorno: es lo que permite que `bg-ink/40` y
+ * `bg-error/10` existan. Tailwind lo reemplaza por la opacidad pedida, y para
+ * eso la variable tiene que traer CANALES —`22 24 26`— y no un hexadecimal.
+ * Con hexadecimal el navegador recibe CSS inválido y descarta la regla en
+ * silencio: el elemento sale transparente y nadie se entera hasta verlo.
  */
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -9,16 +15,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: "var(--fh-bg)",
-        surface: "var(--fh-surface)",
-        ink: "var(--fh-ink)",
-        "ink-soft": "var(--fh-ink-soft)",
-        line: "var(--fh-line)",
-        accent: "var(--fh-accent)",
-        "mono-ink": "var(--fh-mono-ink)",
-        ok: "var(--fh-ok)",
-        warn: "var(--fh-warn)",
-        error: "var(--fh-error)",
+        bg: "rgb(var(--fh-bg) / <alpha-value>)",
+        surface: "rgb(var(--fh-surface) / <alpha-value>)",
+        ink: "rgb(var(--fh-ink) / <alpha-value>)",
+        "ink-soft": "rgb(var(--fh-ink-soft) / <alpha-value>)",
+        line: "rgb(var(--fh-line) / <alpha-value>)",
+        accent: "rgb(var(--fh-accent) / <alpha-value>)",
+        "mono-ink": "rgb(var(--fh-mono-ink) / <alpha-value>)",
+        ok: "rgb(var(--fh-ok) / <alpha-value>)",
+        warn: "rgb(var(--fh-warn) / <alpha-value>)",
+        error: "rgb(var(--fh-error) / <alpha-value>)",
       },
       fontFamily: {
         sans: ["Archivo", "system-ui", "sans-serif"],

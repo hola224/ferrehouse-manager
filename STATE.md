@@ -58,10 +58,10 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
 
 ## Decisiones provisionales
 
-Marcadas aparte a propósito: **no están selladas** y se revisan cuando se cierre la pregunta abierta 1.
+**Ya no queda ninguna.** La pregunta abierta 1 se cerró el 2026-07-30 como *dos cajas en la misma tienda*, y con eso lo que estaba provisional pasó a sellado:
 
-- **El PMP es global al producto**, no por ubicación (`Product.costNetMilliPeso`). Con una sola `Location` da igual. Es reversible sin perder historia: el libro ya guarda `locationId` y el costo de cada movimiento, así que el PMP por ubicación es recomputable cuando haga falta.
-- Como consecuencia, el **inventario valorizado por ubicación** (INV-06) usa el PMP global. Con dos bodegas y compras a distinto precio, el valor por bodega sería aproximado.
+- **El PMP es global al producto**, no por ubicación (`Product.costNetMilliPeso`). Con una sola tienda es lo correcto, no una simplificación. Sigue siendo reversible si algún día aparece una segunda dirección: el libro guarda `locationId` y el costo de cada movimiento, así que el PMP por ubicación es recomputable sin perder historia.
+- El **inventario valorizado por ubicación** (INV-06) usa ese PMP global, y con una sola tienda no hay aproximación que corregir.
 
 ## Fuera de alcance
 
@@ -109,12 +109,17 @@ Sin esta tabla, la pantalla de venta se diseña con dos chips y el Sprint 4 obli
 
 ## Preguntas abiertas
 
-1. **Los 2 puntos de venta futuros: ¿son 2 cajas en la misma tienda, o 2 sucursales en direcciones distintas?** Sigue siendo la pregunta más importante. 2 cajas = ya está resuelto. 2 sucursales = otro problema (2 servidores + sincronización), ahí SQLite local deja de alcanzar y el PMP pasa a ser por ubicación.
-2. **¿Cuántos vendedores y cuántos turnos por día?** Define si la caja es por turno o por día, y cuántas estaciones sembrar.
-3. Los productos por kg: ¿se pesan en una balanza aparte y se digita el peso? (asumido que sí para el MVP)
-4. **¿Qué navegador corren los terminales, y en modo normal o kiosco?** Nadie lo anotó nunca. Define qué teclas de función se pueden capturar: F5, F3 y F11 se las queda el navegador, y F10 le abre la barra de menú. El brief promete atajos F2/F4/F6/F8/F10 impresos en pantalla, y no se pueden imprimir antes de saber cuáles sobreviven.
+**Ninguna.** Las cuatro que quedaban se respondieron el 2026-07-30; abajo queda el registro con lo que cada respuesta implica.
 
-### Cerradas en esta ronda
+### Cerradas el 2026-07-30
+
+- ~~¿2 cajas o 2 sucursales?~~ → **2 cajas en la misma tienda.** Un servidor, SQLite local, sin sincronización. El PMP global deja de ser provisional (arriba). Era la pregunta más importante del proyecto.
+- ~~¿Cuántos turnos por día?~~ → **Un turno, 1 o 2 personas.** La caja se abre en la mañana y se cierra al cerrar la tienda: un arqueo diario. El modelo ya soporta varias sesiones por día, así que si mañana hay dos turnos no hay que cambiar nada — pero el reporte de cierre del Sprint 2 se diseña para uno.
+- ~~¿Cómo se pesan los productos a granel?~~ → **Balanza aparte, el peso se digita.** Sin driver ni integración. Confirma lo que ya estaba asumido para el MVP.
+- ~~¿Qué navegador corren los terminales?~~ → **Chrome en modo normal.** Los atajos quedan en **F2, F4, F6 y F8**. F3, F5 y F11 se las queda el navegador y F10 le abre la barra de menú, así que no se usan. Esto cierra la tarea 3.11 antes de que el vendedor aprenda una tecla que después haya que cambiarle.
+
+### Cerradas en rondas anteriores
+
 
 - ~~Formato de SKU~~ → `FH-` + correlativo de 5 dígitos (`FH-00001`), vía tabla `Counter`. Todo producto lleva SKU interno, incluidos los que traen código de fabricante: el código del fabricante va a `ProductBarcode` como alias.
 - ~~¿Precio con IVA incluido?~~ → sellada, decisión 1.

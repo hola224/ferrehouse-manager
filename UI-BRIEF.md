@@ -35,8 +35,12 @@ el POS usa la escala XL, el backoffice la normal.
 1. **Teclado primero.** El flujo completo de una venta (escanear → cantidad
    → cobrar → medio de pago → vuelto) se hace sin tocar el mouse. El lector
    de códigos es un teclado; el foco SIEMPRE vuelve solo a la caja de escaneo
-   después de cualquier operación. Atajos F2/F4/F6/F8/F10 visibles en
+   después de cualquier operación. Atajos **F2/F4/F6/F8** visibles en
    pantalla, no escondidos en un menú de ayuda.
+   *(Corregido el 2026-07-30: decía F2/F4/F6/F8/F10. Respondida la pregunta
+   abierta 4 —los terminales corren Chrome en modo normal— F10 le abre la barra
+   de menú al navegador, igual que F3, F5 y F11 quedan tomadas. Quedan cuatro
+   teclas, y se decidió ahora y no cuando el vendedor ya las hubiera aprendido.)*
 2. **Números tabulares en todo lo que sea plata o cantidad**
    (`font-variant-numeric: tabular-nums`). Las columnas de montos se alinean
    a la derecha, siempre. Formato chileno: punto de miles, sin decimales

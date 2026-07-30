@@ -5,21 +5,34 @@
  * Disciplina del amarillo: SOLO la acción principal de cada pantalla y las
  * alertas. Todo lo demás es blanco, negro y gris. Un amarillo que aparece en
  * seis lugares deja de significar "acá".
+ *
+ * ── POR QUÉ LOS COLORES VAN EN CANALES Y NO EN HEXADECIMAL ──
+ *
+ * Tailwind necesita poder escribir `rgb(<canales> / 0.4)` para servir
+ * `bg-ink/40`, `bg-error/10` y compañía. Si la variable vale `#16181a`, el
+ * navegador recibe `rgb(#16181a / 0.4)`, que es CSS inválido, y **descarta la
+ * declaración completa sin avisar**: el elemento queda transparente.
+ *
+ * Así estuvo desde el Sprint 0, y el modo de fallar es justo el que el brief
+ * teme —silencioso, y visible solo en pantalla—: el `Chip` de estado, que
+ * existe para cumplir "color + palabra", nunca tuvo color de fondo, y el velo
+ * oscuro de los diálogos no oscurecía nada. Se descubrió mirando una captura.
+ * El comentario de cada línea deja el hexadecimal a la vista para leerlo.
  */
 :root {
-  --fh-bg: #f4f5f4;        /* fondo de la aplicación */
-  --fh-surface: #ffffff;   /* tarjetas, panel de líneas */
-  --fh-ink: #16181a;       /* texto principal */
-  --fh-ink-soft: #6b7075;  /* texto secundario */
-  --fh-line: #ececec;      /* separadores */
-  --fh-accent: #ffc400;    /* amarillo seguridad: acción principal + alerta */
-  --fh-mono-ink: #8a8f94;  /* SKU, folios, códigos */
-  --fh-ok: #2f7d46;        /* caja abierta, WhatsApp conectado */
-  --fh-warn: #b7791f;      /* stock bajo */
-  --fh-error: #c0392b;     /* anulación, quiebre, caja descuadrada */
+  --fh-bg: 244 245 244;        /* #f4f5f4 — fondo de la aplicación */
+  --fh-surface: 255 255 255;   /* #ffffff — tarjetas, panel de líneas */
+  --fh-ink: 22 24 26;          /* #16181a — texto principal */
+  --fh-ink-soft: 107 112 117;  /* #6b7075 — texto secundario */
+  --fh-line: 236 236 236;      /* #ececec — separadores */
+  --fh-accent: 255 196 0;      /* #ffc400 — amarillo seguridad: acción y alerta */
+  --fh-mono-ink: 138 143 148;  /* #8a8f94 — SKU, folios, códigos */
+  --fh-ok: 47 125 70;          /* #2f7d46 — caja abierta, WhatsApp conectado */
+  --fh-warn: 183 121 31;       /* #b7791f — stock bajo */
+  --fh-error: 192 57 43;       /* #c0392b — anulación, quiebre, caja descuadrada */
 
   --fh-radio: 6px;
-  --fh-foco: 0 0 0 3px rgb(22 24 26 / 0.15);
+  --fh-foco: 0 0 0 3px rgb(var(--fh-ink) / 0.15);
 }
 
 /*
@@ -27,8 +40,8 @@
  * blanco da 1.6:1 de contraste y no se lee en el mesón.
  */
 .fh-accion {
-  background: var(--fh-accent);
-  color: var(--fh-ink);
+  background: rgb(var(--fh-accent));
+  color: rgb(var(--fh-ink));
 }
 
 /*
@@ -38,8 +51,8 @@
 .fh-franja {
   background: repeating-linear-gradient(
     45deg,
-    var(--fh-accent) 0 12px,
-    var(--fh-ink) 12px 24px
+    rgb(var(--fh-accent)) 0 12px,
+    rgb(var(--fh-ink)) 12px 24px
   );
 }
 

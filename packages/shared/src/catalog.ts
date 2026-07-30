@@ -269,3 +269,54 @@ export function validarFraccion(qtyMilli: number, allowsFraction: boolean, unitN
   }
   return null;
 }
+
+// ============================================================
+// Costo y margen: la conversión que hay que hacer SIEMPRE
+// ============================================================
+
+/**
+ * Costo neto por unidad de VENTA, en pesos.
+ *
+ * `Product.costNetMilliPeso` está en milésimas de peso por unidad BASE, y el
+ * precio en pesos por unidad de VENTA. Ponerlos lado a lado sin convertir es
+ * el error más caro de este dominio, y no se ve: los dos son números y ninguno
+ * lleva su unidad escrita.
+ *
+ * El cemento lo deja claro. Costo $180 por kilo, precio $6.490 por saco de 25
+ * kg. Sin convertir, el margen sale 96,7% y el producto parece un negocio
+ * redondo. Convertido, el saco cuesta $4.500 y el margen es 17,5%.
+ *
+ * Por eso vive acá y no en cada pantalla: la tabla del catálogo, el reporte de
+ * margen del Sprint 4 y el inventario valorizado necesitan exactamente esto, y
+ * si cada uno lo recalcula, tarde o temprano uno se olvida del factor.
+ */
+export function costoPorUnidadDeVenta(p: {
+  costNetMilliPeso: number;
+  saleUnit: { factorMilli: number };
+}): number {
+  // milésimas de peso por base × (milésimas de base por venta / 1000) / 1000
+  return roundSymLocal((p.costNetMilliPeso * p.saleUnit.factorMilli) / 1_000_000);
+}
+
+/**
+ * Margen sobre el neto, en porcentaje. `null` cuando no se puede calcular:
+ * sin costo (el vendedor no lo recibe) o con precio cero.
+ */
+export function margenPorcentaje(p: {
+  priceGross: number;
+  costNetMilliPeso?: number;
+  saleUnit: { factorMilli: number };
+  taxRatePercent?: number;
+}): number | null {
+  if (p.costNetMilliPeso === undefined) return null;
+  const tasa = p.taxRatePercent ?? 19;
+  const neto = roundSymLocal(p.priceGross / (1 + tasa / 100));
+  if (neto <= 0) return null;
+  const costo = costoPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit });
+  return ((neto - costo) / neto) * 100;
+}
+
+/** Copia local del redondeo simétrico para no cruzar módulos (ver money.ts). */
+function roundSymLocal(x: number): number {
+  return Math.sign(x) * Math.round(Math.abs(x));
+}

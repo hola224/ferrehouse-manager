@@ -7,7 +7,9 @@ export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   server: {
     host: true, // los terminales entran por la LAN
-    proxy: { "/api": "http://localhost:3000" },
+    // El puerto del API se puede mover con FH_API_PORT. Sirve para levantar una
+    // segunda copia —una rama en revisión, por ejemplo— sin apagar la primera.
+    proxy: { "/api": `http://localhost:${process.env.FH_API_PORT ?? 3000}` },
   },
   build: { assetsInlineLimit: 0 },
 });
