@@ -85,13 +85,24 @@ export function code128Svg(
   const modulo = opciones.moduloPx ?? 2;
   const alto = opciones.altoPx ?? 60;
   const anchos = code128Widths(texto);
-  const anchoTotal = anchos.reduce((a, b) => a + b, 0) * modulo;
+
+  /**
+   * Zona muda: 10 módulos en blanco a cada lado, que exige la norma.
+   *
+   * No es decorativa. El lector localiza el código buscando blanco-barra; si
+   * las barras llegan al borde del papel o pegan con el texto de al lado, no
+   * encuentra dónde empieza y la etiqueta no lee. Se ve perfecta en pantalla,
+   * y falla recién en el mesón con el cliente al frente.
+   */
+  const ZONA_MUDA = 10 * modulo;
+  const anchoBarras = anchos.reduce((a, b) => a + b, 0) * modulo;
+  const anchoTotal = anchoBarras + ZONA_MUDA * 2;
 
   const margenTitulo = opciones.titulo ? 16 : 0;
   const margenPrecio = opciones.precio ? 22 : 0;
   const altoTotal = alto + 18 + margenTitulo + margenPrecio;
 
-  let x = 0;
+  let x = ZONA_MUDA;
   const barras: string[] = [];
   anchos.forEach((ancho, i) => {
     // Los índices pares son barra, los impares espacio.

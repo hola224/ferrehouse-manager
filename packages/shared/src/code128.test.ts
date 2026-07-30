@@ -73,3 +73,29 @@ describe("code128", () => {
     expect(svg).toContain("&lt;5/8&gt; &amp; tuerca");
   });
 });
+
+describe("zona muda", () => {
+  /**
+   * La norma pide 10 módulos en blanco a cada lado. Sin ellos el lector no
+   * encuentra dónde empieza el código: la etiqueta se ve perfecta en pantalla
+   * y falla en el mesón. Se descubrió mirando la etiqueta renderizada, no en
+   * un test — por eso ahora hay un test.
+   */
+  it("deja 10 módulos en blanco a cada lado del código", () => {
+    const modulo = 2;
+    const svg = code128Svg("FH-00002", { moduloPx: modulo });
+    const anchoBarras = code128Widths("FH-00002").reduce((a, b) => a + b, 0) * modulo;
+
+    const total = Number(svg.match(/width="(\d+)"/)![1]);
+    expect(total).toBe(anchoBarras + 2 * 10 * modulo);
+
+    // La primera barra no arranca en el borde.
+    const primeraX = Number(svg.match(/<rect x="(\d+)"/)![1]);
+    expect(primeraX).toBe(10 * modulo);
+
+    // Y la última termina 10 módulos antes del borde derecho.
+    const equis = [...svg.matchAll(/<rect x="(\d+)" y="\d+" width="(\d+)"/g)];
+    const ultima = equis[equis.length - 1]!;
+    expect(Number(ultima[1]) + Number(ultima[2])).toBe(total - 10 * modulo);
+  });
+});
