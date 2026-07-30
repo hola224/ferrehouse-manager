@@ -11,7 +11,9 @@ import { join, extname } from "node:path";
 
 const RAIZ = new URL("..", import.meta.url).pathname;
 const EXT = new Set([".ts", ".tsx", ".css", ".html", ".js", ".jsx", ".json"]);
-const IGNORAR = new Set(["node_modules", "dist", ".git", "public", "migrations", ".claude"]);
+// `public` NO se excluye: es justo donde viviría un CSS vendorizado con un
+// @import remoto, que es el modo de fallar que este script existe para atrapar.
+const IGNORAR = new Set(["node_modules", "dist", ".git", "migrations", ".claude"]);
 
 // Hosts que no pueden aparecer en el código que se sirve al navegador.
 const PROHIBIDOS = [
