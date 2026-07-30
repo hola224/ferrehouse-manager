@@ -24,7 +24,9 @@ function recorrer(dir) {
     if (IGNORAR.has(entrada)) continue;
     const ruta = join(dir, entrada);
     if (statSync(ruta).isDirectory()) recorrer(ruta);
-    else if (EXT.has(extname(entrada)) && !PERMITIDOS.has(basename(entrada))) {
+    // Los tests SÍ pueden nombrar un color: verifican que el token valga lo
+    // que dice el brief, que es justo lo contrario de hardcodearlo.
+    else if (EXT.has(extname(entrada)) && !PERMITIDOS.has(basename(entrada)) && !/\.test\.[jt]sx?$/.test(entrada)) {
       const texto = readFileSync(ruta, "utf-8");
       texto.split("\n").forEach((linea, i) => {
         // `rgb(22 24 26 / 0.15)` dentro de tokens.css está permitido; acá no.
