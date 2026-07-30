@@ -247,6 +247,13 @@ model Product {
   // Reposición: stock mínimo para alertar, en milésimas de UNIDAD BASE.
   reorderLevelBaseMilli Int @default(0)
 
+  // Nombre + SKU + códigos, en minúsculas y sin tildes (tarea 1.5).
+  // SQLite compara ignorando mayúsculas SOLO en ASCII: para el motor "Ñ" y "ñ"
+  // son letras distintas, así que sin esta columna buscar "cañeria" no
+  // encuentra "Cañería" ni "CAÑERÍA" — media repisa invisible. Se escribe en la
+  // misma transacción que el producto, así no puede quedar desincronizada.
+  searchKey String @default("")
+
   // active   = no se vende hoy (agotado de línea, fuera de temporada).
   //            Sigue visible en el catálogo del admin y se puede reactivar.
   // deletedAt= descontinuado para siempre. Desaparece de toda pantalla
@@ -273,6 +280,7 @@ model Product {
 
   @@index([name])
   @@index([categoryId])
+  @@index([searchKey])
 }
 
 model ProductBarcode {

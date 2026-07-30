@@ -3,7 +3,7 @@
  * (con sus CHECK) y siembra lo mínimo con PIN conocidos.
  */
 import { beforeAll, afterAll } from "vitest";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hash } from "@node-rs/argon2";
@@ -20,9 +20,15 @@ beforeAll(async () => {
   await db.$disconnect();
   for (const suf of ["", "-journal", "-wal", "-shm"]) rmSync(RUTA_DB + suf, { force: true });
 
-  const sql = readFileSync(join(aqui, "../prisma/migrations/20260730120000_inicial/migration.sql"), "utf-8");
-  for (const s of sql.split(";").map((x) => x.trim()).filter((x) => x && !/^(--|\s)*$/.test(x))) {
-    await db.$executeRawUnsafe(s);
+  // TODAS las migraciones, en orden de carpeta. Aplicar solo la inicial dejaría
+  // los tests corriendo contra un esquema más viejo que el de producción, que
+  // es la clase de diferencia que hace pasar un test y fallar la tienda.
+  const dirMigraciones = join(aqui, "../prisma/migrations");
+  for (const carpeta of readdirSync(dirMigraciones).filter((d) => /^\d/.test(d)).sort()) {
+    const sql = readFileSync(join(dirMigraciones, carpeta, "migration.sql"), "utf-8");
+    for (const s of sql.split(";").map((x) => x.trim()).filter((x) => x && !/^(--|\s)*$/.test(x))) {
+      await db.$executeRawUnsafe(s);
+    }
   }
 
   const loc = await db.location.create({ data: { name: "Local", isDefault: true, active: true } });

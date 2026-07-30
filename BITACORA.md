@@ -207,3 +207,90 @@ absurdo y un margen negativo en todos los reportes.
   no se puede cerrar la tabla de atajos del Sprint 3.
 - Los PIN del seed se imprimen **una sola vez**. Si se perdieron, borrar la base
   de desarrollo y volver a sembrar.
+
+---
+
+## 2026-07-30 — Sprint 1: catálogo, capa de servidor
+
+**Estado: las 8 tareas de servidor entregadas y probadas. La interfaz espera el
+wireframe aprobado (tarea 1.7b).**
+
+### Qué se hizo
+
+Todo el backend del catálogo: productos con su alta, edición y baja (1.1),
+códigos de barra múltiples (1.2), etiquetas Code128 encoladas en `PrintJob`
+(1.3), categorías/marcas/proveedores (1.4), la caja única de búsqueda (1.5),
+importador de Excel en dos pasos (1.6), el invariante de unidades con su texto
+explicativo (1.7) y el CRUD de usuarios (1.8).
+
+**150 tests en verde** (64 en `shared`, 83 en `server`, 3 en `web`), estables en
+dos corridas completas seguidas.
+
+### Lo que se aprendió
+
+1. **`setErrorHandler` después de un `await register()` no cubre las rutas ya
+   montadas, y falla en silencio.** Fastify cierra el contexto de arranque al
+   esperar un plugin. Las rutas del Sprint 0 quedaron con el manejador por
+   omisión: respondían el código correcto —por eso los tests pasaban— pero el
+   cuerpo decía `{"error":"Bad Request"}` en vez del mensaje escrito a mano. El
+   vendedor habría leído "Bad Request" donde el brief promete que lea qué
+   corregir. Se descubrió recién cuando un test miró **el mensaje además del
+   código**. El manejador ahora va antes de todo lo demás.
+
+2. **SQLite no encuentra "Cañería" buscando "caneria", y tampoco "CAÑERÍA".**
+   Su `LIKE` ignora mayúsculas solo en ASCII: para el motor la Ñ y la ñ son
+   letras distintas, y las tildes no se ignoran nunca. En una ferretería chilena
+   eso deja media repisa invisible desde la caja de búsqueda. Se agregó
+   `Product.searchKey`, una columna con nombre + SKU + códigos ya normalizados,
+   que se escribe en la misma transacción que el producto.
+
+3. **El costo se digita solo hasta el primer movimiento.** Hasta el Sprint 4 no
+   hay compras, así que el inventario inicial no tiene otra forma de cargar su
+   costo que tecleándolo. Pero en cuanto entra mercadería, `costNetMilliPeso`
+   pasa a ser el PMP —un caché reconstruible desde el libro— y dejarlo editable
+   permitiría que un tecleo contradiga al libro sin dejar rastro. La regla se
+   apaga sola: nadie tiene que acordarse de quitar el campo en el Sprint 4.
+
+4. **El importador es todo o nada.** Cargar 497 de 500 productos es peor que no
+   cargar ninguno: el admin no sabe cuáles entraron y la corrección es revisar
+   500 filas a mano. El informe previo devuelve **todas** las filas con
+   problema, no las diez primeras, y muestra qué categorías y marcas se
+   crearían — que es donde se ven los errores de tipeo antes de que existan.
+
+5. **Code128 se implementó a mano y se probó contra la especificación**, no
+   contra sí mismo: los patrones de Start B (11010010000) y Stop (1100011101011)
+   y el dígito de control de `FH-00001` calculado a mano. Un código que se ve
+   como código de barras pero codifica mal se descubre con el cliente al frente.
+   Una dependencia menos en un PC que nadie va a actualizar.
+
+6. **La validación del producto vive una sola vez, en `packages/shared`.** Este
+   sprint le abrió dos puertas al mismo dato —el formulario y el Excel—. Si el
+   importador validara por su cuenta sería la puerta por donde entra lo que el
+   formulario rechaza, y no se sabría hasta que el kardex mintiera.
+
+7. **La prueba de la decisión sellada 17 ahora golpea rutas reales.** En el
+   Sprint 0 se probaba contra un endpoint escrito a propósito para ser atrapado;
+   ahora `costNetMilliPeso` sale de verdad desde `/api/products`, y los tests
+   verifican que al vendedor no le llega —ni ahí, ni en la búsqueda, ni en el
+   detalle— y que el cuerpo no venga vacío, que haría pasar el test sin probar
+   nada.
+
+### Pendiente para Cristian
+
+- **Aprobar el wireframe de la pantalla de búsqueda/catálogo (1.7b).** Es una de
+  las cinco pantallas clave y el brief (§7.2) exige el visto bueno antes de
+  codear. Toda la interfaz del sprint espera eso: las decisiones de densidad y
+  de columnas de esa pantalla se propagan al formulario de producto y a la
+  pantalla de importación, así que construirlas antes es la retrabajo que la
+  puerta existe para evitar.
+- Responder la **pregunta abierta 4** (qué navegador corren los terminales, y en
+  modo normal o kiosco). Sigue bloqueando la tabla de atajos del Sprint 3.
+
+### Observado, sin explicar
+
+Una corrida de `users.test.ts` + `import.test.ts` falló al **cargar** el primer
+archivo. No se reprodujo en cuatro corridas posteriores, incluidas dos de la
+suite completa. Los archivos de test comparten una misma base SQLite que cada
+uno borra y recrea, así que la sospecha es una condición de carrera con el
+archivo WAL; queda anotado sin arreglar, porque arreglar lo que no se sabe
+reproducir suele ser cambiar de síntoma.

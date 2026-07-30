@@ -53,6 +53,8 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
 15. **WhatsApp e impresión son colas con reintentos.** Una venta jamás se bloquea porque falle una de las dos.
 16. **Escrituras serializadas**: `connection_limit=1` en la URL de SQLite. Sin eso, dos ventas simultáneas del mismo producto corrompen el saldo del libro en silencio. Ver [ADR-006](.agents/DECISIONS/006-concurrencia-sqlite.md).
 17. **Lo que el vendedor no puede ver no sale del servidor.** USR-03 —el vendedor no ve costos ni márgenes— es regla de negocio, no `display:none`. Los campos de costo (`Product.costNetMilliPeso`, `SaleItem.lineCostNet`, `StockMovement.totalCostNet`, `StockMovement.balanceCostNetMilliPeso` y todo `Purchase`) **se omiten al serializar** cuando el token es de rol `SELLER`. Los DTO por rol viven en `packages/shared` desde el Sprint 0: si se parchan endpoint por endpoint, basta que uno se olvide para que el costo viaje en el JSON aunque la pantalla no lo pinte. El principio 8 del brief de UI ("no existe en su DOM") es inaplicable si el dato ya cruzó la red.
+18. **El costo de un producto se digita solo hasta su primer movimiento de stock.** Después lo manda el libro. Hasta el Sprint 4 no existen compras, así que el inventario inicial no tiene otra forma de cargar su costo que tecleándolo; pero en cuanto entra mercadería, `Product.costNetMilliPeso` pasa a ser el PMP —un caché reconstruible desde `StockMovement`— y dejarlo editable permitiría que un tecleo contradiga al libro sin dejar rastro. La regla se apaga sola: nadie tiene que acordarse de quitar el campo en el Sprint 4. Corregirlo después es un ajuste de stock, que sí queda registrado.
+19. **El texto que se busca se guarda normalizado.** `Product.searchKey` lleva nombre + SKU + códigos en minúsculas y sin tildes, escrito en la misma transacción que el producto. El `LIKE` de SQLite ignora mayúsculas **solo en ASCII**: sin esta columna, buscar "caneria" no encuentra "Cañería" y buscar "CAÑERIA" tampoco, o sea media repisa invisible desde la caja de búsqueda.
 
 ## Decisiones provisionales
 
@@ -78,7 +80,9 @@ Marcadas aparte a propósito: **no están selladas** y se revisan cuando se cier
 idempotente, auth por PIN con roles, fundación visual y CI. 61 tests en verde.
 Detalle en [`BITACORA.md`](BITACORA.md).
 
-**Sprint actual: 1 — Catálogo.**
+**Sprint actual: 1 — Catálogo.** Capa de servidor entregada el 2026-07-30 (8 de
+9 tareas, 150 tests en verde). **La interfaz está detenida esperando el ok al
+wireframe de la pantalla de búsqueda/catálogo**, que es una de las cinco clave.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

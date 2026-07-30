@@ -1,9 +1,15 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import { ZodError } from "zod";
 import { db } from "./db.js";
 import { audit } from "./audit.js";
 import { loginSchema, verificarLogin, listarUsuariosParaLogin, type TokenPayload } from "./auth.js";
+import { requireRole } from "./roles.js";
+import { registerCatalogRoutes } from "./routes/catalog.js";
+import { registerUserRoutes } from "./routes/users.js";
+import { registerImportRoutes } from "./routes/import.js";
+import { registerLabelRoutes } from "./routes/labels.js";
 import { stripForRole, type Role } from "@ferrehouse/shared";
 
 declare module "@fastify/jwt" {
@@ -13,19 +19,45 @@ declare module "@fastify/jwt" {
   }
 }
 
-export function requireRole(...roles: Role[]) {
-  return async (req: FastifyRequest) => {
-    await req.jwtVerify();
-    if (!roles.includes(req.user.role)) {
-      const err = new Error("No autorizado para esta operación") as Error & { statusCode?: number };
-      err.statusCode = 403;
-      throw err;
-    }
-  };
-}
+export { requireRole };
 
 export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
+
+  /**
+   * EL ORDEN IMPORTA, y no es evidente: esto va ANTES de cualquier
+   * `await app.register(...)`.
+   *
+   * Al esperar un `register`, Fastify cierra el contexto de arranque; un
+   * `setErrorHandler` puesto después NO cubre las rutas ya montadas y ellas
+   * siguen con el manejador por omisión. El síntoma es silencioso: la ruta
+   * responde 400, así que un test que solo mira el código pasa — pero el
+   * cuerpo dice `{"error":"Bad Request"}` en vez del mensaje que uno escribió,
+   * y el vendedor lee "Bad Request" donde debía leer qué corregir. Así estuvo
+   * todo el Sprint 0, hasta que un test miró el mensaje además del código.
+   */
+  app.setErrorHandler((error: Error & { statusCode?: number }, _req, reply) => {
+    /**
+     * Un error de Zod es un 400 con el mensaje que ya está escrito en español
+     * dentro del esquema, no un 500. Sin esto, "El precio va en pesos enteros"
+     * llegaría como "Error interno" y nadie sabría qué corregir —principio 5
+     * del brief: los errores dicen qué hacer—.
+     */
+    if (error instanceof ZodError) {
+      const primero = error.issues[0];
+      const campo = primero?.path.join(".");
+      return reply.code(400).send({
+        error: primero?.message ?? "Datos inválidos",
+        campo: campo || undefined,
+        detalle: error.flatten().fieldErrors,
+      });
+    }
+
+    const code = error.statusCode ?? 500;
+    // Los 500 se registran completos; al cliente solo se le dice que falló.
+    if (code >= 500) console.error(error);
+    reply.code(code).send({ error: code >= 500 ? "Error interno" : error.message });
+  });
 
   await app.register(cors, { origin: true });
   await app.register(jwt, { secret: opts.jwtSecret ?? process.env.JWT_SECRET ?? "cambiar" });
@@ -100,12 +132,10 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
     };
   });
 
-  app.setErrorHandler((error: Error & { statusCode?: number }, _req, reply) => {
-    const code = error.statusCode ?? 500;
-    // Los 500 se registran completos; al cliente solo se le dice que falló.
-    if (code >= 500) console.error(error);
-    reply.code(code).send({ error: code >= 500 ? "Error interno" : error.message });
-  });
+  await registerCatalogRoutes(app);
+  await registerUserRoutes(app);
+  await registerImportRoutes(app);
+  await registerLabelRoutes(app);
 
   return app;
 }
