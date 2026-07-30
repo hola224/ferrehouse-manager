@@ -1,0 +1,7 @@
+Archivo — Copyright (c) Omnibus-Type (https://github.com/Omnibus-Type/Archivo)
+IBM Plex Mono — Copyright (c) IBM Corp. (https://github.com/IBM/plex)
+
+Ambas familias están licenciadas bajo la SIL Open Font License, Version 1.1.
+La OFL permite usar, estudiar, modificar y redistribuir las fuentes libremente,
+incluso embebidas en un producto; lo único que prohíbe es venderlas por sí solas.
+Texto completo: https://openfontlicense.org

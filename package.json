@@ -1,0 +1,21 @@
+{
+  "name": "ferrehouse-manager",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Gestión para ferretería — POS, inventario y caja. Corre en local.",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev": "pnpm -r --parallel dev",
+    "check:offline": "node scripts/check-offline.mjs",
+    "db:migrate": "pnpm --filter @ferrehouse/server db:migrate",
+    "db:seed": "pnpm --filter @ferrehouse/server db:seed",
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "check": "pnpm check:offline && pnpm check:tokens && pnpm typecheck && pnpm test"
+  }
+}

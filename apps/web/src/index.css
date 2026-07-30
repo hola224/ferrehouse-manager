@@ -1,0 +1,28 @@
+@import "./fonts.css";
+@import "./tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* El PC de la tienda es 1366x768, no 4K. */
+    font-size: 16px;
+  }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+  }
+  /* Foco visible en TODO lo interactivo: se opera con teclado. */
+  :focus-visible {
+    outline: 2px solid var(--fh-ink);
+    outline-offset: 2px;
+  }
+  /* Un POS que "anima" se siente lento aunque no lo sea. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

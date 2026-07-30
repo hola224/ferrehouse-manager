@@ -1,0 +1,862 @@
+// ============================================================
+// Ferrehouse Manager — schema de base de datos
+// SQLite local · Prisma 6
+// ============================================================
+//
+// CONVENCIONES (leer antes de tocar nada)
+//
+// 1. DINERO → Int, en pesos chilenos EXACTOS.
+//    El peso no tiene decimales, así que no existe el problema de
+//    redondeo con flotantes. $12.990 se guarda como 12990.
+//
+// 2. RAZONES DE DINERO → Int, en MILÉSIMAS DE PESO, sufijo `MilliPeso`.
+//    Un costo unitario NO es un monto que se paga: es una razón, y como
+//    tal necesita resolución sub-peso. Una caja de 1.000 tarugos a $3.500
+//    da $3,5 por tarugo: guardado como Int de pesos serían $3 o $4, un
+//    error del 14% en el margen de un producto que se vende de a uno.
+//    Solo DOS campos son razones: Product.costNetMilliPeso y
+//    StockMovement.balanceCostNetMilliPeso. Todo lo demás es plata exacta.
+//
+// 3. CANTIDADES → Int, en milésimas. SQLite no tiene decimal real y sumar
+//    miles de movimientos en flotante acumula error.
+//    HAY DOS DENOMINADORES Y NO SE PUEDEN CONFUNDIR — por eso el nombre
+//    del campo dice cuál es, siempre:
+//
+//      `qtyBaseMilli`  → milésimas de la UNIDAD BASE del grupo (kg, m, un, L).
+//                        Es la unidad del LIBRO. StockMovement, StockLevel.
+//      `qtyMilli`      → milésimas de la unidad de LA LÍNEA, que viene dada
+//                        por el `unitId` de esa misma fila. SaleItem,
+//                        PurchaseItem, SuspendedSaleItem.
+//
+//    Conversión:  qtyBaseMilli = round(qtyMilli * unit.factorMilli / 1000)
+//    La línea guarda su cantidad en su unidad; el libro la guarda en base.
+//    La conversión ocurre UNA vez, al escribir el movimiento, y queda
+//    congelada en el libro.
+//
+// 4. PRECIOS con IVA incluido (lo que dice la repisa).
+//    COSTOS netos, sin IVA.
+//    Motivo: el IVA de compra es crédito fiscal, se recupera, no es costo.
+//    Guardar ambos con IVA infla el margen y el sistema te miente.
+//
+//    Margen de una línea vendida, con la tasa congelada en la venta:
+//      brutoLinea = lineTotalGross − (parte proporcional de Sale.discountAmount)
+//      margen     = round(brutoLinea / (1 + taxRatePercent/100)) − lineCostNet
+//    El descuento de CABECERA se prorratea entre las líneas a prorrata de
+//    lineTotalGross, y el residuo de la división entera se le suma a la línea
+//    de mayor monto. Ignorarlo infla el margen de toda venta con descuento.
+//
+//    DESGLOSE: el IVA se calcula como RESIDUO, nunca como neto × 0,19.
+//      neto = redondear(bruto / 1,19)
+//      iva  = bruto − neto
+//    Así la suma de las líneas siempre cuadra exacto con el total cobrado.
+//    La tasa se congela en Sale.taxRatePercent: si el IVA cambia algún día,
+//    los reportes del año pasado no se mueven.
+//
+//    REDONDEO DE EFECTIVO — round10 es SIMÉTRICO respecto del signo:
+//      round10(x) = signo(x) × round(|x| / 10) × 10
+//    Redondear "medio hacia arriba" a secas rompe la anulación: una pata de
+//    $17.495 redondea a $17.500 y su contraria a −$17.490, y el par queda
+//    debiendo $10. Con la versión simétrica el par siempre suma cero, que es
+//    de lo que dependen los reportes para no filtrar por estado.
+//
+// 5. Prisma sobre SQLite NO soporta enum ni Json.
+//    Los "enum" son String con los valores válidos documentados arriba
+//    de cada campo. Se validan con Zod en el backend.
+//
+// 6. Nada de plata o stock se edita ni se borra. Se revierte con un
+//    registro contrario. Sin excepciones.
+//
+// 7. ESCRITURAS SERIALIZADAS. La URL de conexión lleva `connection_limit=1`.
+//    No es cosmético: `StockMovement.balanceBaseMilli` se calcula leyendo el
+//    saldo anterior, y con 2-3 terminales dos ventas simultáneas del mismo
+//    producto pueden leer el mismo saldo y escribir dos balances iguales,
+//    corrompiendo el libro en silencio. Con una sola conexión las
+//    transacciones de escritura se serializan de verdad.
+//      DATABASE_URL="file:./ferrehouse.db?connection_limit=1"
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USUARIOS Y CONTROL
+// ============================================================
+
+model User {
+  id      Int     @id @default(autoincrement())
+  name    String
+  pinHash String // PIN de 4-6 dígitos, hasheado con argon2
+  role    String // ADMIN | SELLER | SYSTEM
+  active  Boolean @default(true)
+
+  // SYSTEM es el autor de lo que hacen los jobs (reconciliación de stock,
+  // alertas, worker de WhatsApp). Se siembra con active=false y un pinHash
+  // imposible: existe para que AuditLog.userId nunca quede sin dueño, y no
+  // puede iniciar sesión jamás.
+
+  createdAt DateTime @default(now())
+
+  sales          Sale[]
+  purchases      Purchase[]
+  movements      StockMovement[]
+  cashSessions   CashSession[]
+  cashMoves      CashMovement[]
+  auditLogs      AuditLog[]
+  suspendedSales SuspendedSale[]
+}
+
+model AuditLog {
+  id     Int    @id @default(autoincrement())
+  userId Int
+  action String // SALE_REVERSED | SALE_RETURNED | DISCOUNT_APPLIED | DISCOUNT_OVERRIDE
+  // | STOCK_ADJUSTED | STOCK_OVERRIDE | PRICE_CHANGED | COST_RECALCULATED
+  // | CASH_WITHDRAWN | CASH_DEPOSITED | CASH_SESSION_CLOSED
+  // | SALE_SUSPENDED | SALE_RESUMED | SALE_DISCARDED
+  // | USER_CREATED | PRODUCT_CREATED | PRODUCT_DEACTIVATED | SETTING_CHANGED
+  entity String
+
+  // Texto, no Int: PrintJob y WhatsAppJob tienen id uuid. Guardar el id
+  // en String sirve para las dos familias sin una segunda columna.
+  entityId String?
+
+  payload   String? // JSON serializado (SQLite no soporta tipo Json)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
+
+// ============================================================
+// UNIDADES
+// Cuatro grupos: PESO (base kg), LONGITUD (base m), CONTEO (base un),
+// VOLUMEN (base L).
+//
+// VOLUMEN existe desde el día uno aunque hoy no se use: sin él, el día que
+// entre diluyente a granel alguien lo mete en PESO asumiendo "1 litro = 1
+// kilo". El diluyente pesa 0,87 kg/L — el kardex miente un 13% y nadie se
+// entera nunca, porque la conversión "funciona", solo que sobre la magnitud
+// equivocada. Un grupo mal elegido no da error: da un número malo.
+//
+// Cada producto se compra en una unidad y se vende en otra.
+// Ej: "Saco 25 kg" pertenece a PESO con factorMilli = 25000.
+//
+// Hay dos clases de unidad no base:
+//   CONVERSIÓN (factorMilli ≠ 1000) → el envase se abre y el contenido se
+//     vende fraccionado: "Saco 25 kg", "Rollo 100 m", "Caja 100 un".
+//   ALIAS (factorMilli = 1000) → el envase NUNCA se abre. Existe solo para
+//     que el ticket diga "3 planchas" en vez de "3 un".
+// ============================================================
+
+model UnitGroup {
+  id   Int    @id @default(autoincrement())
+  name String @unique // PESO | LONGITUD | CONTEO | VOLUMEN
+
+  // false solo en CONTEO: medio tornillo no existe. La validación de Zod
+  // rechaza qtyMilli que no sea múltiplo de 1000 en los grupos sin fracción.
+  allowsFraction Boolean @default(true)
+
+  units Unit[]
+}
+
+model Unit {
+  id          Int     @id @default(autoincrement())
+  groupId     Int
+  name        String // "Kilogramo", "Saco 25 kg", "Rollo 100 m", "Caja 100 un"
+  symbol      String // "kg", "sc25", "rl100", "cj100" — se imprime en el ticket
+  factorMilli Int // cuántas milésimas de la unidad base equivale. La base vale 1000.
+  isBase      Boolean @default(false)
+
+  // factorMilli es INMUTABLE una vez que la unidad tiene movimientos: cambiarlo
+  // reescribiría el significado de todo el kardex histórico. Si un proveedor
+  // cambia el formato del envase, se crea una unidad NUEVA.
+
+  group          UnitGroup           @relation(fields: [groupId], references: [id])
+  saleProducts   Product[]           @relation("SaleUnit")
+  buyProducts    Product[]           @relation("PurchaseUnit")
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  suspendedItems SuspendedSaleItem[]
+
+  @@unique([groupId, name])
+}
+
+// ============================================================
+// CATÁLOGO
+// ============================================================
+
+model Category {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+}
+
+model Brand {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+}
+
+model Supplier {
+  id        Int        @id @default(autoincrement())
+  name      String
+  rut       String?
+  phone     String?
+  email     String?
+  notes     String?
+  active    Boolean    @default(true)
+  products  Product[]
+  purchases Purchase[]
+}
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  sku         String  @unique // código interno, se imprime en etiqueta
+  name        String
+  description String?
+
+  categoryId Int?
+  brandId    Int?
+  supplierId Int?
+
+  // Unidades: en qué se compra y en qué se vende.
+  // Ambas DEBEN pertenecer al mismo UnitGroup — invariante de Zod, la BD
+  // no puede imponerlo.
+  saleUnitId     Int
+  purchaseUnitId Int
+
+  // Plata
+  priceGross Int // precio de repisa POR UNIDAD DE VENTA, IVA incluido
+
+  // Costo promedio ponderado, NETO, POR UNIDAD BASE, en milésimas de peso.
+  // Es un caché: se recalcula en cada movimiento que ingresa mercadería y
+  // siempre es reconstruible desde StockMovement.
+  // PROVISIONAL: el PMP es global al producto, no por ubicación. Con una sola
+  // Location da igual. Si la pregunta abierta #1 de STATE.md se resuelve como
+  // "dos sucursales", esto se mueve a StockLevel — es reversible, porque el
+  // libro ya guarda locationId y el costo de cada movimiento.
+  costNetMilliPeso Int @default(0)
+
+  // Reposición: stock mínimo para alertar, en milésimas de UNIDAD BASE.
+  reorderLevelBaseMilli Int @default(0)
+
+  // active   = no se vende hoy (agotado de línea, fuera de temporada).
+  //            Sigue visible en el catálogo del admin y se puede reactivar.
+  // deletedAt= descontinuado para siempre. Desaparece de toda pantalla
+  //            operativa; sobrevive solo en reportes históricos.
+  // El SKU NUNCA se reutiliza, ni siquiera tras deletedAt: está impreso en
+  // etiquetas físicas que siguen pegadas en la repisa.
+  active    Boolean   @default(true)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  category       Category?           @relation(fields: [categoryId], references: [id])
+  brand          Brand?              @relation(fields: [brandId], references: [id])
+  supplier       Supplier?           @relation(fields: [supplierId], references: [id])
+  saleUnit       Unit                @relation("SaleUnit", fields: [saleUnitId], references: [id])
+  purchaseUnit   Unit                @relation("PurchaseUnit", fields: [purchaseUnitId], references: [id])
+  barcodes       ProductBarcode[]
+  movements      StockMovement[]
+  stockLevels    StockLevel[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+  suspendedItems SuspendedSaleItem[]
+  alerts         Alert[]
+
+  @@index([name])
+  @@index([categoryId])
+}
+
+model ProductBarcode {
+  id        Int     @id @default(autoincrement())
+  productId Int
+  code      String  @unique
+  note      String? // "código Sodimac", "código proveedor Vulco"
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+// ============================================================
+// INVENTARIO
+// StockMovement es el libro: inmutable, solo crece, es la verdad.
+// StockLevel es caché: se puede borrar y recalcular desde el libro.
+//
+// Location existe desde el día uno con UNA sola fila ("Local").
+// La capa de datos y las consultas ya filtran por ubicación, pero
+// la UI no la muestra hasta que exista una segunda bodega.
+// Motivo: agregar la columna después es una migración fácil, pero
+// meter el filtro en cada consulta de stock después es refactor.
+// ============================================================
+
+model Location {
+  id        Int     @id @default(autoincrement())
+  name      String  @unique // "Local", "Bodega 2"
+  isDefault Boolean @default(false) // exactamente una fila en true (invariante de Zod)
+  active    Boolean @default(true)
+
+  movements      StockMovement[]
+  levels         StockLevel[]
+  sales          Sale[]
+  purchases      Purchase[]
+  stations       Station[]
+  suspendedSales SuspendedSale[]
+  alerts         Alert[]
+}
+
+model StockMovement {
+  id         Int    @id @default(autoincrement())
+  productId  Int
+  locationId Int
+  type       String // PURCHASE | SALE | RETURN_IN | ADJUSTMENT | SHRINKAGE | INITIAL | TRANSFER_IN | TRANSFER_OUT
+
+  // CON SIGNO: positivo entra, negativo sale. En milésimas de UNIDAD BASE.
+  qtyBaseMilli Int
+
+  // Plata neta EXACTA que representa este movimiento, en pesos, CON SIGNO
+  // (mismo signo que qtyBaseMilli). Es el monto que efectivamente cambió de
+  // manos, no una razón: por eso es exacto por construcción y sumarlo nunca
+  // acumula error de redondeo. Si guardáramos un costo por unidad, el job de
+  // reconciliación (Sprint 4.7) acusaría divergencias falsas.
+  totalCostNet Int
+
+  // Fotos del estado resultante, para auditar sin recalcular todo el libro.
+  balanceBaseMilli Int // saldo tras el movimiento, en milésimas de unidad base
+  balanceCostNetMilliPeso Int // PMP tras el movimiento (ver convención 2)
+
+  userId Int
+  reason String? // obligatorio en ADJUSTMENT y SHRINKAGE (invariante de Zod)
+
+  refType String? // SALE | PURCHASE
+  refId   Int?
+
+  // Fecha del HECHO, no del tecleo: un movimiento de compra se fecha con
+  // Purchase.receivedAt. Si no, el inventario valorizado a una fecha y el
+  // reporte de compras del mismo día no coinciden cuando la factura se
+  // digita al día siguiente.
+  createdAt DateTime @default(now())
+  // sin updatedAt a propósito: esta tabla no se actualiza jamás
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([productId, locationId, createdAt])
+  @@index([type, createdAt])
+  @@index([refType, refId])
+}
+
+model StockLevel {
+  productId    Int
+  locationId   Int
+  qtyBaseMilli Int      @default(0) // milésimas de UNIDAD BASE
+  updatedAt    DateTime @updatedAt
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@id([productId, locationId])
+}
+
+// ============================================================
+// COMPRAS A PROVEEDOR
+// ============================================================
+
+model Purchase {
+  id             Int      @id @default(autoincrement())
+  supplierId     Int
+  locationId     Int // dónde entra la mercadería
+  userId         Int
+  documentNumber String? // nº de factura del proveedor
+  totalNet       Int      @default(0)
+  notes          String?
+  receivedAt     DateTime @default(now())
+
+  supplier Supplier       @relation(fields: [supplierId], references: [id])
+  location Location       @relation(fields: [locationId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+  items    PurchaseItem[]
+
+  @@index([receivedAt])
+}
+
+model PurchaseItem {
+  id         Int @id @default(autoincrement())
+  purchaseId Int
+  productId  Int
+  unitId     Int // unidad en que se compró (ej: saco)
+
+  qtyMilli     Int // milésimas de la unidad de ESTA línea (unitId)
+  unitCostNet  Int // pesos exactos por unidad de COMPRA (el saco cuesta $4.500)
+  lineTotalNet Int // pesos exactos
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id])
+  product  Product  @relation(fields: [productId], references: [id])
+  unit     Unit     @relation(fields: [unitId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+}
+
+// ============================================================
+// ESTACIONES
+// Una estación es un puesto de trabajo: la caja del mesón, el terminal de
+// la oficina. Es TABLA y no texto libre por el mismo motivo que Location
+// (decisión sellada 12): "CAJA-1", "Caja 1" y "caja-1" serían tres cajas distintas
+// para la BD, y el cierre de caja agrupa por este campo.
+//
+// El navegador elige su estación al iniciar sesión y queda en el token;
+// no hace falta registrar dispositivos.
+// ============================================================
+
+model Station {
+  id         Int     @id @default(autoincrement())
+  name       String  @unique // "CAJA-1", "OFICINA"
+  locationId Int // de qué ubicación sale el stock que se vende acá
+  active     Boolean @default(true)
+
+  // A dónde salen los tickets de esta estación. Hoy: nombre del recurso
+  // compartido de Windows de la térmica USB del servidor. Cuando llegue una
+  // impresora Ethernet, "host:9100". Null = no imprime (terminal de consulta).
+  printerTarget String?
+
+  location  Location      @relation(fields: [locationId], references: [id])
+  sessions  CashSession[]
+  printJobs PrintJob[]
+}
+
+// ============================================================
+// CAJA
+// Una sesión por estación. CashMovement guarda saldo antes y después,
+// así el arqueo es una lectura, no un cálculo.
+// ============================================================
+
+model CashSession {
+  id        Int @id @default(autoincrement())
+  stationId Int
+  userId    Int
+
+  openedAt      DateTime @default(now())
+  openingAmount Int
+
+  // MECANISMO DE CIERRE, no un dato: vale stationId mientras la sesión está
+  // abierta y NULL cuando se cierra. El @unique impone a nivel de BD "una
+  // sola sesión abierta por estación" (SQLite no colisiona entre NULLs), que
+  // es un invariante que la aplicación no puede garantizar sola con 2-3
+  // terminales concurrentes.
+  //
+  // ES LA ÚNICA SEÑAL DE ABIERTA/CERRADA: no hay campo `status`, para que
+  // no exista la posibilidad de que dos columnas se contradigan.
+  //   abierta ⟺ openStationId IS NOT NULL ⟺ closedAt IS NULL
+  openStationId Int? @unique
+
+  closedAt         DateTime?
+  expectedAmount   Int? // lo que el sistema dice que debería haber
+  countedAmount    Int? // lo que el vendedor contó
+  differenceAmount Int? // counted − expected. Negativo = falta plata
+
+  notes String?
+
+  station   Station        @relation(fields: [stationId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+  movements CashMovement[]
+  sales     Sale[]
+
+  @@index([stationId, openedAt])
+}
+
+model CashMovement {
+  id        Int @id @default(autoincrement())
+  sessionId Int
+
+  type   String // OPENING | SALE | REFUND | WITHDRAWAL | DEPOSIT | CLOSING
+  amount Int // CON SIGNO. Es EFECTIVO que se mueve, nada más.
+
+  balanceBefore Int
+  balanceAfter  Int
+
+  userId      Int
+  saleId      Int?
+  description String?
+  createdAt   DateTime @default(now())
+
+  session CashSession @relation(fields: [sessionId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+  sale    Sale?       @relation(fields: [saleId], references: [id])
+
+  @@index([sessionId, createdAt])
+  @@index([saleId])
+}
+
+// ============================================================
+// VENTAS
+// Una venta nunca se edita ni se borra.
+// Anular o devolver = crear una venta contraria que apunta a la original.
+//
+// NO EXISTE un estado "parcialmente devuelta": una venta parcialmente
+// devuelta SIGUE SIENDO una venta real por su monto original, y cualquier
+// reporte que la filtrara subcontaría los ingresos. El estado se DERIVA
+// mirando las filas de reversa que la apuntan.
+//
+// REGLA DE LOS REPORTES DE PLATA: suman TODAS las filas, sin filtrar. El par
+// original + reversa suma exactamente cero, así que la anulación se
+// neutraliza sola y ningún período cerrado se altera nunca.
+// ============================================================
+
+model Sale {
+  id            Int  @id @default(autoincrement())
+  cashSessionId Int
+  locationId    Int // de qué ubicación sale el stock
+  userId        Int
+  customerId    Int?
+
+  // Doble digitación con el POS tributario
+  // BOLETA | FACTURA | NOTA_CREDITO | NONE
+  // NOTA_CREDITO es lo que lleva una fila de reversa: en Chile toda anulación
+  // o devolución obliga a emitirla en el POS tributario, y su folio se digita
+  // acá igual que el de la venta.
+  fiscalDocType String?
+  fiscalFolio   String?
+
+  // Tasa de IVA vigente al momento de la venta, congelada. El desglose
+  // neto/IVA se deriva de totalGross con esta tasa, siempre por residuo.
+  // Sin default a propósito: quien inserta una venta decide la tasa.
+  taxRatePercent Int
+
+  subtotalGross  Int // suma de líneas, IVA incluido
+  discountAmount Int @default(0)
+  roundingAmount Int @default(0) // ajuste a la decena, solo si hay pata en efectivo
+  totalGross     Int
+
+  // COMPLETED | REVERSED
+  // REVERSED marca una venta ANULADA POR COMPLETO. Es el único campo mutable
+  // de esta tabla y solo cambia una vez, de COMPLETED a REVERSED.
+  // Una venta con devoluciones parciales sigue en COMPLETED.
+  status String @default("COMPLETED")
+
+  // Autorreferencia. SIN @unique: una venta original puede recibir VARIAS
+  // devoluciones parciales a lo largo del tiempo (el cliente devuelve las
+  // llaves el martes y 3 m de cable el jueves).
+  reversesId Int?
+  reverses   Sale?  @relation("SaleReversal", fields: [reversesId], references: [id])
+  reversedBy Sale[] @relation("SaleReversal")
+
+  // Qué clase de reversa es ESTA fila. NULL en una venta normal.
+  //   VOID   → anulación total; pone la original en REVERSED
+  //   RETURN → devolución total o parcial; la original NO cambia de estado
+  reversalKind   String?
+  reversalReason String?
+
+  createdAt DateTime @default(now())
+
+  cashSession CashSession   @relation(fields: [cashSessionId], references: [id])
+  location    Location      @relation(fields: [locationId], references: [id])
+  user        User          @relation(fields: [userId], references: [id])
+  customer    Customer?     @relation(fields: [customerId], references: [id])
+  items        SaleItem[]
+  payments     SalePayment[]
+  printJobs    PrintJob[]
+  cashMovements CashMovement[]
+  whatsappJob  WhatsAppJob?
+
+  @@index([createdAt])
+  @@index([cashSessionId])
+  @@index([fiscalFolio])
+  @@index([reversesId])
+}
+
+model SaleItem {
+  id        Int @id @default(autoincrement())
+  saleId    Int
+  productId Int
+  unitId    Int // unidad de venta de ESTA línea
+
+  // Fotografías al momento de la venta. NO se leen del producto después.
+  descriptionSnapshot String
+  unitPriceGross      Int // pesos exactos por unidad de venta
+
+  // Costo neto EXACTO de la línea completa, en pesos. Congelado.
+  // Sin esto, el margen histórico cambia solo cuando sube un costo.
+  // Se guarda el total de la línea y no un costo unitario porque el total es
+  // exacto por construcción: dividirlo por la cantidad y volver a multiplicar
+  // introduce un error que después no cuadra contra el libro.
+  lineCostNet Int
+
+  qtyMilli       Int // milésimas de la unidad de ESTA línea (unitId)
+  discountAmount Int @default(0)
+  lineTotalGross Int
+
+  // A qué línea de la venta original revierte esta línea. NULL en una venta
+  // normal. Es lo que permite imponer "no se devuelve más de lo que se vendió"
+  // POR LÍNEA: si el mismo producto aparece dos veces en la venta original con
+  // distinto precio o descuento, emparejar por productId sería ambiguo y el
+  // invariante quedaría sin poder aplicarse.
+  reversesSaleItemId Int?
+  reversesSaleItem   SaleItem?  @relation("SaleItemReversal", fields: [reversesSaleItemId], references: [id])
+  reversedByItems    SaleItem[] @relation("SaleItemReversal")
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+  unit    Unit    @relation(fields: [unitId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([reversesSaleItemId])
+}
+
+model SalePayment {
+  id     Int    @id @default(autoincrement())
+  saleId Int
+  method String // CASH | DEBIT | CREDIT | TRANSFER
+
+  // Lo IMPUTADO a la venta. La suma de los amounts de una venta es siempre
+  // exactamente igual a Sale.totalGross — de eso viven los reportes por medio
+  // de pago. En una devolución es negativo.
+  amount Int
+
+  // OBLIGATORIOS en toda pata CASH, haya vuelto o no. NULL en DEBIT | CREDIT
+  // | TRANSFER. Si el cliente paga justo, receivedAmount = amount y
+  // changeAmount = 0 — nunca NULL, porque el arqueo los suma y SQL descarta
+  // las filas nulas: veinte pagos justos desaparecerían del cierre y el turno
+  // acusaría un faltante igual a casi toda la venta en efectivo del día.
+  //   receivedAmount = el billete que puso el cliente
+  //   changeAmount   = receivedAmount − amount, la plata que volvió
+  // Van aparte porque el efectivo que entra al cajón NO es lo imputado a la
+  // venta, y el arqueo necesita el movimiento físico, no el contable.
+  //   CashMovement.amount de una venta = Σ(receivedAmount − changeAmount)
+  //                                    = Σ(amount) de las patas CASH
+  receivedAmount Int?
+  changeAmount   Int?
+
+  reference String? // nº de comprobante Transbank
+  createdAt DateTime @default(now())
+
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+}
+
+// ============================================================
+// VENTA EN ESPERA (POS-08)
+//
+// El cliente arma el carro, dice "voy a buscar el otro fitting" y el mesón
+// se libera. NO ES UNA VENTA: no descuenta stock, no toca caja, no aparece
+// en ningún reporte de plata.
+//
+// El aislamiento es ESTRUCTURAL y no de disciplina: acá no hay cashSessionId
+// ni relación con CashSession, CashMovement, SalePayment ni StockMovement.
+// No existe columna por la cual una espera pueda colarse en una consulta de
+// ventas, de caja o de kardex. Por eso el arqueo del cierre no puede verse
+// afectado aunque el turno termine con esperas colgadas.
+//
+// ES UN BORRADOR DE MESÓN, NO UN LIBRO: se edita y se borra de verdad al
+// recuperarla o descartarla. Eso no viola la decisión sellada 5, que protege
+// la historia de plata y de stock: una espera nunca tocó ninguna de las dos,
+// no tiene folio, no movió un peso ni una tuerca. Lo que sí es innegociable
+// es el rastro — suspender, recuperar y descartar escriben AuditLog en la
+// misma transacción, y el descarte guarda las líneas en el payload.
+//
+// LOS PRECIOS SE RE-LEEN AL RECUPERAR. Cobrar el precio de anteayer es un
+// descuento que nadie autorizó y que ningún reporte de margen muestra.
+// ============================================================
+
+model SuspendedSale {
+  id         Int    @id @default(autoincrement())
+  locationId Int
+  userId     Int // quién la dejó colgada; la venta será de quien la cobre
+
+  // Cómo se la nombra en el mesón: "Sr. camioneta azul", "Don Luis".
+  // Sin @unique: dos "Don Luis" a la vez es confuso, pero reventar con un
+  // error de BD en pleno mesón es peor. La app avisa el duplicado y sigue.
+  label String
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  // Cuándo se tocó por última vez. La escribe la APLICACIÓN en cada edición;
+  // NO es @updatedAt, porque @updatedAt solo se dispara al actualizar un
+  // escalar de esta fila y la forma normal de editar una espera es agregar o
+  // quitar líneas, que no la tocaría. La alerta de espera añeja mide esto.
+  touchedAt DateTime @default(now())
+
+  location Location            @relation(fields: [locationId], references: [id])
+  user     User                @relation(fields: [userId], references: [id])
+  items    SuspendedSaleItem[]
+
+  @@index([locationId, touchedAt])
+}
+
+model SuspendedSaleItem {
+  id              Int @id @default(autoincrement())
+  suspendedSaleId Int
+  productId       Int
+
+  // Unidad de venta del producto AL MOMENTO de suspender, y cantidad en
+  // milésimas de ESA unidad. Al recuperar se compara contra
+  // Product.saleUnitId: si cambió, la línea NO se recupera en silencio —
+  // se le muestra al vendedor para que la revise. Sin esta comparación se
+  // cobraría el precio nuevo sobre una cantidad expresada en la unidad
+  // vieja, y las dos unidades pueden ser del mismo grupo (un rollo y un
+  // metro), así que ninguna validación de grupo lo detectaría.
+  unitId   Int
+  qtyMilli Int
+
+  // Foto NO VINCULANTE del precio al suspender: sirve solo para mostrarle al
+  // vendedor "$1.290 → $1.390" al recuperar. NUNCA se cobra este precio.
+  unitPriceGrossAtHold Int
+
+  createdAt DateTime @default(now())
+
+  suspendedSale SuspendedSale @relation(fields: [suspendedSaleId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
+  unit          Unit          @relation(fields: [unitId], references: [id])
+
+  @@index([suspendedSaleId])
+  @@index([productId])
+}
+
+// ============================================================
+// CLIENTES
+// Sin fiado ni cuenta corriente. Existe solo para el WhatsApp.
+// ============================================================
+
+model Customer {
+  id    Int     @id @default(autoincrement())
+  name  String?
+  phone String  @unique // normalizado a E.164 (+56...) ANTES de guardar
+
+  whatsappConsent Boolean   @default(false)
+  consentAt       DateTime?
+  optOutAt        DateTime?
+
+  createdAt DateTime @default(now())
+
+  sales        Sale[]
+  whatsappJobs WhatsAppJob[]
+}
+
+// ============================================================
+// COLAS: impresión y WhatsApp
+// Ambas con reintentos. Una venta nunca se bloquea porque falle una cola.
+// ============================================================
+
+model PrintJob {
+  id        String @id @default(uuid())
+  stationId Int
+  type      String // RECEIPT | LABEL | CASH_REPORT
+  payload   String // bytes ESC/POS en base64
+
+  // Qué venta imprime, cuando aplica. Permite reimprimir EL MISMO documento
+  // (POS-18) en vez de regenerarlo.
+  // La purga de esta cola conserva los RECEIPT del mes en curso: más atrás,
+  // reimprimir regenera el ticket desde la venta, que es inmutable y tiene
+  // todo lo necesario congelado.
+  saleId Int?
+
+  // El ticket reimpreso sale marcado. No se numeran las copias: esta tabla es
+  // una cola que se purga, así que un contador sobre ella reiniciaría solo y
+  // volvería a imprimir "original".
+  isReprint Boolean @default(false)
+
+  status    String  @default("PENDING") // PENDING | PRINTING | DONE | FAILED
+  attempts  Int     @default(0)
+  lastError String?
+
+  createdAt DateTime  @default(now())
+  printedAt DateTime?
+
+  station Station @relation(fields: [stationId], references: [id])
+  sale    Sale?   @relation(fields: [saleId], references: [id])
+
+  @@index([stationId, status])
+  @@index([saleId])
+}
+
+model WhatsAppJob {
+  id         String @id @default(uuid())
+  saleId     Int?   @unique
+  customerId Int
+  phone      String
+  message    String
+
+  status    String  @default("PENDING") // PENDING | SENT | FAILED | CANCELLED
+  attempts  Int     @default(0)
+  lastError String?
+
+  scheduledAt DateTime  @default(now())
+  sentAt      DateTime?
+
+  sale     Sale?    @relation(fields: [saleId], references: [id])
+  customer Customer @relation(fields: [customerId], references: [id])
+
+  @@index([status, scheduledAt])
+}
+
+// ============================================================
+// ALERTAS, CONTADORES Y CONFIGURACIÓN
+// ============================================================
+
+model Alert {
+  id       Int    @id @default(autoincrement())
+  type     String // LOW_STOCK | OUT_OF_STOCK | CASH_DIFFERENCE | STOCK_RECONCILE_DIFF | SUSPENDED_SALE_STALE | NO_ROTATION
+  severity String @default("INFO") // INFO | WARNING | CRITICAL
+
+  productId  Int?
+  locationId Int? // en qué bodega falta: sin esto la alerta no sabe dónde apuntar
+  message    String
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  product  Product?  @relation(fields: [productId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@index([type, resolvedAt])
+}
+
+// ============================================================
+// CONTADORES
+// Correlativos que necesitan ser atómicos. Hoy solo el SKU.
+// El incremento va en la misma transacción que usa el número; con
+// connection_limit=1 (convención 7) las escrituras están serializadas.
+// El importador de Excel reserva un rango de golpe (value = value + N)
+// en vez de pedir un número por fila.
+// ============================================================
+
+model Counter {
+  name  String @id // "product.sku"
+  value Int    @default(0)
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Settings iniciales:
+//   store.name                 = "Ferrehouse"
+//   tax.rate                   = "19"
+//   cash.roundTo               = "10"     ← no circulan monedas de $1 ni $5
+//   stock.allowNegative        = "false"
+//   stock.adminOverride        = "true"
+//   discount.maxSeller         = "5"      ← % máximo sin autorización
+//   whatsapp.template          = "Hola {nombre}, gracias por tu compra en Ferrehouse..."
+//   alert.cashDiffLimit        = "2000"
+//   ui.showLocations           = "false"  ← se enciende cuando exista la 2ª bodega
+//   sku.prefix                 = "FH-"
+//   sku.padding                = "5"      ← FH-00001
+//   pos.suspendedStaleHours    = "48"     ← desde ahí la espera se avisa como añeja
+//   print.maxAttempts          = "3"
+//   whatsapp.maxAttempts       = "5"
+//
+// location.default NO es un setting: la ubicación por defecto es
+// Location.isDefault, para no tener dos fuentes de verdad.

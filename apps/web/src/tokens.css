@@ -1,0 +1,50 @@
+/*
+ * Dirección visual "Mesón" (UI-BRIEF.md §4). ESTE ES EL ÚNICO ARCHIVO CON
+ * COLORES. Ningún componente escribe un hexadecimal: `pnpm check:tokens` falla.
+ *
+ * Disciplina del amarillo: SOLO la acción principal de cada pantalla y las
+ * alertas. Todo lo demás es blanco, negro y gris. Un amarillo que aparece en
+ * seis lugares deja de significar "acá".
+ */
+:root {
+  --fh-bg: #f4f5f4;        /* fondo de la aplicación */
+  --fh-surface: #ffffff;   /* tarjetas, panel de líneas */
+  --fh-ink: #16181a;       /* texto principal */
+  --fh-ink-soft: #6b7075;  /* texto secundario */
+  --fh-line: #ececec;      /* separadores */
+  --fh-accent: #ffc400;    /* amarillo seguridad: acción principal + alerta */
+  --fh-mono-ink: #8a8f94;  /* SKU, folios, códigos */
+  --fh-ok: #2f7d46;        /* caja abierta, WhatsApp conectado */
+  --fh-warn: #b7791f;      /* stock bajo */
+  --fh-error: #c0392b;     /* anulación, quiebre, caja descuadrada */
+
+  --fh-radio: 6px;
+  --fh-foco: 0 0 0 3px rgb(22 24 26 / 0.15);
+}
+
+/*
+ * Sobre el amarillo el texto va SIEMPRE en tinta, nunca en blanco: #FFC400 con
+ * blanco da 1.6:1 de contraste y no se lee en el mesón.
+ */
+.fh-accion {
+  background: var(--fh-accent);
+  color: var(--fh-ink);
+}
+
+/*
+ * Franja diagonal amarillo/negro. Solo alertas CRITICAL y el banner de caja
+ * descuadrada. Máximo una por pantalla — si hay dos, ninguna se mira.
+ */
+.fh-franja {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--fh-accent) 0 12px,
+    var(--fh-ink) 12px 24px
+  );
+}
+
+/* Plata y cantidades: cifras de ancho fijo para que las columnas se alineen. */
+.fh-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}

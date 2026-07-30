@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # La tienda no tiene internet: ninguna fuente ni CDN remoto.
+      - run: pnpm check:offline
+
+      # Ningún color fuera de tokens.css, o la dirección visual deja de ser cambiable.
+      - run: pnpm check:tokens
+
+      - run: pnpm --filter @ferrehouse/shared build
+
+      - run: pnpm --filter @ferrehouse/server exec prisma generate
+
+      - run: pnpm typecheck
+
+      # Incluye el guardián de los dos CHECK de CashSession: si alguien
+      # regenera la migración con `migrate dev`, este test es la única alarma.
+      - run: pnpm test
+
+      - run: pnpm --filter @ferrehouse/web build

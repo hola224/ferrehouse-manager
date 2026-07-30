@@ -1,0 +1,100 @@
+import { describe, it, expect } from "vitest";
+import { roundCash, roundSym, netFromGross, taxFromGross, toBaseMilli, recalcAverageCost } from "./money.js";
+
+describe("redondeo de efectivo", () => {
+  it("redondea a la decena", () => {
+    expect(roundCash(17495)).toBe(17500);
+    expect(roundCash(17494)).toBe(17490);
+    expect(roundCash(12990)).toBe(12990);
+  });
+
+  it("es simétrico: la venta y su anulación suman cero", () => {
+    // El bug que esto previene: con "medio hacia arriba", 17495 -> 17500 pero
+    // -17495 -> -17490, y el par queda debiendo $10 para siempre, porque los
+    // reportes suman todas las filas sin filtrar por estado.
+    for (const bruto of [17495, 17490, 12345, 99999, 1, 5, 4, 10005]) {
+      expect(roundCash(bruto) + roundCash(-bruto)).toBe(0);
+    }
+  });
+
+  it("respeta el múltiplo configurable", () => {
+    expect(roundCash(1234, 50)).toBe(1250);
+    expect(roundCash(1234, 1)).toBe(1234);
+  });
+});
+
+describe("IVA por residuo", () => {
+  it("neto + iva === bruto, siempre", () => {
+    for (const bruto of [12990, 1, 999, 17495, 100000, 33333]) {
+      expect(netFromGross(bruto, 19) + taxFromGross(bruto, 19)).toBe(bruto);
+    }
+  });
+
+  it("no usa neto * 0,19", () => {
+    // 12990 bruto -> 10916 neto -> 2074 IVA. Con neto*0,19 daría 2074,04 y al
+    // redondear por línea el total del día no cuadraría con el desglose.
+    expect(netFromGross(12990, 19)).toBe(10916);
+    expect(taxFromGross(12990, 19)).toBe(2074);
+  });
+});
+
+describe("conversión de unidades", () => {
+  it("rollo de 100 m a metros", () => {
+    expect(toBaseMilli(1000, 100_000)).toBe(100_000);
+  });
+  it("7,5 m", () => {
+    expect(toBaseMilli(7500, 1000)).toBe(7500);
+  });
+  it("una caja de 100 tornillos", () => {
+    expect(toBaseMilli(1000, 100_000)).toBe(100_000);
+  });
+});
+
+describe("costo promedio ponderado", () => {
+  it("promedia dos compras a distinto precio", () => {
+    // 100 m a $1.000/m, luego 100 m a $2.000/m -> $1.500/m
+    const c1 = recalcAverageCost({
+      prevBalanceBaseMilli: 0,
+      prevCostNetMilliPeso: 0,
+      incomingBaseMilli: 100_000,
+      incomingTotalCostNet: 100_000,
+    });
+    expect(c1).toBe(1_000_000); // $1.000 en milésimas
+    const c2 = recalcAverageCost({
+      prevBalanceBaseMilli: 100_000,
+      prevCostNetMilliPeso: c1,
+      incomingBaseMilli: 100_000,
+      incomingTotalCostNet: 200_000,
+    });
+    expect(c2).toBe(1_500_000); // $1.500
+  });
+
+  it("conserva el costo si el saldo queda en cero", () => {
+    const c = recalcAverageCost({
+      prevBalanceBaseMilli: -5_000,
+      prevCostNetMilliPeso: 3_500,
+      incomingBaseMilli: 5_000,
+      incomingTotalCostNet: 100,
+    });
+    expect(c).toBe(3_500);
+  });
+
+  it("no pierde precisión con envases grandes", () => {
+    // Una caja de 1.000 tarugos a $3.500: $3,5 por tarugo. En pesos enteros
+    // sería $3 o $4 — 14% de error en el margen. En milésimas: 3500.
+    const c = recalcAverageCost({
+      prevBalanceBaseMilli: 0,
+      prevCostNetMilliPeso: 0,
+      incomingBaseMilli: 1_000_000,
+      incomingTotalCostNet: 3_500,
+    });
+    expect(c).toBe(3_500);
+  });
+});
+
+describe("roundSym", () => {
+  it("aleja del cero en el 0,5 exacto", () => {
+    expect(roundSym(2.5)).toBe(3);
+    expect(roundSym(-2.5)).toBe(-3);
+  });
+});

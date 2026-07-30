@@ -1,0 +1,52 @@
+/**
+ * Bitácora de auditoría (tarea 0.7). Transversal desde el día uno: agregarla
+ * después significa que los primeros meses de operación no tienen historia.
+ *
+ * `entityId` es TEXTO a propósito: `PrintJob` y `WhatsAppJob` tienen id uuid,
+ * el resto entero. Un Int no serviría para todas las entidades.
+ *
+ * Escribir en la bitácora NUNCA hace fallar la operación que la origina: si el
+ * log revienta, se avisa por consola y la venta sigue.
+ */
+import { db } from "./db.js";
+import type { Prisma } from "@prisma/client";
+
+export type AuditAction =
+  | "LOGIN"
+  | "LOGIN_FAILED"
+  | "USER_CREATED"
+  | "USER_DEACTIVATED"
+  | "PIN_CHANGED"
+  | "SETTING_CHANGED"
+  | "SALE_REVERSED"
+  | "SALE_RETURNED"
+  | "DISCOUNT_OVERRIDE"
+  | "STOCK_OVERRIDE"
+  | "CASH_MOVEMENT"
+  | "CASH_SESSION_CLOSED";
+
+export async function audit(
+  entrada: {
+    userId: number;
+    action: AuditAction;
+    entity: string;
+    entityId?: string | number | null;
+    payload?: unknown;
+  },
+  tx?: Prisma.TransactionClient,
+): Promise<void> {
+  const cliente = tx ?? db;
+  try {
+    await cliente.auditLog.create({
+      data: {
+        userId: entrada.userId,
+        action: entrada.action,
+        entity: entrada.entity,
+        entityId: entrada.entityId == null ? null : String(entrada.entityId),
+        payload: entrada.payload === undefined ? null : JSON.stringify(entrada.payload),
+      },
+    });
+  } catch (e) {
+    console.error("[audit] no se pudo registrar", entrada.action, e);
+  }
+}
