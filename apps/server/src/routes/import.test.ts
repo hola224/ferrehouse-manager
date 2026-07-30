@@ -20,6 +20,8 @@ beforeAll(async () => {
   await db.unit.create({ data: { groupId: longitud.id, name: "Rollo 100 m", symbol: "rl100", factorMilli: 100_000 } });
   await db.unit.create({ data: { groupId: conteo.id, name: "Unidad", symbol: "un", factorMilli: 1000, isBase: true } });
   await db.unit.create({ data: { groupId: peso.id, name: "Kilogramo", symbol: "kg", factorMilli: 1000, isBase: true } });
+  // El saco es el caso donde precio y costo NO están en la misma unidad.
+  await db.unit.create({ data: { groupId: peso.id, name: "Saco 25 kg", symbol: "sc25", factorMilli: 25_000 } });
   await db.counter.create({ data: { name: SKU_COUNTER, value: 0 } });
 
   const idCaja = (await db.station.findFirstOrThrow({ where: { name: "CAJA-1" } })).id;
@@ -37,7 +39,8 @@ const como = (t: string) => ({ authorization: `Bearer ${t}` });
 
 const ENCABEZADO = [
   "Nombre", "Descripción", "Categoría", "Marca", "Proveedor",
-  "Unidad de venta", "Unidad de compra", "Precio con IVA", "Costo neto", "Stock mínimo", "Códigos de barra",
+  "Unidad de venta", "Unidad de compra", "Precio con IVA (por unidad de venta)",
+  "Costo neto (por unidad base)", "Stock mínimo (en unidad base)", "Códigos de barra",
 ];
 
 /** Arma un .xlsx en memoria con las filas dadas. */
@@ -200,7 +203,7 @@ describe("validación fila por fila, con el mismo esquema que el formulario", ()
   });
 
   it("faltar una columna obligatoria se avisa una vez, no fila por fila", async () => {
-    const sinPrecio = ENCABEZADO.filter((c) => c !== "Precio con IVA");
+    const sinPrecio = ENCABEZADO.filter((c) => !c.startsWith("Precio"));
     const r = await subir(await excel([["X", "", "", "", "", "m", "m", "", "", ""]], sinPrecio), false);
     expect(r.statusCode).toBe(400);
     expect(JSON.parse(r.body).error).toContain("Precio con IVA");
@@ -215,5 +218,69 @@ describe("validación fila por fila, con el mismo esquema que el formulario", ()
   it("el vendedor no importa nada", async () => {
     const r = await subir(await excel([FILA_OK_2]), true, tokenVendedor);
     expect(r.statusCode).toBe(403);
+  });
+});
+
+describe("el informe dice cómo entendió cada fila", () => {
+  /**
+   * El error más caro de esta plantilla no es de formato: es cargar el precio
+   * del saco donde el sistema espera el del kilo. El número es perfectamente
+   * válido, así que ninguna validación lo puede atrapar — solo se ve si el
+   * informe muestra la interpretación con la unidad escrita.
+   */
+  it("escribe la unidad de cada monto, que es lo que ninguna validación puede atrapar", async () => {
+    const cemento = ["Cemento Polpaico", "", "", "", "", "kg", "kg", "260", "180", "200", ""];
+    const body = JSON.parse((await subir(await excel([cemento]), false)).body);
+    expect(body.conError).toBe(0);
+    expect(body.interpretadas).toHaveLength(1);
+    expect(body.interpretadas[0].dice).toContain("$260 por kg");
+    expect(body.interpretadas[0].dice).toContain("costo $180 por kg");
+    expect(body.interpretadas[0].dice).toContain("mínimo 200 kg");
+  });
+
+  it("dice cuando la unidad de compra es distinta de la de venta", async () => {
+    const cable = ["Cable rollo", "", "", "", "", "m", "rl100", "690", "410", "", ""];
+    const body = JSON.parse((await subir(await excel([cable]), false)).body);
+    expect(body.interpretadas[0].dice).toContain("se compra en rl100");
+  });
+
+  /**
+   * El error caro, y el único que ninguna validación de formato puede atrapar:
+   * el cemento se vende por saco a $6.490, y el admin teclea "4900" de costo
+   * creyendo que es por saco. El sistema lo guarda por KILO, así que ese saco
+   * pasa a costar $122.500 y a valer $6.490. Los números crudos —4900 contra
+   * 6490— se ven perfectamente sanos; solo al llevarlos a la misma unidad se
+   * nota. Por eso el aviso compara convertido.
+   */
+  it("detecta el costo cargado en la unidad equivocada", async () => {
+    const cemento = ["Cemento Polpaico saco", "", "", "", "", "sc25", "sc25", "6.490", "4.900", "", ""];
+    const body = JSON.parse((await subir(await excel([cemento]), false)).body);
+    expect(body.conError).toBe(0); // no es un error de formato: es válido
+    expect(body.avisos).toHaveLength(1);
+
+    const texto = body.avisos[0].avisos.join(" ");
+    expect(texto).toContain("$122.500 por sc25"); // 4.900 × 25 kg
+    expect(texto).toContain("$6.490 por sc25");
+    expect(texto).toContain("se lee por kg");
+    expect(texto).toContain("Son unidades distintas");
+  });
+
+  it("no avisa cuando el costo convertido sí es menor", async () => {
+    const bien = ["Cemento bien cargado", "", "", "", "", "sc25", "sc25", "6.490", "180", "", ""];
+    const body = JSON.parse((await subir(await excel([bien]), false)).body);
+    expect(body.conError).toBe(0);
+    expect(body.avisos).toEqual([]); // 180 × 25 = $4.500 < $6.490
+  });
+
+  it("una fila normal no genera avisos", async () => {
+    const body = JSON.parse((await subir(await excel([FILA_OK_2]), false)).body);
+    expect(body.avisos).toEqual([]);
+  });
+
+  it("todavía acepta un encabezado con los títulos cortos de antes", async () => {
+    const corto = ENCABEZADO.map((c) => (c.startsWith("Precio") ? "Precio con IVA" : c.startsWith("Costo") ? "Costo neto" : c.startsWith("Stock") ? "Stock mínimo" : c));
+    const body = JSON.parse((await subir(await excel([FILA_OK_2], corto), false)).body);
+    expect(body.conError).toBe(0);
+    expect(body.validas).toBe(1);
   });
 });

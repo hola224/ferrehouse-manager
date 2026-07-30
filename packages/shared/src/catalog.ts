@@ -53,12 +53,19 @@ export function normalizeBarcode(code: string): string {
  * que no puede quedar desincronizada.
  */
 export function normalizeSearch(texto: string): string {
-  return texto
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // saca las tildes que NFD dejó sueltas
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return stripDiacritics(texto).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Quita tildes y ñ conservando las mayúsculas.
+ *
+ * Además de la búsqueda, lo usa la impresora térmica: no habla UTF-8 y tampoco
+ * latin1, sino una tabla tipo CP437/CP850 donde la ñ es 0xA4 y no 0xF1.
+ * Mandarle "Cañería" imprime basura, y no hay forma de comprobarlo sin la
+ * impresora en la mano. "Caneria" se lee; el mojibake no.
+ */
+export function stripDiacritics(texto: string): string {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 /** Lo que se guarda en `Product.searchKey`: nombre, SKU y códigos, juntos. */

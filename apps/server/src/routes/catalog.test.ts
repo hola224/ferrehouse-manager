@@ -367,3 +367,66 @@ describe("etiquetas (tarea 1.3)", () => {
     await db.station.update({ where: { name: "CAJA-1" }, data: { printerTarget: "\\\\SERVIDOR\\TERMICA" } });
   });
 });
+
+describe("la clave de búsqueda no se desincroniza al editar (decisión 19)", () => {
+  /**
+   * `searchKey` es una copia derivada, y toda copia derivada tiene el mismo
+   * modo de fallar: alguien actualiza el original y se olvida de la copia. Acá
+   * se fija el caso que lo destaparía.
+   */
+  it("renombrar un producto lo hace buscable por el nombre nuevo y no por el viejo", async () => {
+    const id = JSON.parse(
+      (await crear({ name: "Válvula de bola 1/2", saleUnitId: uUnidad, purchaseUnitId: uUnidad, priceGross: 2990 })).body,
+    ).producto.id as number;
+
+    const buscar = async (q: string) =>
+      JSON.parse((await app.inject({ method: "GET", url: `/api/products/search?q=${encodeURIComponent(q)}`, headers: como(tokenAdmin) })).body)
+        .productos.map((p: { id: number }) => p.id);
+
+    expect(await buscar("valvula")).toContain(id);
+
+    await app.inject({ method: "PATCH", url: `/api/products/${id}`, headers: como(tokenAdmin), payload: { name: "Llave de paso 1/2" } });
+
+    expect(await buscar("llave de paso")).toContain(id);
+    expect(await buscar("valvula")).not.toContain(id);
+  });
+
+  it("agregar un código de barras lo hace buscable por ese código", async () => {
+    const id = JSON.parse(
+      (await crear({ name: "Codo PVC 90 grados", saleUnitId: uUnidad, purchaseUnitId: uUnidad, priceGross: 490 })).body,
+    ).producto.id as number;
+
+    await app.inject({
+      method: "POST",
+      url: `/api/products/${id}/barcodes`,
+      headers: como(tokenAdmin),
+      payload: { code: "7803333333333" },
+    });
+
+    const r = await app.inject({ method: "GET", url: "/api/products?q=7803333333333", headers: como(tokenAdmin) });
+    expect(JSON.parse(r.body).productos.map((p: { id: number }) => p.id)).toContain(id);
+  });
+});
+
+describe("la etiqueta que va a la térmica", () => {
+  /**
+   * La impresora no habla UTF-8 ni latin1: usa una tabla tipo CP437 donde la ñ
+   * es 0xA4. "Cañería" saldría como basura y no hay forma de verlo sin la
+   * impresora. Se manda sin tildes, que se lee.
+   */
+  it("no manda tildes ni ñ en los bytes ESC/POS", async () => {
+    const id = JSON.parse(
+      (await crear({ name: "Cañería PVC 110 mm reforzada", saleUnitId: uUnidad, purchaseUnitId: uUnidad, priceGross: 5990 })).body,
+    ).producto.id as number;
+
+    await db.station.update({ where: { name: "CAJA-1" }, data: { printerTarget: "\\\\SERVIDOR\\TERMICA" } });
+    const r = await app.inject({ method: "POST", url: `/api/products/${id}/label`, headers: como(tokenAdmin), payload: {} });
+    expect(r.statusCode).toBe(201);
+
+    const trabajo = await db.printJob.findUniqueOrThrow({ where: { id: JSON.parse(r.body).trabajo.id } });
+    const bytes = Buffer.from(trabajo.payload, "base64");
+    expect(bytes.toString("ascii")).toContain("Caneria PVC 110 mm reforzada");
+    // Ni un byte fuera de ASCII: eso es lo que garantiza que no salga mojibake.
+    expect(bytes.every((b) => b < 0x80)).toBe(true);
+  });
+});

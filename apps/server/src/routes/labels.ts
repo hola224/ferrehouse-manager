@@ -16,7 +16,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { db } from "../db.js";
 import { requireRole } from "../roles.js";
-import { code128Svg, formatCLP, esCodificableCode128B } from "@ferrehouse/shared";
+import { code128Svg, formatCLP, esCodificableCode128B, stripDiacritics } from "@ferrehouse/shared";
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 
@@ -31,7 +31,17 @@ const GS = 0x1d;
  * el vendedor tenga que insistir tres veces con el cliente al frente.
  */
 function etiquetaEscPos(datos: { sku: string; nombre: string; precio: number }): Buffer {
-  const texto = (s: string) => Buffer.from(s, "latin1"); // la térmica no habla UTF-8
+  /**
+   * La térmica no habla UTF-8, y tampoco latin1: por omisión usa una tabla tipo
+   * CP437/CP850, donde la ñ es 0xA4 y no 0xF1. Mandarle "Cañería" tal cual
+   * imprime basura, y no hay forma de comprobarlo sin la impresora en la mano.
+   *
+   * Así que se le quitan las tildes antes de mandarlo. "Caneria PVC" se lee; el
+   * mojibake no. Cuando en el Sprint 3 se conecte la térmica de verdad y se
+   * sepa qué tabla usa, esto se reemplaza por la codificación correcta — el
+   * ticket va a necesitar exactamente la misma decisión.
+   */
+  const texto = (s: string) => Buffer.from(stripDiacritics(s), "ascii");
   const bytes: Buffer[] = [];
 
   bytes.push(Buffer.from([ESC, 0x40])); // ESC @ — reiniciar impresora

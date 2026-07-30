@@ -294,3 +294,45 @@ suite completa. Los archivos de test comparten una misma base SQLite que cada
 uno borra y recrea, así que la sospecha es una condición de carrera con el
 archivo WAL; queda anotado sin arreglar, porque arreglar lo que no se sabe
 reproducir suele ser cambiar de síntoma.
+
+### Corrección del mismo día, tras revisar el importador
+
+Tres cosas que los 150 tests no podían ver, porque ninguna es un error de
+formato:
+
+1. **Las dos columnas de plata del Excel estaban en unidades distintas y
+   ninguna lo decía.** `priceGross` va por unidad de VENTA y
+   `costNetMilliPeso` por unidad BASE. Coinciden solo cuando la unidad de venta
+   *es* la base, y dejan de coincidir justo en los productos que motivaron todo
+   el sistema de unidades: el saco de 25 kg, la caja de 100, la docena. Quien
+   llena la plantilla escribe el precio del saco donde el sistema espera el del
+   kilo, la carga no da ningún error —el número es válido— y el margen, el
+   inventario valorizado y la alerta de reposición heredan el error para
+   siempre. Se corrigió por tres lados: los títulos de las columnas dicen la
+   unidad, la plantilla trae notas con un ejemplo concreto, y **el informe
+   previo ahora devuelve cómo entendió cada fila** (`$6.490 por sc25 · costo
+   $180 por kg · mínimo 200 kg`). Eso último es lo que hace útil el paso previo:
+   antes, una fila que parseaba limpio era invisible.
+2. **Hay un aviso cuando el costo, llevado a la unidad de venta, no queda por
+   debajo del precio.** Comparar los números crudos no habría servido: cemento
+   a $6.490 el saco con costo "4.900" tecleado creyendo que era por saco se
+   guarda por kilo, o sea $122.500 el saco — y "4900 contra 6490" se ve
+   perfectamente sano. La comparación convertida lo atrapa. Avisa, no bloquea:
+   hay liquidaciones de verdad.
+3. **El nombre del producto iba a la térmica en latin1.** Las ESC/POS usan una
+   tabla tipo CP437/CP850, donde la ñ es 0xA4 y no 0xF1: "Cañería PVC" habría
+   salido como basura, y no hay forma de comprobarlo sin la impresora en la
+   mano. Ahora se manda sin tildes —"Caneria PVC" se lee, el mojibake no— y hay
+   un test que verifica que ni un byte del trabajo pase de 0x7F. Cuando en el
+   Sprint 3 se conecte la térmica de verdad se sabrá qué tabla usa; el ticket
+   va a necesitar la misma decisión.
+
+Y una cuarta, encontrada al mirar la etiqueta renderizada en vez de solo
+verificar que el endpoint devolviera un SVG: **el Code128 no tenía zona muda**.
+La norma pide 10 módulos en blanco a cada lado; el lector localiza el código
+buscando la transición blanco→barra, y sin margen no encuentra dónde empieza.
+El código estaba perfectamente codificado —verificado contra la
+especificación— y se veía impecable en pantalla. La etiqueta impresa
+simplemente no habría leído.
+
+**92 tests en el servidor y 160 en el repo.**

@@ -37,22 +37,38 @@ import {
 } from "@ferrehouse/shared";
 
 /**
- * Las columnas de la plantilla. El orden es el que ve el admin; el match se
- * hace por NOMBRE normalizado, así que mover una columna no rompe la carga.
+ * Las columnas de la plantilla. El match se hace por NOMBRE normalizado, así
+ * que mover una columna no rompe la carga; los `alias` aceptan la forma corta
+ * por si alguien reusa una plantilla vieja.
+ *
+ * LOS TÍTULOS DICEN LA UNIDAD, y no es adorno. El precio va por unidad de
+ * VENTA y el costo por unidad BASE: son dos magnitudes distintas en columnas
+ * vecinas, y coinciden solo cuando la unidad de venta ES la base. Dejan de
+ * coincidir justo en los productos que motivaron todo el sistema de unidades
+ * —el saco de 25 kg, la caja de 100, la docena—. Sin el título, quien llena el
+ * Excel escribe el precio del saco donde el sistema espera el del kilo, la
+ * carga no da ningún error, y el margen, el inventario valorizado y la alerta
+ * de reposición heredan el número equivocado para siempre.
  */
 const COLUMNAS = [
-  { clave: "nombre", titulo: "Nombre", obligatoria: true, ancho: 38 },
-  { clave: "descripcion", titulo: "Descripción", obligatoria: false, ancho: 30 },
-  { clave: "categoria", titulo: "Categoría", obligatoria: false, ancho: 18 },
-  { clave: "marca", titulo: "Marca", obligatoria: false, ancho: 16 },
-  { clave: "proveedor", titulo: "Proveedor", obligatoria: false, ancho: 20 },
-  { clave: "unidadVenta", titulo: "Unidad de venta", obligatoria: true, ancho: 18 },
-  { clave: "unidadCompra", titulo: "Unidad de compra", obligatoria: true, ancho: 18 },
-  { clave: "precio", titulo: "Precio con IVA", obligatoria: true, ancho: 15 },
-  { clave: "costo", titulo: "Costo neto", obligatoria: false, ancho: 14 },
-  { clave: "stockMinimo", titulo: "Stock mínimo", obligatoria: false, ancho: 14 },
-  { clave: "codigos", titulo: "Códigos de barra", obligatoria: false, ancho: 26 },
+  { clave: "nombre", titulo: "Nombre", alias: [], obligatoria: true, ancho: 38 },
+  { clave: "descripcion", titulo: "Descripción", alias: [], obligatoria: false, ancho: 30 },
+  { clave: "categoria", titulo: "Categoría", alias: [], obligatoria: false, ancho: 18 },
+  { clave: "marca", titulo: "Marca", alias: [], obligatoria: false, ancho: 16 },
+  { clave: "proveedor", titulo: "Proveedor", alias: [], obligatoria: false, ancho: 20 },
+  { clave: "unidadVenta", titulo: "Unidad de venta", alias: [], obligatoria: true, ancho: 18 },
+  { clave: "unidadCompra", titulo: "Unidad de compra", alias: [], obligatoria: true, ancho: 18 },
+  { clave: "precio", titulo: "Precio con IVA (por unidad de venta)", alias: ["Precio con IVA", "Precio"], obligatoria: true, ancho: 30 },
+  { clave: "costo", titulo: "Costo neto (por unidad base)", alias: ["Costo neto", "Costo"], obligatoria: false, ancho: 26 },
+  { clave: "stockMinimo", titulo: "Stock mínimo (en unidad base)", alias: ["Stock mínimo"], obligatoria: false, ancho: 26 },
+  { clave: "codigos", titulo: "Códigos de barra", alias: [], obligatoria: false, ancho: 26 },
 ] as const;
+
+/** ¿Este título de celda corresponde a esta columna? */
+function esColumna(titulo: string, col: (typeof COLUMNAS)[number]): boolean {
+  const t = normalizeSearch(titulo);
+  return t === normalizeSearch(col.titulo) || col.alias.some((a) => normalizeSearch(a) === t);
+}
 
 type Clave = (typeof COLUMNAS)[number]["clave"];
 type Fila = Partial<Record<Clave, string>>;
@@ -61,6 +77,10 @@ type FilaRevisada = {
   fila: number;
   nombre: string;
   errores: string[];
+  /** Advertencias que NO impiden importar, pero que conviene mirar. */
+  avisos: string[];
+  /** Cómo quedó interpretada la fila, en castellano y con sus unidades. */
+  interpretacion?: string;
   datos?: {
     name: string;
     description: string | null;
@@ -116,8 +136,8 @@ async function leerExcel(buffer: Buffer): Promise<Fila[]> {
   const encabezado = hoja.getRow(1);
   const posicion = new Map<number, Clave>();
   encabezado.eachCell((c, col) => {
-    const titulo = normalizeSearch(celda(c.value));
-    const columna = COLUMNAS.find((x) => normalizeSearch(x.titulo) === titulo);
+    const titulo = celda(c.value);
+    const columna = COLUMNAS.find((x) => esColumna(titulo, x));
     if (columna) posicion.set(col, columna.clave);
   });
 
@@ -152,6 +172,14 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
   const unidades: UnitLike[] = await db.unit.findMany({
     select: { id: true, groupId: true, name: true, symbol: true, factorMilli: true },
   });
+  // La unidad base de cada grupo: el costo y el stock mínimo se expresan en
+  // ella, y el informe tiene que poder nombrarla.
+  const baseDeGrupo = new Map<number, string>(
+    (await db.unit.findMany({ where: { isBase: true }, select: { groupId: true, symbol: true } })).map((u) => [
+      u.groupId,
+      u.symbol,
+    ]),
+  );
   const codigosUsados = new Map<string, string>(
     (await db.productBarcode.findMany({ select: { code: true, product: { select: { sku: true } } } })).map((b) => [
       b.code,
@@ -218,13 +246,61 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
     }
 
     if (errores.length > 0 || !parsed.success || !uVenta || !uCompra) {
-      return { fila: numeroDeFila, nombre, errores: errores.length ? errores : ["Fila inválida"] };
+      return { fila: numeroDeFila, nombre, errores: errores.length ? errores : ["Fila inválida"], avisos: [] };
+    }
+
+    /**
+     * Cómo quedó entendida la fila, con las unidades escritas. Es la mitad útil
+     * del informe previo: sin esto, una fila que parsea limpio es invisible, y
+     * el error de cargar el precio del saco donde el sistema espera el del kilo
+     * pasa sin que nadie lo vea — no es un error de formato, así que ninguna
+     * validación lo puede atrapar.
+     */
+    const simboloBase = baseDeGrupo.get(uVenta.groupId) ?? "?";
+    const pesos = (n: number) => "$" + new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(n);
+    const partes = [`${pesos(parsed.data.priceGross)} por ${uVenta.symbol}`];
+    if (costo) partes.push(`costo ${pesos(costo)} por ${simboloBase}`);
+    if (minimo) {
+      partes.push(
+        `mínimo ${new Intl.NumberFormat("es-CL", { maximumFractionDigits: 3 }).format(minimo / 1000)} ${simboloBase}`,
+      );
+    }
+    if (uVenta.id !== uCompra.id) partes.push(`se compra en ${uCompra.symbol}`);
+
+    const avisos: string[] = [];
+    /**
+     * Costo contra precio, PERO llevados a la misma unidad: el costo viene por
+     * unidad base y el precio por unidad de venta.
+     *
+     * Comparar los números crudos no serviría de nada, y sería justamente
+     * ciego al error que este aviso persigue: cemento que se vende en sacos, a
+     * $6.490 el saco, con el costo tecleado como "4900" creyendo que era por
+     * saco. Guardado por kilo, ese saco cuesta $122.500 y vale $6.490. Los
+     * números crudos (4900 contra 6490) se ven perfectamente sanos.
+     *
+     * No bloquea: hay liquidaciones de verdad, y el aviso es para mirar.
+     */
+    if (costo) {
+      const costoPorUnidadDeVenta = (costo * uVenta.factorMilli) / 1000;
+      if (costoPorUnidadDeVenta >= parsed.data.priceGross) {
+        const mismaUnidad = uVenta.symbol === simboloBase;
+        avisos.push(
+          `El costo sale ${pesos(Math.round(costoPorUnidadDeVenta))} por ${uVenta.symbol} y el precio es ` +
+            `${pesos(parsed.data.priceGross)} por ${uVenta.symbol}: no es menor. ` +
+            (mismaUnidad
+              ? "Revisa la fila."
+              : `Ojo: escribiste ${pesos(costo)} de costo, que se lee por ${simboloBase} —no por ${uVenta.symbol}—. ` +
+                "Son unidades distintas."),
+        );
+      }
     }
 
     return {
       fila: numeroDeFila,
       nombre,
       errores: [],
+      avisos,
+      interpretacion: `${parsed.data.name} — ${partes.join(" · ")}`,
       datos: {
         name: parsed.data.name,
         description: parsed.data.description ?? null,
@@ -285,9 +361,22 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const hoja = wb.addWorksheet("Productos");
     hoja.columns = COLUMNAS.map((c) => ({ header: c.titulo, key: c.clave, width: c.ancho }));
     hoja.getRow(1).font = { bold: true };
+
+    // Las notas de las dos columnas de plata dicen la unidad con un ejemplo
+    // concreto. Es el error más caro de esta plantilla y el único que ninguna
+    // validación puede atrapar, porque el número es perfectamente válido.
+    const NOTAS: Partial<Record<Clave, string>> = {
+      precio: "Por UNIDAD DE VENTA. Si vendes el cemento por kilo, va el precio del kilo — no el del saco.",
+      costo: "Por UNIDAD BASE del grupo (kg, m, un, L). Ojo: no siempre es la misma unidad que el precio.",
+      stockMinimo: "En unidad base. Acepta decimales con coma: 7,5",
+      codigos: "Varios códigos separados por coma.",
+      unidadVenta: "Escribe el símbolo de la hoja 'Unidades disponibles': m, kg, un, sc25…",
+      unidadCompra: "Tiene que ser del mismo grupo que la de venta.",
+    };
     hoja.getRow(1).eachCell((c, i) => {
       const col = COLUMNAS[i - 1]!;
-      if (col.obligatoria) c.note = "Obligatoria";
+      const nota = [col.obligatoria ? "Obligatoria." : null, NOTAS[col.clave] ?? null].filter(Boolean).join(" ");
+      if (nota) c.note = nota;
     });
 
     // Una fila de ejemplo, para que se vea el formato de los códigos múltiples.
@@ -351,6 +440,11 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       // Se devuelven TODAS las filas con error, no las primeras diez: el admin
       // arregla el Excel de una pasada, no de diez subidas.
       errores: conError.map((r) => ({ fila: r.fila, nombre: r.nombre, errores: r.errores })),
+      // Cómo quedó entendida cada fila buena, con sus unidades escritas. Es lo
+      // que permite ver el precio cargado en la unidad equivocada, que ninguna
+      // validación puede atrapar porque no es un error de formato.
+      interpretadas: validas.map((r) => ({ fila: r.fila, dice: r.interpretacion! })),
+      avisos: validas.filter((r) => r.avisos.length > 0).map((r) => ({ fila: r.fila, nombre: r.nombre, avisos: r.avisos })),
       seCrearan: nuevos,
     };
 
@@ -361,7 +455,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         mensaje:
           conError.length > 0
             ? `Hay ${conError.length} fila${conError.length > 1 ? "s" : ""} con problemas. No se importó nada.`
-            : `${validas.length} productos listos para importar. Confirma para cargarlos.`,
+            : `${validas.length} productos listos para importar. Revisa cómo quedaron entendidos y confirma.`,
       };
     }
 
