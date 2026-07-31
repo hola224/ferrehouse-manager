@@ -328,8 +328,14 @@ export function Venta() {
       llegar hasta el borde derecho de la pantalla, con su regla de 2px, y una
       franja de fondo entre el panel y el borde lo convierte en una tarjeta
       flotante. La columna izquierda pone su propio padding.
+
+      El alto va atado a ESE MISMO padding —`100%` de la caja de contenido más
+      los 2rem que acabo de cancelar— y no al alto de la barra del cascarón.
+      Decía `calc(100vh-3.5rem)`, o sea los 56px de `PosShell` escritos a mano
+      en otro archivo: cambiar esa barra habría descuadrado esta pantalla sin
+      que nada fallara.
     */
-    <div className="-m-4 flex h-[calc(100vh-3.5rem)]">
+    <div className="-m-4 flex h-[calc(100%+2rem)]">
       {/* ---------- Izquierda: la lista ---------- */}
       <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4 pr-0">
         <div className="relative">
