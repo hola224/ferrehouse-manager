@@ -8,7 +8,6 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { hash } from "@node-rs/argon2";
-import { randomInt } from "node:crypto";
 import { SETTING_KEYS, defaultSettingRaw, SKU_COUNTER } from "@ferrehouse/shared";
 
 const db = new PrismaClient();
@@ -73,10 +72,25 @@ const GRUPOS: Array<{ name: string; allowsFraction: boolean; units: UnidadSeed[]
   },
 ];
 
-/** PIN de 6 dígitos, criptográficamente aleatorio. */
-function pinAlAzar(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
-}
+/**
+ * PIN DE ENTRADA CONOCIDOS, no generados al azar.
+ *
+ * Antes el seed sorteaba un PIN de 6 dígitos y lo imprimía UNA sola vez. Es lo
+ * correcto para una instalación desatendida y es exactamente lo que estorba en
+ * un repositorio público: quien clona el proyecto para probarlo se queda
+ * afuera de su propia copia si no vio pasar esa línea en la consola.
+ *
+ * El cambio TIENE UN COSTO Y HAY QUE DECIRLO: estos dos números están en el
+ * README, o sea que son de dominio público. La ferretería que ponga esto en
+ * producción tiene que cambiarlos en Usuarios → Editar antes de abrir. Se
+ * pueden pisar sin tocar código con `SEED_ADMIN_PIN` y `SEED_SELLER_PIN`, que
+ * es lo que debería hacer un instalador de verdad.
+ *
+ * Lo que NO cambia: el seed sigue sin pisar a un usuario que ya existe. Estos
+ * valores solo se usan al CREAR la fila, nunca para actualizarla.
+ */
+const PIN_ADMIN = "111111";
+const PIN_VENDEDOR = "222222";
 
 async function sembrarUnidades() {
   for (const g of GRUPOS) {
@@ -142,22 +156,22 @@ async function sembrarUsuarios() {
     administrador, con un PIN nuevo, sin avisar. Por rol dice lo que de verdad
     se quiere decir: si ya hay un administrador, no hace falta otro.
   */
-  for (const [name, role, envKey] of [
-    ["Administrador", "ADMIN", "SEED_ADMIN_PIN"],
-    ["Vendedor", "SELLER", "SEED_SELLER_PIN"],
+  for (const [name, role, envKey, porDefecto] of [
+    ["Administrador", "ADMIN", "SEED_ADMIN_PIN", PIN_ADMIN],
+    ["Vendedor", "SELLER", "SEED_SELLER_PIN", PIN_VENDEDOR],
   ] as const) {
     const existe = await db.user.findFirst({ where: { role } });
     if (existe) continue; // ya hay alguien con ese rol: no se toca nada
-    const pin = process.env[envKey]?.trim() || pinAlAzar();
+    const pin = process.env[envKey]?.trim() || porDefecto;
     await db.user.create({ data: { name, role, active: true, pinHash: await hash(pin) } });
     nuevos.push([name, pin]);
   }
 
   console.log(`  usuarios: ${await db.user.count()}`);
   if (nuevos.length) {
-    console.log("\n  ┌─ PIN generado. Se muestra UNA SOLA VEZ: anótalo ahora.");
+    console.log("\n  ┌─ PIN de entrada:");
     for (const [name, pin] of nuevos) console.log(`  │  ${name.padEnd(16)} ${pin}`);
-    console.log("  └─ Cámbialo desde la aplicación apenas entres.\n");
+    console.log("  └─ SON PÚBLICOS: están en el README. Cámbialos antes de abrir la tienda.\n");
   }
 }
 

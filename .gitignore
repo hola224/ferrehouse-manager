@@ -16,5 +16,9 @@ dist/
 # tests antes de que existiera esta línea.
 *.antes-de-restaurar-*
 backups/
+
+# Worktrees y estado local de los agentes de Claude Code.
+.claude/
+
 .DS_Store
 *.tsbuildinfo

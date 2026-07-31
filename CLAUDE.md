@@ -1,5 +1,23 @@
 # Ferrehouse Manager — instrucciones del repositorio
 
+## Empezá por acá
+
+Lo que falta y por qué está en
+**[`.agents/TRASPASO-WINDOWS.md`](.agents/TRASPASO-WINDOWS.md)**: nadie consume
+la cola de impresión, el instalador de Windows nunca corrió, falta el adaptador
+de WhatsApp y faltan los reportes exportables. Ese documento dice qué archivo
+tocar en cada caso.
+
+**Levantarlo:** `pnpm install && cp .env.example apps/server/.env && pnpm setup
+&& pnpm dev`. Entra con `111111` (admin) o `222222` (vendedor) — son públicos y
+están en el README, y una instalación real los pisa con `SEED_ADMIN_PIN` y
+`SEED_SELLER_PIN`.
+
+**`apps/web` no tiene pruebas de DOM.** Ningún atajo, foco ni pantalla está
+cubierto. Tres defectos —un atajo anunciado en pantalla que no se alcanzaba—
+aparecieron mirando la aplicación y ninguno lo vio una prueba. Si tocás
+interfaz, abrila y manejala.
+
 ## Dirección visual
 
 La dirección visual vigente es "Mesón rojo": acento #F9353F (rojo del logo),
