@@ -25,6 +25,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { useCatalogoCreado } from "@/lib/catalogos";
 import { Acciones, Boton, Campo, Modal, Selector } from "@/components/ui";
 import {
   formatCLP,
@@ -70,6 +71,116 @@ export type ProductoEditable = {
 };
 
 type Catalogos = { unidades: Unidad[]; categorias: Nombrado[]; marcas: Nombrado[]; proveedores: Nombrado[] };
+
+const porNombre = (a: Nombrado, b: Nombrado): number => a.name.localeCompare(b.name, "es");
+
+/**
+ * Un selector que además deja crear la opción que falta, sin salir del
+ * formulario ni perder lo escrito.
+ *
+ * Se queda con lo recién creado ELEGIDO. Crear algo y tener que volver a
+ * buscarlo en la lista es la mitad del trabajo hecho a mano dos veces, y es
+ * exactamente el momento en que se elige la opción de al lado por apuro.
+ */
+function SelectorCreable({
+  etiqueta,
+  vacio,
+  value,
+  onChange,
+  opciones,
+  crear,
+}: {
+  etiqueta: string;
+  vacio: string;
+  value: string;
+  onChange: (v: string) => void;
+  opciones: Nombrado[];
+  crear: (name: string) => Promise<Nombrado>;
+}) {
+  const [creando, setCreando] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirmar(): Promise<void> {
+    const limpio = nombre.trim();
+    if (!limpio) return;
+    setGuardando(true);
+    setError(null);
+    try {
+      const creado = await crear(limpio);
+      onChange(String(creado.id));
+      setCreando(false);
+      setNombre("");
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo crear");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <span className="text-sm font-medium text-ink-soft">{etiqueta}</span>
+        <button
+          type="button"
+          onClick={() => {
+            setCreando((v) => !v);
+            setError(null);
+          }}
+          className="text-xs text-ink-soft underline underline-offset-4"
+        >
+          {creando ? "elegir de la lista" : "+ nueva"}
+        </button>
+      </div>
+
+      {creando ? (
+        <div className="flex gap-2">
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            /*
+              Enter confirma y NO envía el formulario del producto: sin este
+              preventDefault, crear una categoría guardaría el producto a
+              medio llenar.
+            */
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void confirmar();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setCreando(false);
+              }
+            }}
+            autoFocus
+            placeholder={`${etiqueta} nueva`}
+            className="min-h-touch w-full min-w-0 rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+          />
+          <Boton type="button" onClick={() => void confirmar()} disabled={guardando || !nombre.trim()}>
+            {guardando ? "…" : "Crear"}
+          </Boton>
+        </div>
+      ) : (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+        >
+          <option value="">{vacio}</option>
+          {opciones.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
+    </div>
+  );
+}
 
 const entero = (t: string): number | null => {
   const limpio = t.replace(/[^\d-]/g, "");
@@ -135,6 +246,21 @@ function Formulario({
   const [categoryId, setCategoryId] = useState(String(producto?.categoryId ?? ""));
   const [brandId, setBrandId] = useState(String(producto?.brandId ?? ""));
   const [supplierId, setSupplierId] = useState(String(producto?.supplierId ?? ""));
+
+  /*
+    El proveedor se crea en otra pestaña; esta se entera por BroadcastChannel,
+    lo agrega a la lista y lo deja ELEGIDO. Es la respuesta a «¿es posible
+    hacer el refresco en la pestaña paralela?»: sí, y sin recargar ni sondear.
+  */
+  useCatalogoCreado((m) => {
+    if (m.tipo !== "proveedor") return;
+    setCat((c) =>
+      c && !c.proveedores.some((p) => p.id === m.id)
+        ? { ...c, proveedores: [...c.proveedores, { id: m.id, name: m.name }].sort(porNombre) }
+        : c,
+    );
+    setSupplierId(String(m.id));
+  });
   const [saleUnitId, setSaleUnitId] = useState(String(producto?.saleUnitId ?? ""));
   const [purchaseUnitId, setPurchaseUnitId] = useState(String(producto?.purchaseUnitId ?? ""));
   const [precio, setPrecio] = useState(producto ? String(producto.priceGross) : "");
@@ -274,31 +400,72 @@ function Formulario({
             />
           </div>
 
+          {/*
+            Los tres se pueden crear sin salir de acá, que era lo que faltaba:
+            una instalación nueva no trae ninguna categoría, ninguna marca y
+            ningún proveedor, así que el formulario ofrecía tres listas vacías
+            y no había forma de llenarlas desde ninguna pantalla.
+
+            Categoría y marca son solo un nombre y se crean en línea. El
+            proveedor tiene RUT, teléfono, correo y notas, y se crea en una
+            pestaña aparte para no obligar a abandonar un producto a medio
+            escribir mientras se busca el RUT en una factura.
+          */}
           <div className="grid gap-3 sm:grid-cols-3">
-            <Selector etiqueta="Categoría" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">Sin categoría</option>
-              {cat.categorias.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Selector>
-            <Selector etiqueta="Marca" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-              <option value="">Sin marca</option>
-              {cat.marcas.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </Selector>
-            <Selector etiqueta="Proveedor" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Sin proveedor</option>
-              {cat.proveedores.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Selector>
+            <SelectorCreable
+              etiqueta="Categoría"
+              vacio="Sin categoría"
+              value={categoryId}
+              onChange={setCategoryId}
+              opciones={cat.categorias}
+              crear={async (name) => {
+                const r = await api<{ categoria: Nombrado }>("/catalog/categories", {
+                  method: "POST",
+                  body: JSON.stringify({ name }),
+                });
+                setCat((c) => (c ? { ...c, categorias: [...c.categorias, r.categoria].sort(porNombre) } : c));
+                return r.categoria;
+              }}
+            />
+            <SelectorCreable
+              etiqueta="Marca"
+              vacio="Sin marca"
+              value={brandId}
+              onChange={setBrandId}
+              opciones={cat.marcas}
+              crear={async (name) => {
+                const r = await api<{ marca: Nombrado }>("/catalog/brands", {
+                  method: "POST",
+                  body: JSON.stringify({ name }),
+                });
+                setCat((c) => (c ? { ...c, marcas: [...c.marcas, r.marca].sort(porNombre) } : c));
+                return r.marca;
+              }}
+            />
+            <div>
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium text-ink-soft">Proveedor</span>
+                <button
+                  type="button"
+                  onClick={() => window.open("/proveedores/nuevo", "_blank", "noopener")}
+                  className="text-xs text-ink-soft underline underline-offset-4"
+                >
+                  + nuevo
+                </button>
+              </div>
+              <select
+                value={supplierId}
+                onChange={(e) => setSupplierId(e.target.value)}
+                className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+              >
+                <option value="">Sin proveedor</option>
+                {cat.proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

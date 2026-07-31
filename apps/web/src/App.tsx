@@ -11,6 +11,7 @@ import { Reportes } from "@/pages/Reportes";
 import { Compras } from "@/pages/Compras";
 import { Usuarios } from "@/pages/Usuarios";
 import { WhatsApp } from "@/pages/WhatsApp";
+import { ProveedorNuevo } from "@/pages/ProveedorNuevo";
 import { Devoluciones } from "@/pages/Devoluciones";
 import { Estaciones } from "@/pages/Estaciones";
 import { Boton } from "@/components/ui";
@@ -263,6 +264,19 @@ export function App() {
             element={
               <Privado>
                 <Kardex />
+              </Privado>
+            }
+          />
+          {/*
+            Sin pestaña en el menú: se llega desde el botón «+ nuevo» del
+            formulario de producto, que la abre en una pestaña aparte para no
+            hacer perder un producto a medio escribir.
+          */}
+          <Route
+            path="/proveedores/nuevo"
+            element={
+              <Privado soloAdmin>
+                <ProveedorNuevo />
               </Privado>
             }
           />
