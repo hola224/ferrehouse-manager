@@ -8,6 +8,13 @@ dist/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# La copia que aparta el restaurador antes de reemplazar la base:
+# `ferrehouse.db.antes-de-restaurar-2026-07-31-130542` y sus `-wal`/`-shm`.
+# NO la cubre `*.db-wal`, porque el sufijo va al final del nombre completo y
+# no después del `.db`. Siete de estas se colaron al repositorio desde los
+# tests antes de que existiera esta línea.
+*.antes-de-restaurar-*
 backups/
 .DS_Store
 *.tsbuildinfo
