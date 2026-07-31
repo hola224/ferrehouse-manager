@@ -146,9 +146,10 @@ cifra que mostrarle.
 idempotente, auth por PIN con roles, fundación visual y CI. 61 tests en verde.
 Detalle en [`BITACORA.md`](BITACORA.md).
 
-**Sprint 1 — Catálogo: servidor y pantalla clave entregados el 2026-07-30.**
-Quedan sin interfaz, con sus endpoints listos y probados: alta de producto,
-importación y usuarios.
+**Sprint 1 — Catálogo: cerrado el 2026-07-31.** El servidor y la pantalla clave
+salieron el 2026-07-30; las tres pantallas que quedaban sin interfaz —alta y
+edición de producto, importación de Excel y usuarios— se construyeron el
+2026-07-31 junto con la de compras del Sprint 4.
 
 **Sprint 2 — Caja: cerrado el 2026-07-30.** Las 8 tareas, incluida la pantalla
 de cierre en 3 pasos. El **arqueo es a ciegas**: el vendedor cuenta y escribe
@@ -161,6 +162,7 @@ de venta. 280 tests en verde. Falta lo físico: el ticket y el cajón reales.
 la pantalla de kardex. **331 tests en verde.** La venta ya valida saldo antes
 de descontar, con override de administrador registrado. Queda sin interfaz, con
 su endpoint listo y probado: el registro de compras al proveedor.
+**Su pantalla se construyó el 2026-07-31.**
 
 **Sprint 5 — Reportes y alertas: cerrado el 2026-07-30.** Las 7 tareas,
 incluido el dashboard de admin. **390 tests en verde.** Reporte de ventas por
@@ -168,7 +170,15 @@ rango con cuadratura de folios, margen realizado por producto y por categoría,
 inventario valorizado a una fecha reconstruido desde el libro, alertas de stock
 que se cierran solas y panel con resolución. El vendedor entra directo a Venta.
 
-**Sprint actual: 6 — WhatsApp.**
+**2026-07-31 — Las cuatro pantallas pendientes.** Antes de abrir el Sprint 6 se
+construyeron las cuatro que quedaban debiendo: alta y edición de producto,
+importación de Excel, compras al proveedor y usuarios. Los endpoints existían y
+estaban probados desde los sprints 1 y 4, pero digitar una factura seguía siendo
+por API. **394 tests en verde.**
+
+**Sprint actual: 6 — WhatsApp.** Ojo con la tarea 6.2: vincular la sesión exige
+escanear un QR con un teléfono real, así que no se puede terminar sin alguien
+delante del computador con el número dedicado en la mano.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

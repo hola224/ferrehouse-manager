@@ -898,3 +898,63 @@ para el mismo producto **a propósito**.
 Sigue sin pantalla la **compra a proveedor** (endpoint del Sprint 4) y las tres
 del Sprint 1: alta de producto, importación y usuarios. Digitar una factura
 sigue siendo por API.
+
+---
+
+## 2026-07-31 — Las cuatro pantallas que faltaban
+
+Antes de abrir el Sprint 6 se construyeron las cuatro que quedaban debiendo:
+**alta y edición de producto, importación de Excel, compras al proveedor y
+usuarios.** Los cuatro endpoints existían y estaban probados desde los sprints
+1 y 4; lo que faltaba era poder usarlos sin `curl`. El botón "+ Producto nuevo
+F2" estaba impreso en el catálogo desde el Sprint 1 y no hacía nada — una
+pantalla que promete una tecla y no responde es peor que no ofrecerla.
+
+**394 tests en verde** (153 shared, 234 servidor, 7 web).
+
+### Por qué estas antes que WhatsApp
+
+El Sprint 6 no se puede terminar sin alguien delante del computador: la tarea
+6.2 exige vincular la sesión escaneando un QR con el teléfono del número
+dedicado. Estas cuatro, en cambio, son lo que falta para que la ferretería
+opere sin la consola.
+
+### Lo que gobierna el formulario de producto
+
+**El costo se pide igual que en el Excel**: en pesos por unidad BASE. Si el
+formulario lo pidiera por unidad de venta y el importador por unidad base, el
+mismo producto cargado por los dos caminos quedaría con costos distintos y
+nadie sabría cuál está mal.
+
+Y se avisa cuando el costo se ve tecleado en la unidad equivocada. Un saco de
+25 kg que cuesta $4.900 se teclea como 4900 creyendo que es por saco, cuando la
+casilla pide por kilo, y el producto queda costando $122.500. Ninguna
+validación de formato lo atrapa, porque 4900 es un número perfectamente válido;
+lo único que se puede hacer es mostrar la consecuencia mientras se escribe.
+
+### Cinco defectos que solo aparecieron usando las pantallas
+
+1. **Una factura recibida hoy se rechazaba por «fecha futura».** La pantalla
+   mandaba el mediodía local para que la zona horaria no corriera la fecha un
+   día hacia atrás, y a las 9 de la mañana el mediodía todavía no llegó. La
+   entrega del proveedor llega en la mañana: se habría rechazado casi toda
+   factura del día, con un mensaje incomprensible — el administrador elige hoy
+   y le responden que es futuro.
+2. **La columna COSTO del catálogo decía $486 donde el costo es $485,59.** Es
+   el mismo defecto que el kardex tuvo en el Sprint 4, y la corrección de
+   entonces nunca llegó acá. Estaba además en el margen de lista, que
+   redondeaba el costo ANTES de dividir, y en la tarjeta de compra registrada
+   —"$33 por un" donde eran $32,80—, justo en la pantalla que existe para
+   mostrar en cuánto quedó el costo.
+3. **Un producto sin costo cargado mostraba 100,0% de margen**, que se lee como
+   el mejor producto de la tienda. Costo cero es "todavía no se cargó".
+4. **La barra de acciones de los diálogos quedaba bajo el borde de la
+   pantalla** a 1366×768: el formulario de producto tiene doce campos y su
+   botón "Crear producto" no se veía.
+5. **La tabla de compras se leía "TOTAL NETO DIGITÓ"** como una sola columna, y
+   los valores salían pegados: "$103.600Cristian".
+
+### Lo que queda sin pantalla
+
+Nada de los sprints 1 a 5. Lo que sigue es el Sprint 6 (WhatsApp) y el 7
+(instalación y marcha blanca).
