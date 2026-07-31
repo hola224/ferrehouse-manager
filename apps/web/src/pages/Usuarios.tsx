@@ -30,6 +30,7 @@ export function Usuarios() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [nuevo, setNuevo] = useState(false);
   const [cambiandoPin, setCambiandoPin] = useState<Usuario | null>(null);
+  const [editando, setEditando] = useState<Usuario | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -116,6 +117,9 @@ export function Usuarios() {
                   <Chip tono={u.active ? "ok" : "neutral"}>{u.active ? "Activo" : "Desactivado"}</Chip>
                 </td>
                 <td className="py-3 text-right">
+                  <button onClick={() => setEditando(u)} className="mr-4 text-sm underline underline-offset-4">
+                    Editar
+                  </button>
                   <button onClick={() => setCambiandoPin(u)} className="mr-4 text-sm underline underline-offset-4">
                     Cambiar PIN
                   </button>
@@ -155,6 +159,19 @@ export function Usuarios() {
         />
       ) : null}
 
+
+      {editando ? (
+        <EditarUsuario
+          usuario={editando}
+          esYo={editando.id === yo?.sub}
+          onCerrar={() => setEditando(null)}
+          onGuardado={(n) => {
+            setEditando(null);
+            setAviso(`Ahora se llama ${n}.`);
+            void cargar();
+          }}
+        />
+      ) : null}
       {cambiandoPin ? (
         <CambiarPin
           usuario={cambiandoPin}
@@ -300,6 +317,99 @@ function CambiarPin({ usuario, onCerrar, onListo }: { usuario: Usuario; onCerrar
           <Boton onClick={onCerrar}>Cancelar</Boton>
           <Boton variante="principal" onClick={guardar} disabled={guardando}>
             {guardando ? "Cambiando…" : "Cambiar PIN"}
+          </Boton>
+        </Acciones>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Renombrar y cambiar el rol.
+ *
+ * El seed deja «Administrador» y «Vendedor», que es lo correcto para una
+ * tienda que el instalador todavía no conoce, pero nadie quiere ver
+ * «Administrador» firmando sus ventas para siempre. El endpoint existía desde
+ * el Sprint 0 y no había pantalla que lo llamara.
+ *
+ * El nombre no es cosmético: es lo que sale en el reporte de cierre de caja,
+ * en el kardex y en la bitácora. Cambiarlo NO reescribe el pasado —esas tablas
+ * guardan el id, no el texto—, así que una venta de ayer pasa a mostrarse con
+ * el nombre nuevo. Es lo que se quiere: es la misma persona.
+ */
+function EditarUsuario({
+  usuario,
+  esYo,
+  onCerrar,
+  onGuardado,
+}: {
+  usuario: Usuario;
+  esYo: boolean;
+  onCerrar: () => void;
+  onGuardado: (nombre: string) => void;
+}) {
+  const [name, setName] = useState(usuario.name);
+  const [role, setRole] = useState<"ADMIN" | "SELLER">(usuario.role === "ADMIN" ? "ADMIN" : "SELLER");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const primero = useRef<HTMLInputElement>(null);
+
+  useEffect(() => primero.current?.focus(), []);
+
+  async function guardar(): Promise<void> {
+    const limpio = name.trim();
+    if (limpio.length < 2) return setError("El nombre necesita al menos 2 caracteres");
+    setGuardando(true);
+    setError(null);
+    try {
+      await api(`/users/${usuario.id}`, { method: "PATCH", body: JSON.stringify({ name: limpio, role }) });
+      onGuardado(limpio);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar");
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      titulo={`Editar a ${usuario.name}`}
+      bajada="El nombre es el que sale en el cierre de caja, en el kardex y en la bitácora."
+      onCerrar={onCerrar}
+    >
+      <div className="mt-4 grid gap-3">
+        <Campo
+          ref={primero}
+          etiqueta="Nombre"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void guardar();
+          }}
+        />
+        <Selector etiqueta="Rol" value={role} onChange={(e) => setRole(e.target.value as "ADMIN" | "SELLER")}>
+          <option value="SELLER">Vendedor</option>
+          <option value="ADMIN">Administrador</option>
+        </Selector>
+        {/*
+          Bajarse a uno mismo a vendedor es la forma más rápida de dejar la
+          tienda sin administrador. El servidor ya se niega si es el último
+          —comprueba contra los admin ACTIVOS—, pero avisar antes evita que el
+          dueño descubra el problema apretando Guardar.
+        */}
+        {esYo && usuario.role === "ADMIN" && role === "SELLER" ? (
+          <p className="rounded-[var(--fh-radio)] border border-warn/30 bg-warn/10 p-3 text-sm">
+            Te estás bajando a vendedor. Si eres el único administrador, el servidor no lo va a permitir — y si hay
+            otro, dejarás de poder entrar a estas pantallas.
+          </p>
+        ) : null}
+        {error ? (
+          <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+        ) : null}
+        <Acciones>
+          <Boton onClick={onCerrar}>Cancelar</Boton>
+          <Boton variante="principal" onClick={() => void guardar()} disabled={guardando}>
+            {guardando ? "Guardando…" : "Guardar"}
           </Boton>
         </Acciones>
       </div>

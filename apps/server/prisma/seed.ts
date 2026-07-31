@@ -128,12 +128,26 @@ async function sembrarUsuarios() {
     });
   }
 
+  /*
+    Los nombres son GENÉRICOS a propósito. El seed corre en una tienda que
+    todavía no conoce a nadie, y poner el nombre del dueño acá obliga a que el
+    instalador lo sepa —o deja a la ferretería entrando como una persona que no
+    existe—. Se personalizan después, en Usuarios → Editar, que es donde el
+    dueño ya está mirando cuando quiere cambiarlos.
+
+    Y OJO CON LA COMPROBACIÓN: es por ROL, no por nombre. Antes buscaba
+    `{ name, role }`, y eso funcionaba solo mientras nadie renombrara. Apenas
+    el dueño cambia «Administrador» por «Cristian», una segunda corrida del
+    seed no encuentra a nadie llamado «Administrador» y crea un SEGUNDO
+    administrador, con un PIN nuevo, sin avisar. Por rol dice lo que de verdad
+    se quiere decir: si ya hay un administrador, no hace falta otro.
+  */
   for (const [name, role, envKey] of [
-    ["Cristian", "ADMIN", "SEED_ADMIN_PIN"],
-    ["Vendedor Mesón", "SELLER", "SEED_SELLER_PIN"],
+    ["Administrador", "ADMIN", "SEED_ADMIN_PIN"],
+    ["Vendedor", "SELLER", "SEED_SELLER_PIN"],
   ] as const) {
-    const existe = await db.user.findFirst({ where: { name, role } });
-    if (existe) continue; // jamás pisar un PIN que el dueño ya cambió
+    const existe = await db.user.findFirst({ where: { role } });
+    if (existe) continue; // ya hay alguien con ese rol: no se toca nada
     const pin = process.env[envKey]?.trim() || pinAlAzar();
     await db.user.create({ data: { name, role, active: true, pinHash: await hash(pin) } });
     nuevos.push([name, pin]);
