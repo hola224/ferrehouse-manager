@@ -12,6 +12,8 @@ import { registerImportRoutes } from "./routes/import.js";
 import { registerLabelRoutes } from "./routes/labels.js";
 import { registerCashRoutes } from "./routes/cash.js";
 import { registerStationRoutes } from "./routes/stations.js";
+import { registerSaleRoutes } from "./routes/sales.js";
+import { registerSuspendedRoutes } from "./routes/suspended.js";
 import { stripForRole, type Role } from "@ferrehouse/shared";
 
 declare module "@fastify/jwt" {
@@ -140,6 +142,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
   await registerLabelRoutes(app);
   await registerCashRoutes(app);
   await registerStationRoutes(app);
+  await registerSaleRoutes(app);
+  await registerSuspendedRoutes(app);
 
   return app;
 }

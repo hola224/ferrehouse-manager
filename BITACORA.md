@@ -517,3 +517,63 @@ Mirarla destapó tres cosas que ningún test veía:
    todavía se puede volver atrás, y ahí dice con todas sus letras que es el punto
    de no retorno. Un texto que pide algo imposible enseña a no leer los textos,
    y eso se paga en la pantalla siguiente.
+
+---
+
+## 2026-07-30 — Sprint 3: el POS, capa de servidor
+
+Las 9 tareas de servidor del sprint más pesado del plan. **278 tests en verde**,
+52 nuevos. La pantalla de venta (3.10) espera el ok al wireframe.
+
+### Lo que se decidió construyendo
+
+1. **La aritmética de la venta vive en `packages/shared`, sin tocar la base.**
+   Es lo único del sistema donde un error de un peso se multiplica por todas las
+   ventas del día y aparece recién en el arqueo. Separada así se prueba con
+   tablas de casos, y eso es lo que hace `sale.test.ts`: 24 casos que incluyen
+   el redondeo hacia arriba y hacia abajo, pago justo, pago mixto y una venta de
+   mesón completa.
+
+2. **El cliente no manda el monto en efectivo: manda lo que el cliente PUSO
+   sobre el mesón.** Pedirle un `amount` obligaría a la pantalla a calcular el
+   redondeo, y entonces el redondeo tendría dos implementaciones que un día se
+   van a separar. Con `receivedAmount`, el servidor calcula el redondeo, la
+   imputación y el vuelto, y la pantalla solo muestra.
+
+3. **El redondeo solo existe si hay pata en efectivo.** Con todo pagado con
+   tarjeta, un ajuste de $5 quedaría sin contraparte: el banco cobra el monto
+   exacto. Si la tarjeta no cubre el total y no hay efectivo, se rechaza.
+
+4. **El tope de descuento se mide sobre el total, no por línea.** Tres
+   descuentos del 5% en tres líneas suman 15% de la boleta y habrían pasado sin
+   autorización.
+
+5. **El PIN de override se valida contra cualquier administrador activo**, no
+   contra uno fijo: lo digita quien esté en el mesón. Y la bitácora guarda quién
+   autorizó, que es la única razón por la que el override existe.
+
+6. **El pulso del cajón va en el mismo trabajo que el ticket, y después del
+   corte.** El cajón cuelga de la impresora: en trabajos separados, si la cola
+   se atasca entre uno y otro, el vendedor tiene el ticket en la mano y el cajón
+   cerrado con el cliente esperando el vuelto. Y no se abre en una venta pagada
+   entera con tarjeta, ni en una reimpresión — abrir el cajón sin una venta
+   detrás es justo lo que un arqueo no puede explicar.
+
+7. **Al recuperar una espera, el precio guardado nunca se cobra.** Se relee el
+   vigente y se muestra el delta. Si además cambió la unidad de venta, eso se
+   avisa **antes** que el precio: dos unidades del mismo grupo —un rollo y un
+   metro— pasan cualquier validación de grupo, y la cantidad guardada
+   significaría otra cosa.
+
+8. **La venta descuenta stock sin validar saldo**, y es deliberado: está en el
+   plan que la validación llega en el Sprint 4 con el kardex. Queda escrito en
+   el wireframe para que nadie lo lea como un olvido.
+
+### Un test que probaba menos de lo que decía
+
+La aserción "ningún byte del ticket pasa de 0x7F" fallaba, y no por un acento:
+el pulso del cajón termina en **250**, que es un comando. Con la aserción a
+secas habría bastado con quitar el pulso para que "pasara", sin probar nada del
+nombre del producto. Ahora el test vende una "Cañería PVC" y comprueba dos
+cosas por separado: que en el papel diga "Caneria PVC", y que los únicos bytes
+altos sean exactamente los del pulso.

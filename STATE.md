@@ -88,7 +88,9 @@ importación y usuarios.
 de cierre en 3 pasos. El **arqueo es a ciegas**: el vendedor cuenta y escribe
 antes de que aparezca nada, y el servidor tampoco le sirve el monto esperado.
 
-**Sprint actual: 3 — POS, la venta.** El más pesado del plan.
+**Sprint actual: 3 — POS, la venta.** El más pesado del plan. Las 9 tareas de
+servidor entregadas el 2026-07-30 (278 tests en verde). **La pantalla de venta
+espera el ok al wireframe** ([`.agents/WIREFRAMES/3.10-venta.md`](.agents/WIREFRAMES/3.10-venta.md)).
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

@@ -7,3 +7,4 @@ export * from "./catalog.js";
 export * from "./code128.js";
 export * from "./atajos.js";
 export * from "./cash.js";
+export * from "./sale.js";

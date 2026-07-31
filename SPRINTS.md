@@ -176,23 +176,27 @@ acuerde de correrla a mano.
 
 ---
 
-## Sprint 3 — POS, la venta (Semana 4) ⚠️ el sprint más pesado
+## Sprint 3 — POS, la venta (Semana 4) 🟡 servidor entregado el 2026-07-30
+
+> Las 9 tareas de servidor hechas y probadas. **La 3.10 espera el ok al
+> wireframe** ([`.agents/WIREFRAMES/3.10-venta.md`](.agents/WIREFRAMES/3.10-venta.md)).
+> La 3.11 quedó cerrada en el Sprint 1 al responderse la pregunta del navegador.
 
 **Objetivo:** vender. Escanear, cobrar con pagos múltiples, redondear, imprimir, abrir el cajón.
 
 | # | Tarea | Referencia |
 |---|---|---|
-| 3.1 | Pantalla de venta: escaneo agrega línea, cantidad editable (decimales para kg/m), teclado-primero | POS-02, CAT-05 |
-| 3.2 | Pagos múltiples en una venta (efectivo + tarjeta), **vuelto en `receivedAmount`/`changeAmount`** | POS-04, POS-06, ADR-003 |
-| 3.3 | Redondeo a $10 **sobre la pata de efectivo**, registrado en `roundingAmount`. Sin pata en efectivo no hay redondeo | POS-05, ADR-003 |
-| 3.4 | Desglose neto/IVA por residuo al cobrar, con `taxRatePercent` congelado en la venta | decisión sellada 1 |
-| 3.5 | Campo folio + tipo de documento del POS tributario (la doble digitación) | POS-07 |
-| 3.6 | Descuentos por línea y por venta; tope `discount.maxSeller` para vendedor, override admin con PIN | POS-09 |
-| 3.7 | **Venta en espera**: `SuspendedSale`/`SuspendedSaleItem`. Suspender, listar, recuperar, descartar. Al recuperar **se re-leen los precios** y se avisa el delta | POS-08, ADR-001 |
-| 3.8 | Ticket ESC/POS + pulso de cajón en el mismo trabajo de impresión; integración real con la térmica USB | POS-06 |
-| 3.9 | Reimpresión de comprobante desde `PrintJob.saleId`, marcada con `isReprint` | POS-18 |
-| 3.10 | **Pantalla clave del sprint: la venta.** Dos columnas —líneas a la izquierda, total y cobro a la derecha— dentro de 1366×768. Total y vuelto en ≥40px. Wireframe aprobado antes de codear | UI-BRIEF §5.1 |
-| 3.11 | **Tabla canónica de atajos**, definida una vez en `packages/shared` y mostrada en pantalla: cobrar, editar cantidad, descuento, suspender, recuperar espera, buscar por nombre, quitar línea. **Decidido el 2026-07-30**: los terminales corren Chrome en modo normal, así que las teclas son **F2, F4, F6 y F8**. F3, F5 y F11 se las queda el navegador y F10 le abre la barra de menú, así que quedan fuera. La tabla vive en `packages/shared/atajos.ts` desde el Sprint 1, porque la pantalla de catálogo ya las muestra | UI-BRIEF §2.1 |
+| 3.1 ✅ | Pantalla de venta: escaneo agrega línea, cantidad editable (decimales para kg/m), teclado-primero | POS-02, CAT-05 |
+| 3.2 ✅ | Pagos múltiples en una venta (efectivo + tarjeta), **vuelto en `receivedAmount`/`changeAmount`** | POS-04, POS-06, ADR-003 |
+| 3.3 ✅ | Redondeo a $10 **sobre la pata de efectivo**, registrado en `roundingAmount`. Sin pata en efectivo no hay redondeo | POS-05, ADR-003 |
+| 3.4 ✅ | Desglose neto/IVA por residuo al cobrar, con `taxRatePercent` congelado en la venta | decisión sellada 1 |
+| 3.5 ✅ | Campo folio + tipo de documento del POS tributario (la doble digitación) | POS-07 |
+| 3.6 ✅ | Descuentos por línea y por venta; tope `discount.maxSeller` para vendedor, override admin con PIN | POS-09 |
+| 3.7 ✅ | **Venta en espera**: `SuspendedSale`/`SuspendedSaleItem`. Suspender, listar, recuperar, descartar. Al recuperar **se re-leen los precios** y se avisa el delta | POS-08, ADR-001 |
+| 3.8 ✅ | Ticket ESC/POS + pulso de cajón en el mismo trabajo de impresión; integración real con la térmica USB | POS-06 |
+| 3.9 ✅ | Reimpresión de comprobante desde `PrintJob.saleId`, marcada con `isReprint` | POS-18 |
+| 3.10 ⏸ | **Pantalla clave del sprint: la venta.** Dos columnas —líneas a la izquierda, total y cobro a la derecha— dentro de 1366×768. Total y vuelto en ≥40px. Wireframe aprobado antes de codear | UI-BRIEF §5.1 |
+| 3.11 ✅ | **Tabla canónica de atajos**, definida una vez en `packages/shared` y mostrada en pantalla: cobrar, editar cantidad, descuento, suspender, recuperar espera, buscar por nombre, quitar línea. **Decidido el 2026-07-30**: los terminales corren Chrome en modo normal, así que las teclas son **F2, F4, F6 y F8**. F3, F5 y F11 se las queda el navegador y F10 le abre la barra de menú, así que quedan fuera. La tabla vive en `packages/shared/atajos.ts` desde el Sprint 1, porque la pantalla de catálogo ya las muestra | UI-BRIEF §2.1 |
 
 **Invariantes que estrena este sprint:**
 - `Σ SalePayment.amount = Sale.totalGross`, y `totalGross = subtotalGross − discountAmount + roundingAmount`.
