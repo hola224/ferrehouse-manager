@@ -26,6 +26,12 @@ pnpm preparar   # compila, migra, siembra y carga el catálogo de prueba
 pnpm dev        # servidor en :3000, web en :5173
 ```
 
+> **Si esto va a una tienda, cambia `JWT_SECRET` en `apps/server/.env` antes de
+> nada.** El archivo de ejemplo trae `cambiar-en-instalacion`, y ese valor está
+> publicado en este repositorio: cualquiera que lo lea puede firmar un token de
+> administrador válido contra una instalación que lo haya dejado puesto. Sirve
+> cualquier cadena larga y al azar — por ejemplo `openssl rand -base64 48`.
+
 Abre <http://localhost:5173> y entra con:
 
 | Usuario | Rol | PIN |
