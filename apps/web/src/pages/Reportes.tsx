@@ -13,10 +13,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
-import { Boton, Campo, Tarjeta } from "@/components/ui";
-import { formatCLP, formatCostoMilli } from "@ferrehouse/shared";
+import { Boton, Campo, Chip, Tarjeta } from "@/components/ui";
+import { formatCLP, formatCostoMilli, formatHora } from "@ferrehouse/shared";
 
-type Ver = "ventas" | "margenes" | "inventario" | "alertas";
+type Ver = "ventas" | "margenes" | "inventario" | "cajas" | "alertas";
 
 type Ventas = {
   desde: string;
@@ -47,6 +47,26 @@ type Ventas = {
       noNumericos: string[];
     }>;
   };
+};
+
+/**
+ * Una sesión de caja cerrada —o la que está abierta ahora—. El `estado` lo
+ * deriva el SERVIDOR con la misma función que usa la pantalla de cierre y el
+ * papel: si lo calculara la pantalla, tarde o temprano el historial y el
+ * comprobante impreso dirían cosas distintas del mismo arqueo.
+ */
+type Sesion = {
+  id: number;
+  openedAt: string;
+  closedAt: string | null;
+  openingAmount: number;
+  expectedAmount: number | null;
+  countedAmount: number | null;
+  differenceAmount: number | null;
+  notes: string | null;
+  station: { name: string };
+  user: { name: string };
+  estado: { tono: "ok" | "warn" | "error" | "neutral"; palabra: string; mensaje: string } | null;
 };
 
 type Margenes = {
@@ -91,6 +111,7 @@ const PESTANAS: Array<{ clave: Ver; texto: string }> = [
   { clave: "ventas", texto: "Ventas" },
   { clave: "margenes", texto: "Márgenes" },
   { clave: "inventario", texto: "Inventario valorizado" },
+  { clave: "cajas", texto: "Cajas" },
   { clave: "alertas", texto: "Alertas" },
 ];
 
@@ -131,6 +152,19 @@ function hoyTexto(d = new Date()): string {
 const pct = (v: number | null) => (v === null ? "—" : `${v.toFixed(1).replace(".", ",")}%`);
 
 /** Nota al pie: lo que hay que saber para no leer mal el número de arriba. */
+/**
+ * «31-07 17:27» y no la fecha completa: la columna se lee de un vistazo y el
+ * año no aporta nada cuando se están mirando los últimos sesenta turnos. La
+ * hora sale de `formatHora`, la misma del resto de la aplicación —escribirla
+ * a mano acá daría «5:27 p. m.» en una pantalla donde todo lo demás es 24h.
+ */
+function fechaYHora(iso: string): string {
+  const d = new Date(iso);
+  const dia = String(d.getDate()).padStart(2, "0");
+  const mes = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dia}-${mes} ${formatHora(d)}`;
+}
+
 function Nota({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-xs leading-relaxed text-ink-soft">{children}</p>;
 }
@@ -151,6 +185,8 @@ export function Reportes() {
   const [reconciliando, setReconciliando] = useState(false);
   const [reconciliacion, setReconciliacion] = useState<{ mensaje: string; divergencias: number } | null>(null);
   const [cargando, setCargando] = useState(false);
+  const [sesiones, setSesiones] = useState<Sesion[] | null>(null);
+  const [avisoCaja, setAvisoCaja] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /**
@@ -165,6 +201,22 @@ export function Reportes() {
    * síntoma: los números simplemente son otros. Correrlo de nuevo después de
    * corregir devuelve cero, así que apretarlo dos veces no ensucia nada.
    */
+  /**
+   * Vuelve a encolar el comprobante de cierre de ese turno. Usa la misma ruta
+   * que el botón de la pantalla de caja: el papel se guarda tal como salió, no
+   * se recalcula, porque un cierre reimpreso con números distintos a los del
+   * día sería exactamente lo contrario de un comprobante.
+   */
+  async function reimprimirCierre(id: number): Promise<void> {
+    setAvisoCaja(null);
+    try {
+      const r = await api<{ mensaje: string }>(`/cash/sessions/${id}/report`, { method: "POST", body: "{}" });
+      setAvisoCaja(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo reimprimir el cierre");
+    }
+  }
+
   async function reconciliar() {
     setReconciliando(true);
     try {
@@ -189,6 +241,9 @@ export function Reportes() {
       else if (ver === "margenes")
         setMargenes(await api<Margenes>(`/reports/margins?desde=${desde}&hasta=${hasta}&por=${por}`));
       else if (ver === "inventario") setInventario(await api<Inventario>(`/reports/inventory?fecha=${hasta}`));
+      // Sin rango de fechas: el historial de cajas se mira hacia atrás desde
+      // hoy, y quien lo abre busca «el cierre del martes», no un período.
+      else if (ver === "cajas") setSesiones((await api<{ sesiones: Sesion[] }>("/cash/sessions?limit=60")).sesiones);
       else setAlertas(await api<{ alertas: Alerta[]; criticas: number }>("/alerts"));
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cargar el reporte");
@@ -217,7 +272,7 @@ export function Reportes() {
             </Boton>
           ))}
         </nav>
-        <div className={`flex items-end gap-2 ${ver === "alertas" ? "hidden" : ""}`}>
+        <div className={`flex items-end gap-2 ${ver === "alertas" || ver === "cajas" ? "hidden" : ""}`}>
           {ver !== "inventario" ? (
             <Campo etiqueta="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
           ) : null}
@@ -453,6 +508,103 @@ export function Reportes() {
             Se reconstruye sumando el libro de stock hasta esa fecha, con la fecha del HECHO: una factura digitada hoy
             con recepción de la semana pasada cuenta en la semana pasada. El costo promedio es global al producto, no
             por bodega.
+          </Nota>
+        </div>
+      ) : null}
+
+      {/* ---------------- Historial de cajas ---------------- */}
+      {ver === "cajas" && sesiones ? (
+        <div className="grid gap-4">
+          {avisoCaja ? (
+            <p className="rounded-[var(--fh-radio)] border border-ok/40 bg-ok/10 p-3 text-sm">{avisoCaja}</p>
+          ) : null}
+
+          {sesiones.length === 0 ? (
+            <Tarjeta titulo="Todavía no hay ninguna caja">
+              <p className="text-sm text-ink-soft">
+                Acá van a quedar todas las aperturas y cierres, con quién las hizo y en cuánto cuadró cada arqueo.
+              </p>
+            </Tarjeta>
+          ) : (
+            <div className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-surface">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
+                    <th className="px-3 py-2 text-left font-semibold">Abrió</th>
+                    <th className="px-3 py-2 text-left font-semibold">Cerró</th>
+                    <th className="px-3 py-2 text-left font-semibold">Caja</th>
+                    <th className="px-3 py-2 text-left font-semibold">Quién</th>
+                    <th className="px-3 py-2 text-right font-semibold">Fondo</th>
+                    <th className="px-3 py-2 text-right font-semibold">Esperado</th>
+                    <th className="px-3 py-2 text-right font-semibold">Contado</th>
+                    <th className="px-3 py-2 text-right font-semibold">Diferencia</th>
+                    <th className="px-3 py-2 text-left font-semibold">Arqueo</th>
+                    <th className="px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sesiones.map((s) => (
+                    <tr key={s.id} className="border-b border-line/60 last:border-0 align-top">
+                      <td className="px-3 py-2 whitespace-nowrap">{fechaYHora(s.openedAt)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {s.closedAt ? (
+                          fechaYHora(s.closedAt)
+                        ) : (
+                          <Chip tono="neutral">abierta ahora</Chip>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">{s.station.name}</td>
+                      <td className="px-3 py-2">{s.user.name}</td>
+                      <td className="fh-num px-3 py-2 text-right">{formatCLP(s.openingAmount)}</td>
+                      {/*
+                        En la sesión abierta estas tres columnas van vacías a
+                        propósito, no en cero: el arqueo es a ciegas (decisión
+                        del Sprint 2) y mostrar el esperado mientras la caja
+                        está abierta le entregaría al vendedor justo el número
+                        que no debe ver antes de contar.
+                      */}
+                      <td className="fh-num px-3 py-2 text-right">
+                        {s.expectedAmount === null ? <span className="text-ink-soft">—</span> : formatCLP(s.expectedAmount)}
+                      </td>
+                      <td className="fh-num px-3 py-2 text-right">
+                        {s.countedAmount === null ? <span className="text-ink-soft">—</span> : formatCLP(s.countedAmount)}
+                      </td>
+                      <td className="fh-num px-3 py-2 text-right">
+                        {s.differenceAmount === null ? (
+                          <span className="text-ink-soft">—</span>
+                        ) : (
+                          <span className={s.differenceAmount === 0 ? "" : s.differenceAmount < 0 ? "text-error" : "text-warn"}>
+                            {s.differenceAmount > 0 ? "+" : ""}
+                            {formatCLP(s.differenceAmount)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {s.estado ? <Chip tono={s.estado.tono}>{s.estado.palabra}</Chip> : <span className="text-ink-soft">—</span>}
+                        {s.notes ? <p className="mt-1 max-w-[18rem] text-xs text-ink-soft">{s.notes}</p> : null}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {s.closedAt ? (
+                          <button
+                            type="button"
+                            onClick={() => void reimprimirCierre(s.id)}
+                            className="text-xs text-ink-soft underline underline-offset-4"
+                          >
+                            Reimprimir
+                          </button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <Nota>
+            Se muestran los últimos 60 turnos. La diferencia es lo contado menos lo esperado: negativa falta plata,
+            positiva sobra. «Reimprimir» vuelve a encolar el mismo comprobante de cierre que salió ese día —no lo
+            recalcula—, y sale marcado como copia.
           </Nota>
         </div>
       ) : null}
