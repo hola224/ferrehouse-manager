@@ -13,6 +13,7 @@ import {
   validarFraccion,
   supplierInputSchema,
   costoPorUnidadDeVenta,
+  costoMilliPorUnidadDeVenta,
   margenDeListaPct,
   type UnitLike,
 } from "./catalog.js";
@@ -197,6 +198,36 @@ describe("costo y margen llevados a la misma unidad", () => {
     expect(costoPorUnidadDeVenta({ costNetMilliPeso: 410_000, saleUnit: metro })).toBe(410);
   });
 
+  /**
+   * El costo por unidad es una RAZÓN, no un monto (decisión sellada 2): en
+   * pantalla lleva decimales. Redondearlo a peso entero es el error de 14% que
+   * el kardex tuvo en el Sprint 4, y que la tabla del catálogo siguió teniendo
+   * hasta que se miró la pantalla con un tarugo de $3,5 cargado.
+   */
+  it("para mostrar, el costo por unidad de venta conserva los decimales", () => {
+    const metro = { factorMilli: 1000 };
+    const unidad = { factorMilli: 1000 };
+    // Un metro de cable a $485,587
+    expect(costoMilliPorUnidadDeVenta({ costNetMilliPeso: 485_587, saleUnit: metro })).toBe(485_587);
+    // Un tarugo a $3,5: redondeado sería $4, un 14% de más.
+    expect(costoMilliPorUnidadDeVenta({ costNetMilliPeso: 3_500, saleUnit: unidad })).toBe(3_500);
+    expect(costoPorUnidadDeVenta({ costNetMilliPeso: 3_500, saleUnit: unidad })).toBe(4);
+  });
+
+  it("el margen de lista no redondea el costo antes de dividir", () => {
+    /*
+     * Donde más pesa es en lo barato, que es media ferretería. Un tarugo que
+     * cuesta $3,5 y se vende a $6: el neto son $5, así que deja 30%.
+     * Redondeando el costo a $4 antes de dividir diría 20% — diez puntos de
+     * diferencia en un producto que se vende de a cien.
+     */
+    const unidad = { factorMilli: 1000 };
+    const m = margenDeListaPct({ priceGross: 6, costNetMilliPeso: 3_500, saleUnit: unidad })!;
+    expect(m).toBeCloseTo(30, 1);
+    const redondeando = ((5 - 4) / 5) * 100;
+    expect(redondeando).toBe(20);
+  });
+
   it("el margen del saco es 17,5% y no 96,7%", () => {
     // Sin convertir: (5454 − 180) / 5454 = 96,7%, y el producto parecía un
     // negocio redondo. Convertido: (5454 − 4500) / 5454 = 17,5%.
@@ -212,6 +243,13 @@ describe("costo y margen llevados a la misma unidad", () => {
 
   it("sin costo no hay margen: es lo que recibe el vendedor", () => {
     expect(margenDeListaPct({ priceGross: 690, saleUnit: metro })).toBeNull();
+  });
+
+  it("sin costo cargado no hay margen: no es 100%", () => {
+    // Se vio en la tabla del catálogo con un producto importado sin costo:
+    // decía "100,0%", que se lee como el mejor producto de la tienda.
+    const metro = { factorMilli: 1000 };
+    expect(margenDeListaPct({ priceGross: 3_990, costNetMilliPeso: 0, saleUnit: metro })).toBeNull();
   });
 
   it("un precio en cero no divide por cero", () => {

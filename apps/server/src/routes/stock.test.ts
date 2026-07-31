@@ -11,6 +11,7 @@ let tokenAdmin: string, tokenVendedor: string;
 let idCaja1: number, idLocal: number, idProveedor: number;
 let uMetro: number, uRollo: number, uUnidad: number, uKilo: number;
 let pCable: number, pPerno: number;
+let ultimaCompra = "";
 
 beforeAll(async () => {
   app = await buildApp({ jwtSecret: "test-secret" });
@@ -73,6 +74,7 @@ describe("compra a proveedor (tarea 4.1)", () => {
       items: [{ productId: pCable, unitId: uRollo, qtyMilli: 1000, unitCostNet: 45_000 }],
     });
     expect(r.statusCode).toBe(201);
+    ultimaCompra = cuerpo(r).costos[0].texto;
 
     // 1 rollo = 100 m = 100.000 milésimas de metro
     expect(await saldo(pCable)).toBe(100_000);
@@ -83,6 +85,15 @@ describe("compra a proveedor (tarea 4.1)", () => {
     expect(mov.type).toBe("PURCHASE");
     expect(mov.totalCostNet).toBe(45_000);
     expect(mov.balanceCostNetMilliPeso).toBe(450_000);
+  });
+
+  it("la respuesta dice en cuánto quedó el costo, CON decimales", () => {
+    // Se verifica sobre la compra de arriba: 1 rollo de 100 m a $45.000 deja
+    // el metro en $450 justos. El caso que importa es el que no da redondo —
+    // cuatro cajas de 25 a $820 dan $32,80 por unidad— y decir "$33" en la
+    // tarjeta que existe para mostrar el costo es el error de la decisión
+    // sellada 2. Acá se fija que el texto pase por `formatCostoMilli`.
+    expect(ultimaCompra).toMatch(/\$450 por m/);
   });
 
   it("comprar en una unidad de otro grupo se rechaza", async () => {

@@ -7,6 +7,8 @@ import { Caja } from "@/pages/Caja";
 import { Venta } from "@/pages/Venta";
 import { Kardex } from "@/pages/Kardex";
 import { Reportes } from "@/pages/Reportes";
+import { Compras } from "@/pages/Compras";
+import { Usuarios } from "@/pages/Usuarios";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -34,7 +36,14 @@ function Layout({ children }: { children: React.ReactNode }) {
               // El panel y los reportes solo para el administrador: al
               // vendedor no le viaja ninguna cifra de plata del día, así que
               // ofrecerle la pestaña sería ofrecerle una pantalla vacía.
-              ...(esAdmin ? [{ a: "/", texto: "Panel" }, { a: "/reportes", texto: "Reportes" }] : []),
+              ...(esAdmin
+                ? [
+                    { a: "/compras", texto: "Compras" },
+                    { a: "/", texto: "Panel" },
+                    { a: "/reportes", texto: "Reportes" },
+                    { a: "/usuarios", texto: "Usuarios" },
+                  ]
+                : []),
             ].map((i) => (
               <NavLink
                 key={i.a}
@@ -99,6 +108,22 @@ export function App() {
             element={
               <Privado>
                 <Inicio />
+              </Privado>
+            }
+          />
+          <Route
+            path="/compras"
+            element={
+              <Privado soloAdmin>
+                <Compras />
+              </Privado>
+            }
+          />
+          <Route
+            path="/usuarios"
+            element={
+              <Privado soloAdmin>
+                <Usuarios />
               </Privado>
             }
           />

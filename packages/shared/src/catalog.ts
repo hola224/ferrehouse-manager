@@ -301,6 +301,26 @@ export function costoPorUnidadDeVenta(p: {
 }
 
 /**
+ * El mismo costo, pero EN MILÉSIMAS y sin redondear a pesos.
+ *
+ * **Esta es la que se muestra en pantalla**, con `formatCostoMilli`. La de
+ * arriba redondea a peso entero, y un costo por unidad no es un monto: es una
+ * razón. Un tarugo que cuesta $3,5 se ve como "$4" —14% de error a la vista,
+ * justo en el número con el que se mira el margen— y un metro de cable a
+ * $485,59 se ve como "$486". Es el mismo defecto que el kardex tuvo en el
+ * Sprint 4; la corrección de entonces no llegó a la tabla del catálogo.
+ *
+ * `costoPorUnidadDeVenta` sigue existiendo para COMPARAR contra el precio,
+ * donde el peso entero basta y la aritmética queda más simple.
+ */
+export function costoMilliPorUnidadDeVenta(p: {
+  costNetMilliPeso: number;
+  saleUnit: { factorMilli: number };
+}): number {
+  return roundSym((p.costNetMilliPeso * p.saleUnit.factorMilli) / 1000);
+}
+
+/**
  * Margen DE LISTA sobre el neto, en porcentaje: lo que el producto dejaría si
  * se vendiera al precio de repisa. `null` cuando no se puede calcular: sin
  * costo (el vendedor no lo recibe) o con precio cero.
@@ -319,10 +339,22 @@ export function margenDeListaPct(p: {
   taxRatePercent?: number;
 }): number | null {
   if (p.costNetMilliPeso === undefined) return null;
+  /**
+   * Costo cero es "todavía no se cargó", no "sale gratis". Un producto recién
+   * creado o importado sin costo mostraría **100,0% de margen**, que es el
+   * número más engañoso posible: se lee como el mejor producto de la tienda.
+   * Una raya dice la verdad — no hay dato — y empuja a cargar el costo.
+   */
+  if (p.costNetMilliPeso === 0) return null;
   // El neto sale por residuo, con la misma función que usa la venta: si acá se
   // calculara distinto, el margen del catálogo y el del reporte no coincidirían.
   const neto = netFromGross(p.priceGross, p.taxRatePercent ?? 19);
   if (neto <= 0) return null;
-  const costo = costoPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit });
-  return ((neto - costo) / neto) * 100;
+  /**
+   * El costo entra SIN redondear a pesos: en un producto barato, redondear
+   * antes de dividir mueve el margen varios puntos. Un tarugo de $3,5 con
+   * precio $90 deja 53,9%; redondeando el costo a $4 diría 47,4%.
+   */
+  const costoMilli = costoMilliPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit });
+  return ((neto - costoMilli / 1000) / neto) * 100;
 }

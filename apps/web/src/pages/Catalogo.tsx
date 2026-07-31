@@ -19,7 +19,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Boton, Chip } from "@/components/ui";
-import { formatCLP, formatQty, atajosDe, costoPorUnidadDeVenta, margenDeListaPct } from "@ferrehouse/shared";
+import { ProductoForm } from "./ProductoForm";
+import { ImportarProductos } from "./ImportarProductos";
+import {
+  formatCLP,
+  formatCostoMilli,
+  formatQty,
+  atajosDe,
+  costoMilliPorUnidadDeVenta,
+  margenDeListaPct,
+} from "@ferrehouse/shared";
 
 type Unidad = { id: number; name: string; symbol: string; factorMilli: number };
 type Nivel = { locationId: number; qtyBaseMilli: number; location: { id: number; name: string } };
@@ -80,7 +89,9 @@ function estadoStock(p: Producto): { tono: "ok" | "warn" | "error"; palabra: str
  */
 function textoCosto(p: Producto): string {
   if (p.costNetMilliPeso === undefined) return "—";
-  return formatCLP(costoPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit }));
+  // Con decimales: el costo por unidad es una RAZÓN, no un monto (decisión
+  // sellada 2). "$486" donde dice $485,59 es el mismo error que el kardex tuvo.
+  return formatCostoMilli(costoMilliPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit }));
 }
 
 function textoMargen(p: Producto): string {
@@ -100,6 +111,12 @@ export function Catalogo() {
   const [error, setError] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState(0);
   const [abierto, setAbierto] = useState<Producto | null>(null);
+  /** `undefined` = cerrado, `null` = alta, número = editar ese producto. */
+  const [formulario, setFormulario] = useState<number | null | undefined>(undefined);
+  const [importando, setImportando] = useState(false);
+  /** Sube cada vez que algo cambia el catálogo: obliga a la lista a releer. */
+  const [version, setVersion] = useState(0);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const caja = useRef<HTMLInputElement>(null);
   const filas = useRef<(HTMLTableRowElement | null)[]>([]);
@@ -149,7 +166,7 @@ export function Catalogo() {
       vigente = false;
       clearTimeout(t);
     };
-  }, [texto]);
+  }, [texto, version]);
 
   /**
    * Al vendedor no se le imprime ningún atajo de admin. Todos los del catálogo
@@ -173,7 +190,44 @@ export function Catalogo() {
       setAbierto(productos[seleccion]!);
     } else if (e.key === "Escape") {
       setTexto("");
+    } else if (esAdmin && e.key === "F2") {
+      e.preventDefault();
+      setFormulario(null);
+    } else if (esAdmin && e.key === "F4") {
+      e.preventDefault();
+      setImportando(true);
+    } else if (esAdmin && e.key === "F8" && productos[seleccion]) {
+      e.preventDefault();
+      setFormulario(productos[seleccion]!.id);
     }
+  }
+
+  /**
+   * Los atajos van en el `keydown` del documento y no solo en el contenedor
+   * porque el foco vive en la caja de búsqueda: un `onKeyDown` de React sobre
+   * el div no llega si el evento nace en un input hijo con `stopPropagation`,
+   * y sobre todo no llega si el foco se fue a un botón de la tabla.
+   */
+  useEffect(() => {
+    if (!esAdmin) return;
+    function global(e: KeyboardEvent) {
+      // Con un diálogo abierto, las teclas son suyas.
+      if (formulario !== undefined || importando || abierto) return;
+      if (e.key === "F2") {
+        e.preventDefault();
+        setFormulario(null);
+      } else if (e.key === "F4") {
+        e.preventDefault();
+        setImportando(true);
+      }
+    }
+    window.addEventListener("keydown", global);
+    return () => window.removeEventListener("keydown", global);
+  }, [esAdmin, formulario, importando, abierto]);
+
+  function cerrarFormulario() {
+    setFormulario(undefined);
+    volverAlFoco();
   }
 
   return (
@@ -197,7 +251,7 @@ export function Catalogo() {
           </p>
         </div>
         {esAdmin ? (
-          <Boton variante="principal" className="shrink-0">
+          <Boton variante="principal" className="shrink-0" onClick={() => setFormulario(null)}>
             + Producto nuevo <span className="fh-num opacity-70">F2</span>
           </Boton>
         ) : null}
@@ -211,8 +265,23 @@ export function Catalogo() {
         <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</div>
       ) : null}
 
+      {aviso ? (
+        <div className="flex items-center justify-between rounded-[var(--fh-radio)] border border-ok/30 bg-ok/10 p-3 text-sm text-ok">
+          {aviso}
+          <button onClick={() => setAviso(null)} aria-label="Cerrar aviso" className="px-2">
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {!cargando && productos.length === 0 ? (
-        <Vacio hayTexto={texto.trim().length > 0} texto={texto.trim()} esAdmin={esAdmin} />
+        <Vacio
+          hayTexto={texto.trim().length > 0}
+          texto={texto.trim()}
+          esAdmin={esAdmin}
+          onCrear={() => setFormulario(null)}
+          onImportar={() => setImportando(true)}
+        />
       ) : (
         <Tabla
           productos={productos}
@@ -246,10 +315,36 @@ export function Catalogo() {
         <Detalle
           producto={abierto}
           esAdmin={esAdmin}
+          onEditar={() => {
+            setAbierto(null);
+            setFormulario(abierto.id);
+          }}
           onCerrar={() => {
             setAbierto(null);
             volverAlFoco();
           }}
+        />
+      ) : null}
+
+      {formulario !== undefined ? (
+        <ProductoForm
+          productoId={formulario}
+          onCerrar={cerrarFormulario}
+          onGuardado={(p) => {
+            cerrarFormulario();
+            setVersion((v) => v + 1);
+            setAviso(`${p.name} guardado como ${p.sku}.`);
+          }}
+        />
+      ) : null}
+
+      {importando ? (
+        <ImportarProductos
+          onCerrar={() => {
+            setImportando(false);
+            volverAlFoco();
+          }}
+          onImportado={() => setVersion((v) => v + 1)}
         />
       ) : null}
     </div>
@@ -331,7 +426,19 @@ function Tabla({
 }
 
 /** Vacíos que invitan (brief §2.9): dicen qué hacer, no lamentan. */
-function Vacio({ hayTexto, texto, esAdmin }: { hayTexto: boolean; texto: string; esAdmin: boolean }) {
+function Vacio({
+  hayTexto,
+  texto,
+  esAdmin,
+  onCrear,
+  onImportar,
+}: {
+  hayTexto: boolean;
+  texto: string;
+  esAdmin: boolean;
+  onCrear: () => void;
+  onImportar: () => void;
+}) {
   if (hayTexto) {
     return (
       <div className="rounded-[var(--fh-radio)] border border-line bg-surface p-8 text-center">
@@ -350,10 +457,10 @@ function Vacio({ hayTexto, texto, esAdmin }: { hayTexto: boolean; texto: string;
       {esAdmin ? (
         <>
           <div className="mt-4 flex justify-center gap-3">
-            <Boton variante="principal">
+            <Boton variante="principal" onClick={onImportar}>
               Importar desde Excel <span className="fh-num opacity-70">F4</span>
             </Boton>
-            <Boton>
+            <Boton onClick={onCrear}>
               Crear el primero <span className="fh-num opacity-70">F2</span>
             </Boton>
           </div>
@@ -368,16 +475,51 @@ function Vacio({ hayTexto, texto, esAdmin }: { hayTexto: boolean; texto: string;
   );
 }
 
-function Detalle({ producto, esAdmin, onCerrar }: { producto: Producto; esAdmin: boolean; onCerrar: () => void }) {
+function Detalle({
+  producto,
+  esAdmin,
+  onEditar,
+  onCerrar,
+}: {
+  producto: Producto;
+  esAdmin: boolean;
+  onEditar: () => void;
+  onCerrar: () => void;
+}) {
   const cerrar = useRef<HTMLButtonElement>(null);
+  const [etiqueta, setEtiqueta] = useState<string | null>(null);
+
   useEffect(() => {
     cerrar.current?.focus();
     const alTeclado = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCerrar();
+      else if (esAdmin && e.key === "F8") {
+        e.preventDefault();
+        onEditar();
+      } else if (esAdmin && e.key === "F6") {
+        e.preventDefault();
+        void imprimir();
+      }
     };
     window.addEventListener("keydown", alTeclado);
     return () => window.removeEventListener("keydown", alTeclado);
-  }, [onCerrar]);
+  }, [onCerrar, onEditar, esAdmin]);
+
+  /**
+   * La etiqueta se manda a la cola de impresión del servidor (`PrintJob`), que
+   * es lo que sabe a qué impresora va según la estación. La pantalla solo
+   * confirma que quedó encolada: si dijera "impreso" estaría afirmando algo
+   * que no vio, y el papel puede no salir.
+   */
+  async function imprimir() {
+    setEtiqueta(null);
+    try {
+      await api(`/products/${producto.id}/label`, { method: "POST", body: JSON.stringify({ copias: 1 }) });
+      setEtiqueta("Etiqueta enviada a la impresora del mesón.");
+    } catch (e) {
+      setEtiqueta(e instanceof ApiError ? e.message : "No se pudo encolar la etiqueta");
+    }
+  }
 
   const estado = estadoStock(producto);
 
@@ -434,13 +576,14 @@ function Detalle({ producto, esAdmin, onCerrar }: { producto: Producto; esAdmin:
         </dl>
 
         {esAdmin ? (
-          <div className="mt-6 flex gap-3 border-t border-line pt-4">
-            <Boton>
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+            <Boton onClick={imprimir}>
               Imprimir etiqueta <span className="fh-num opacity-70">F6</span>
             </Boton>
-            <Boton>
+            <Boton variante="principal" onClick={onEditar}>
               Editar <span className="fh-num opacity-70">F8</span>
             </Boton>
+            {etiqueta ? <span className="text-sm text-ink-soft">{etiqueta}</span> : null}
           </div>
         ) : null}
       </div>

@@ -25,7 +25,15 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { requireRole } from "../roles.js";
 import { registrarMovimiento } from "../stock-ledger.js";
-import { purchaseInputSchema, toBaseMilli, roundSym, validarUnidades, formatCLP } from "@ferrehouse/shared";
+import {
+  purchaseInputSchema,
+  toBaseMilli,
+  roundSym,
+  validarUnidades,
+  formatCLP,
+  formatCostoMilli,
+  costoMilliPorUnidadDeVenta,
+} from "@ferrehouse/shared";
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
   const e = new Error(mensaje) as Error & { statusCode: number };
@@ -193,7 +201,14 @@ export async function registerPurchaseRoutes(app: FastifyInstance): Promise<void
         productId: p.id,
         nombre: p.name,
         costNetMilliPeso: p.costNetMilliPeso,
-        texto: `${p.name}: ${formatCLP(roundSym((p.costNetMilliPeso * p.saleUnit.factorMilli) / 1_000_000))} por ${p.saleUnit.symbol}`,
+        /*
+         * Con decimales, no en pesos enteros: el costo por unidad es una RAZÓN
+         * (decisión sellada 2). Cuatro cajas de 25 a $820 dan $32,80 por
+         * unidad, y decir "$33" acá —justo en la tarjeta que existe para
+         * mostrar en cuánto quedó el costo— es el mismo error que el kardex
+         * tuvo en el Sprint 4 y el catálogo hasta hoy.
+         */
+        texto: `${p.name}: ${formatCostoMilli(costoMilliPorUnidadDeVenta(p))} por ${p.saleUnit.symbol}`,
       })),
       mensaje: `Compra registrada por ${formatCLP(totalNet)} neto.`,
     });
