@@ -67,6 +67,8 @@ type Kardex = {
     factorMilli: number;
     allowsFraction: boolean;
     costNetMilliPeso?: number;
+    priceGross: number;
+    reorderLevelBaseMilli: number;
   };
   saldoBaseMilli: number;
   /** Si el producto tiene movimientos, sin mirar los filtros. */
@@ -207,6 +209,18 @@ export function Kardex() {
       ? roundSym((kardex.saldoBaseMilli * kardex.producto.costNetMilliPeso) / 1_000_000)
       : null;
 
+  /*
+    El saldo y el mínimo se guardan en unidad BASE y se muestran en unidad de
+    VENTA. Es la misma conversión que hace el catálogo, y hacerla con el mismo
+    factor es lo que evita que dos pantallas digan cosas distintas del mismo
+    producto: 1.500 kg y 60 sacos son el mismo saco de cemento.
+  */
+  const saldoEnVenta = kardex ? roundSym((kardex.saldoBaseMilli * 1000) / kardex.producto.factorMilli) : 0;
+  const minimoEnVenta = kardex
+    ? roundSym((kardex.producto.reorderLevelBaseMilli * 1000) / kardex.producto.factorMilli)
+    : 0;
+  const bajoMinimo = minimoEnVenta > 0 && saldoEnVenta <= minimoEnVenta;
+
   return (
     <div className="flex flex-col gap-4">
       {/* --- Buscador --- */}
@@ -262,29 +276,64 @@ export function Kardex() {
         <>
           {/* --- Cabecera del producto --- */}
           <div className="flex items-stretch gap-4">
-            <section className="flex-1 rounded-[var(--fh-radio)] border border-line bg-surface p-5">
-              <div className="flex items-baseline justify-between">
-                <h1 className="text-xl font-bold text-ink">{kardex.producto.name}</h1>
-                <span className="font-mono text-sm text-mono-ink">{kardex.producto.sku}</span>
+            {/*
+              Tarjeta partida: a la izquierda quién es el producto, a la derecha
+              los tres números que se vienen a mirar. La raya de 1px entre las
+              celdas hace que se lean como tres cosas y no como una frase.
+            */}
+            <section className="flex flex-1 items-stretch border border-line bg-surface">
+              <div className="min-w-0 flex-1 p-5">
+                <div className="fh-num font-mono text-xs text-mono-ink">{kardex.producto.sku}</div>
+                <h1 className="mt-1 text-[26px] font-black leading-tight tracking-[-0.02em]">
+                  {kardex.producto.name}
+                </h1>
+                <div className="mt-1 text-[13.5px] text-ink-soft">Se vende por {kardex.producto.unidad}</div>
               </div>
-              <div className="mt-4 flex gap-10">
-                <div>
-                  <p className="text-4xl font-black tabular-nums text-ink">{kardex.saldoTexto}</p>
-                  <p className="text-xs uppercase tracking-wide text-ink-soft">en repisa</p>
+
+              <div className="flex shrink-0">
+                {/*
+                  El saldo se pinta en ámbar cuando está bajo el mínimo. Es el
+                  número por el que se abre esta pantalla, y «8» no dice nada
+                  hasta que se sabe contra qué se compara — por eso el mínimo va
+                  debajo y no en otra pantalla.
+                */}
+                <div className="w-[150px] border-l border-line-soft p-5">
+                  <div className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">
+                    Saldo hoy
+                  </div>
+                  <div
+                    className={`fh-num mt-1 text-[38px] font-black leading-none tracking-[-0.03em] ${
+                      bajoMinimo ? "text-warn-ink" : ""
+                    }`}
+                  >
+                    {formatQty(saldoEnVenta, kardex.producto.allowsFraction)}
+                  </div>
+                  <div className="mt-1 text-[12.5px] text-ink-soft">
+                    {kardex.producto.unidad}
+                    {minimoEnVenta > 0 ? ` · mín. ${formatQty(minimoEnVenta, kardex.producto.allowsFraction)}` : ""}
+                  </div>
                 </div>
+
+                <div className="w-[150px] border-l border-line-soft p-5">
+                  <div className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">Precio</div>
+                  <div className="fh-num mt-1 text-[30px] font-black leading-none tracking-[-0.02em]">
+                    {formatCLP(kardex.producto.priceGross)}
+                  </div>
+                  <div className="mt-1 text-[12.5px] text-ink-soft">por {kardex.producto.unidad}</div>
+                </div>
+
                 {esAdmin && kardex.producto.costNetMilliPeso !== undefined ? (
-                  <>
-                    <div>
-                      <p className="text-2xl font-bold tabular-nums text-ink">
-                        {formatCostoMilli(kardex.producto.costNetMilliPeso)} / {kardex.producto.unidad}
-                      </p>
-                      <p className="text-xs uppercase tracking-wide text-ink-soft">costo promedio</p>
+                  <div className="w-[150px] border-l border-line-soft p-5">
+                    <div className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">
+                      Costo prom.
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold tabular-nums text-ink">{formatCLP(valorNeto ?? 0)}</p>
-                      <p className="text-xs uppercase tracking-wide text-ink-soft">valor neto</p>
+                    <div className="fh-num mt-1 text-[30px] font-black leading-none tracking-[-0.02em]">
+                      {formatCostoMilli(kardex.producto.costNetMilliPeso)}
                     </div>
-                  </>
+                    <div className="mt-1 text-[12.5px] text-ink-soft">
+                      neto · valor {formatCLP(valorNeto ?? 0)}
+                    </div>
+                  </div>
                 ) : null}
               </div>
             </section>
@@ -346,50 +395,58 @@ export function Kardex() {
                 : "Este producto todavía no tiene historia. Su stock inicial entra por el importador de Excel, en la columna «Stock inicial», o registrando la compra al proveedor."}
             </p>
           ) : (
-            <div className="overflow-hidden rounded-[var(--fh-radio)] border border-line bg-surface">
-              <table className="w-full text-sm">
-                <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
+            <div className="overflow-x-auto border border-line bg-surface">
+              <table className="w-full">
+                <thead className="border-b-2 border-ink text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Fecha</th>
-                    <th className="px-3 py-2 text-left font-semibold">Movimiento</th>
-                    <th className="px-3 py-2 text-right font-semibold">Cantidad ({kardex.producto.unidad})</th>
-                    <th className="px-3 py-2 text-right font-semibold">Saldo ({kardex.producto.unidad})</th>
+                    <th className="w-[150px] px-[14px] py-[9px] text-left font-extrabold">Cuándo</th>
+                    <th className="px-[14px] py-[9px] text-left font-extrabold">Movimiento</th>
+                    <th className="px-[14px] py-[9px] text-right font-extrabold">Cantidad ({kardex.producto.unidad})</th>
+                    <th className="px-[14px] py-[9px] text-right font-extrabold">Saldo ({kardex.producto.unidad})</th>
                     {/* Es el promedio DESPUÉS del movimiento, no lo que costó
                         este movimiento: la columna es una foto del saldo, igual
                         que la de al lado. Decir "Costo u." invitaba a leer
                         "compré a $486" en una compra que fue a $550. */}
-                    {esAdmin ? <th className="px-3 py-2 text-right font-semibold">Promedio</th> : null}
-                    <th className="px-3 py-2 text-left font-semibold">Quién</th>
-                    <th className="px-3 py-2 text-left font-semibold">Referencia / motivo</th>
+                    {esAdmin ? <th className="px-[14px] py-[9px] text-right font-extrabold">Promedio</th> : null}
+                    <th className="px-[14px] py-[9px] text-left font-extrabold">Quién</th>
+                    <th className="px-[14px] py-[9px] text-left font-extrabold">Referencia / motivo</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line">
+                <tbody className="text-sm">
                   {kardex.movimientos.map((m) => (
-                    <tr key={m.id}>
-                      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-ink-soft">
+                    <tr key={m.id} className="border-b border-line-soft last:border-0">
+                      <td className="fh-num whitespace-nowrap px-[14px] py-[10px] font-mono text-[12.5px] text-mono-ink">
                         {fechaCorta(m.createdAt)}
                       </td>
-                      <td className="px-3 py-2">
+                      <td className="px-[14px] py-[10px]">
                         <Chip tono={m.tono}>{m.etiqueta}</Chip>
                       </td>
-                      {/* El signo va explícito: "+100" y "−7,5" se distinguen de
-                          un vistazo, y el color solo no basta (brief §2.4). */}
-                      <td className="px-3 py-2 text-right tabular-nums font-semibold text-ink">
+                      {/* El signo va explícito Y el color: "+100" y "−7,5" se
+                          distinguen de un vistazo, y el color solo no basta
+                          (brief §2.4). Lo que entra en verde, lo que sale en
+                          rojo legible — nunca en rojo pleno. */}
+                      <td
+                        className={`fh-num px-[14px] py-[10px] text-right text-base font-extrabold ${
+                          m.qtyMilli > 0 ? "text-ok-ink" : "text-accent-ink"
+                        }`}
+                      >
                         {m.qtyMilli > 0 ? "+" : "−"}
                         {formatQty(Math.abs(m.qtyMilli), kardex.producto.allowsFraction)}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-ink">
+                      <td className="fh-num px-[14px] py-[10px] text-right font-semibold">
                         {formatQty(m.balanceMilli, kardex.producto.allowsFraction)}
                       </td>
                       {esAdmin ? (
-                        <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
+                        <td className="fh-num px-[14px] py-[10px] text-right text-ink-soft">
                           {m.balanceCostNetMilliPeso !== undefined
                             ? formatCostoMilli(m.balanceCostNetMilliPeso)
                             : "—"}
                         </td>
                       ) : null}
-                      <td className="whitespace-nowrap px-3 py-2 text-ink-soft">{m.user.name}</td>
-                      <td className="px-3 py-2 text-ink-soft">{m.referencia ?? m.reason ?? "—"}</td>
+                      <td className="whitespace-nowrap px-[14px] py-[10px] text-ink-soft">{m.user.name}</td>
+                      <td className="fh-num px-[14px] py-[10px] font-mono text-[12px] text-mono-ink">
+                        {m.referencia ?? m.reason ?? "—"}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

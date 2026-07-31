@@ -133,6 +133,15 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
         factorMilli: factor,
         allowsFraction: fraccion,
         costNetMilliPeso: producto.costNetMilliPeso,
+        /*
+          Precio y mínimo van en la cabecera del kardex porque son la mitad de
+          la pregunta que trae a alguien acá: uno abre el kardex cuando el saldo
+          «no puede ser», y para saber si 8 es poco hay que ver contra qué.
+          El precio NO lleva el filtro de rol que sí llevan los costos: es el de
+          la repisa, lo sabe el cliente antes que el vendedor.
+        */
+        priceGross: producto.priceGross,
+        reorderLevelBaseMilli: producto.reorderLevelBaseMilli,
       },
       saldoBaseMilli: nivel?.qtyBaseMilli ?? 0,
       hayHistoria,
