@@ -67,9 +67,29 @@ export function recalcAverageCost(params: {
   return roundSym((newValue * 1_000_000) / newBalance);
 }
 
-/** Formato chileno: punto de miles, sin decimales. */
+/**
+ * Formato chileno: punto de miles, sin decimales.
+ *
+ * El signo va DELANTE del peso: `-$10.000`, no `$-10.000`. Pegar el `$` al
+ * número deja el menos en medio y se lee como un guion, sobre todo en una
+ * columna angosta y a la distancia del mesón. Se descubrió mirando la tabla de
+ * movimientos de caja, donde un retiro salía como `$-10.000`.
+ */
 export function formatCLP(pesos: number): string {
-  return "$" + new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(pesos);
+  const signo = pesos < 0 ? "-" : "";
+  const absoluto = new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(Math.abs(pesos));
+  return `${signo}$${absoluto}`;
+}
+
+/**
+ * Hora en formato de 24 horas. `es-CL` por omisión devuelve "09:01 p. m.", que
+ * es más largo, se lee peor en una columna y obliga a distinguir "a. m." de
+ * "p. m." de un vistazo. En una tienda se habla en 24 horas.
+ */
+export function formatHora(fecha: Date | string): string {
+  return new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false }).format(
+    typeof fecha === "string" ? new Date(fecha) : fecha,
+  );
 }
 
 /** Cantidad en milésimas → texto con coma decimal, sin ceros de relleno. */

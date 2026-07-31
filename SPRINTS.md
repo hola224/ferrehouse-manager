@@ -127,11 +127,10 @@ en el Sprint 3 con el ticket, y el lector es físico.
 
 ---
 
-## Sprint 2 — Caja (Semana 3) 🟡 servidor entregado el 2026-07-30
+## Sprint 2 — Caja (Semana 3) ✅ cerrado el 2026-07-30
 
-> Las 7 tareas de servidor están hechas y probadas. **La 2.8 espera el ok al
-> wireframe** ([`.agents/WIREFRAMES/2.8-cierre-de-caja.md`](.agents/WIREFRAMES/2.8-cierre-de-caja.md)),
-> El **conteo ciego** ya quedó decidido e implementado en el servidor.
+> Las 8 tareas entregadas, incluida la pantalla clave. El **conteo ciego** se
+> decidió y se implementó en el servidor, no en la pantalla.
 
 **Objetivo:** el ciclo de la plata completo, sin ventas todavía. Apertura → movimientos → cierre con arqueo.
 
@@ -144,14 +143,14 @@ en el Sprint 3 con el ticket, y el lector es físico.
 | 2.5 ✅ | Reporte de cierre imprimible (cola `PrintJob` hacia `Station.printerTarget`, puede salir a archivo si la impresora no está integrada) | — |
 | 2.6 ✅ | Alerta si la diferencia supera `alert.cashDiffLimit` | ALE-03 |
 | 2.7 ✅ | CRUD mínimo de estaciones (admin): nombre, ubicación, destino de impresión | ADR-004 |
-| 2.8 ⏸ | **Pantalla clave del sprint: cierre de caja en 3 pasos.** **Conteo ciego** (decidido el 2026-07-30): el vendedor cuenta e ingresa → confirma → recién ahí aparece la diferencia, con color **y palabra**. El servidor ya no le sirve el monto esperado, con tests que lo comprueban. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
+| 2.8 ✅ | **Pantalla clave del sprint: cierre de caja en 3 pasos.** **Conteo ciego** (decidido el 2026-07-30): el vendedor cuenta e ingresa → confirma → recién ahí aparece la diferencia, con color **y palabra**. El servidor ya no le sirve el monto esperado, con tests que lo comprueban. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
 
 **Invariantes que estrena este sprint:**
 - `closedAt IS NULL ⟺ openStationId IS NOT NULL` — **lo impone la base** vía los `CHECK` de la tarea 0.2, no el código. Es la única señal de abierta/cerrada: no hay campo `status`.
 
 **Demo de cierre:** turno completo simulado: abrir con $50.000, retirar $10.000 para el flete, cerrar contando — la diferencia aparece sola. Intentar abrir una segunda caja en la misma estación y ver que el sistema la rechaza.
 
-**Cómo va:** 7 de 8 tareas. **218 tests en verde en el repo**, 45 de ellos
+**Cómo cerró:** 8 de 8 tareas. **218 tests en verde en el repo**, 45 de ellos
 nuevos. La demo de cierre está escrita como test de punta a punta —abrir con
 $50.000, rechazo de la segunda apertura, retiro de $10.000 por el flete, contar
 $39.500 y ver aparecer la diferencia—, así que no depende de que alguien se

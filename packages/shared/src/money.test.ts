@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { roundCash, roundSym, netFromGross, taxFromGross, toBaseMilli, recalcAverageCost } from "./money.js";
+import {
+  roundCash,
+  roundSym,
+  netFromGross,
+  taxFromGross,
+  toBaseMilli,
+  recalcAverageCost,
+  formatCLP,
+  formatHora,
+} from "./money.js";
 
 describe("redondeo de efectivo", () => {
   it("redondea a la decena", () => {
@@ -96,5 +105,24 @@ describe("roundSym", () => {
   it("aleja del cero en el 0,5 exacto", () => {
     expect(roundSym(2.5)).toBe(3);
     expect(roundSym(-2.5)).toBe(-3);
+  });
+});
+
+describe("formato de plata negativa y horas", () => {
+  /**
+   * `$-10.000` se lee como un guion perdido en medio del número, sobre todo en
+   * una columna angosta. Se vio en la tabla de movimientos de caja.
+   */
+  it("el signo va delante del peso", () => {
+    expect(formatCLP(-10_000)).toBe("-$10.000");
+    expect(formatCLP(10_000)).toBe("$10.000");
+    expect(formatCLP(0)).toBe("$0");
+    expect(formatCLP(-500)).toBe("-$500");
+  });
+
+  it("la hora va en 24 horas, no en 'p. m.'", () => {
+    const tarde = new Date(2026, 6, 30, 21, 1);
+    expect(formatHora(tarde)).toBe("21:01");
+    expect(formatHora(new Date(2026, 6, 30, 9, 5))).toBe("09:05");
   });
 });

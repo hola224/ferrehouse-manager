@@ -84,9 +84,11 @@ Detalle en [`BITACORA.md`](BITACORA.md).
 Quedan sin interfaz, con sus endpoints listos y probados: alta de producto,
 importación y usuarios.
 
-**Sprint actual: 2 — Caja.** Las 7 tareas de servidor entregadas el 2026-07-30
-(218 tests en verde). **La pantalla de cierre espera el ok al wireframe**
-([`.agents/WIREFRAMES/2.8-cierre-de-caja.md`](.agents/WIREFRAMES/2.8-cierre-de-caja.md)).
+**Sprint 2 — Caja: cerrado el 2026-07-30.** Las 8 tareas, incluida la pantalla
+de cierre en 3 pasos. El **arqueo es a ciegas**: el vendedor cuenta y escribe
+antes de que aparezca nada, y el servidor tampoco le sirve el monto esperado.
+
+**Sprint actual: 3 — POS, la venta.** El más pesado del plan.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

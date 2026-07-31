@@ -88,6 +88,13 @@ export type EstadoArqueo = {
  *
  * `diferencia = contado − esperado`. Positiva sobra plata, negativa falta.
  *
+ * Los mensajes están en PASADO —"quedó registrado", no "antes de cerrar"—
+ * porque cuando este texto se lee, la caja YA está cerrada. Con conteo ciego no
+ * hay otra forma: el esperado no se puede mostrar sin comprometer el conteo, y
+ * comprometerlo es cerrar. El aviso de "revisa bien" va en el paso anterior,
+ * que es donde todavía se puede volver atrás. Un texto que pide algo imposible
+ * enseña a no leer los textos.
+ *
  * Que sobre NO es bueno: significa que algo no se registró —una venta cobrada
  * y no ingresada, un vuelto mal dado— y es tan sintomático como que falte. Por
  * eso el umbral se compara en valor absoluto.
@@ -105,7 +112,7 @@ export function estadoArqueo(diferencia: number, limite: number): EstadoArqueo {
     return {
       tono: "warn",
       palabra: falta ? "falta poco" : "sobra poco",
-      mensaje: `${verbo} ${monto}. Está dentro de lo tolerado, pero queda registrado.`,
+      mensaje: `${verbo} ${monto}. Está dentro de lo tolerado, y quedó registrado.`,
       franja: false,
     };
   }
@@ -114,8 +121,8 @@ export function estadoArqueo(diferencia: number, limite: number): EstadoArqueo {
     tono: "error",
     palabra: "descuadrada",
     mensaje: falta
-      ? `Faltan ${monto}. Cuenta de nuevo antes de cerrar; si el número es correcto, se registra y queda una alerta para el administrador.`
-      : `Sobran ${monto}. Suele ser una venta cobrada y no registrada. Cuenta de nuevo antes de cerrar.`,
+      ? `Faltan ${monto}. Quedó registrado y el administrador tiene una alerta.`
+      : `Sobran ${monto}. Suele ser una venta cobrada y no registrada. Quedó registrado y el administrador tiene una alerta.`,
     franja: true,
   };
 }

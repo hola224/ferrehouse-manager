@@ -487,3 +487,33 @@ cuenta".
 
 - **Aprobar el wireframe del cierre de caja (2.8)**, ya reescrito con el conteo
   ciego.
+
+### La pantalla de cierre, y el texto que pedía algo imposible
+
+Wireframe aprobado y construido. Verificada en pantalla a 1366×768 recorriendo
+el turno completo con token de vendedor: abrir, retirar por el flete, contar,
+confirmar y ver la diferencia.
+
+Mirarla destapó tres cosas que ningún test veía:
+
+1. **`$-10.000`.** El signo quedaba después del peso, y en una columna angosta
+   se lee como un guion perdido. Está en `formatCLP`, o sea que afectaba a toda
+   la plata negativa del sistema —el reporte impreso, y las devoluciones que
+   vienen en el Sprint 3—. Ahora es `-$10.000`.
+
+2. **"09:01 p. m."** en la tabla de movimientos. `es-CL` devuelve 12 horas por
+   omisión; en una tienda se habla en 24. Se agregó `formatHora` a `shared`
+   para que no lo decida cada pantalla.
+
+3. **El texto pedía algo imposible.** El mensaje decía "cuenta de nuevo antes de
+   cerrar" justo encima de una nota que decía que la caja ya estaba cerrada. Y
+   las dos eran ciertas: con conteo ciego, mostrar el esperado ES comprometer el
+   conteo, y comprometerlo es cerrar. No hay forma de que el paso 3 sea previo
+   al cierre.
+
+   La corrección no fue cambiar el flujo sino las palabras: el paso 3 habla en
+   pasado —"quedó registrado"— y su botón imprime el respaldo en vez de prometer
+   un cierre que ya ocurrió. La advertencia se movió al **paso 2**, que es donde
+   todavía se puede volver atrás, y ahí dice con todas sus letras que es el punto
+   de no retorno. Un texto que pide algo imposible enseña a no leer los textos,
+   y eso se paga en la pantalla siguiente.

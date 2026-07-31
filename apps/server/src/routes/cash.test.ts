@@ -216,7 +216,7 @@ describe("cierre con arqueo (tareas 2.4 y 2.6)", () => {
     expect(body.diferencia).toBe(-1_000);
     expect(body.estado.tono).toBe("warn");
     expect(body.estado.palabra).toBe("falta poco");
-    expect(body.estado.mensaje).toContain("queda registrado");
+    expect(body.estado.mensaje).toContain("quedó registrado");
     expect(body.alerta).toBeNull();
   });
 

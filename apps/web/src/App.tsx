@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Catalogo } from "@/pages/Catalogo";
+import { Caja } from "@/pages/Caja";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           <nav className="flex gap-4 text-sm">
             <Link to="/catalogo" className="text-ink-soft hover:text-ink">
               Catálogo
+            </Link>
+            <Link to="/caja" className="text-ink-soft hover:text-ink">
+              Caja
             </Link>
           </nav>
         </div>
@@ -68,6 +72,14 @@ export function App() {
             element={
               <Privado>
                 <Catalogo />
+              </Privado>
+            }
+          />
+          <Route
+            path="/caja"
+            element={
+              <Privado>
+                <Caja />
               </Privado>
             }
           />
