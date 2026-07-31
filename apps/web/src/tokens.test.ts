@@ -6,13 +6,34 @@
  * elemento sale sin color — sin error, sin advertencia, y solo se ve en el mesón.
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tokens = readFileSync(join(raiz, "src/tokens.css"), "utf-8");
 const config = readFileSync(join(raiz, "tailwind.config.js"), "utf-8");
+
+/**
+ * Todo el código del frontend, SIN comentarios: un comentario que explica el
+ * error —"antes decía `var(--fh-ink)`"— no es el error, y sin sacarlos
+ * documentar la corrección la volvería a marcar como defecto.
+ */
+function sinComentarios(texto: string): string {
+  return texto.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+}
+
+function fuentes(dir: string, acc: { ruta: string; texto: string }[] = []) {
+  for (const e of readdirSync(dir)) {
+    const ruta = join(dir, e);
+    if (statSync(ruta).isDirectory()) fuentes(ruta, acc);
+    else if (/\.(css|tsx?|jsx?)$/.test(e) && !/\.test\./.test(e)) {
+      acc.push({ ruta, texto: sinComentarios(readFileSync(ruta, "utf-8")) });
+    }
+  }
+  return acc;
+}
+const ARCHIVOS = fuentes(join(raiz, "src"));
 
 const definidas = new Set([...tokens.matchAll(/^\s*(--fh-[a-z-]+):/gm)].map((m) => m[1]!));
 const usadas = new Set([...config.matchAll(/var\((--fh-[a-z-]+)\)/g)].map((m) => m[1]!));
@@ -67,5 +88,36 @@ describe("tokens", () => {
     for (const v of COLORES) {
       expect(config).toContain(`rgb(var(${v}) / <alpha-value>)`);
     }
+  });
+
+  /**
+   * Un token declarado y nunca usado es una promesa que nadie cumplió.
+   * `--fh-foco` estuvo así todo el Sprint 0: definido, documentado, y el
+   * anillo de foco lo escribía a mano en otra parte.
+   */
+  it("todo token declarado se usa en alguna parte", () => {
+    const declarados = [...tokens.matchAll(/^\s*(--fh-[a-z-]+):/gm)].map((m) => m[1]!);
+    const sinUsar = declarados.filter((v) => {
+      if (config.includes(v)) return false;
+      return !ARCHIVOS.some((a) => a.texto.includes(`var(${v})`) && !a.ruta.endsWith("tokens.css"));
+    });
+    expect(sinUsar, "declarados pero no usados en ninguna parte").toEqual([]);
+  });
+
+  /**
+   * El guardián de la regresión que introdujo el paso a canales: fuera de
+   * tokens.css, un token de COLOR no se puede usar como `var(--fh-ink)` a
+   * secas. Con canales adentro eso es CSS inválido y el navegador descarta la
+   * declaración sin decir nada — así se perdió el anillo de foco.
+   */
+  it("ningún color se usa como var() pelado fuera de tokens.css", () => {
+    const malos: string[] = [];
+    for (const a of ARCHIVOS) {
+      if (a.ruta.endsWith("tokens.css")) continue;
+      for (const m of a.texto.matchAll(/(?<!rgb\()var\((--fh-[a-z-]+)\)/g)) {
+        if (COLORES.includes(m[1]!)) malos.push(`${a.ruta.split("/src/")[1]} → ${m[0]}`);
+      }
+    }
+    expect(malos, "envuélvelo en rgb(), o usa la clase de Tailwind").toEqual([]);
   });
 });

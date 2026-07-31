@@ -32,7 +32,10 @@
   --fh-error: 192 57 43;       /* #c0392b — anulación, quiebre, caja descuadrada */
 
   --fh-radio: 6px;
-  --fh-foco: 0 0 0 3px rgb(var(--fh-ink) / 0.15);
+  /* El anillo de foco, completo: `index.css` lo aplica tal cual. El teclado es
+     el modo principal de operar, así que esto no es un detalle de accesibilidad
+     sino la única señal de dónde está parado el vendedor. */
+  --fh-foco: 2px solid rgb(var(--fh-ink));
 }
 
 /*

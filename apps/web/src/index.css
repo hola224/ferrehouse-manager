@@ -13,9 +13,16 @@
   body {
     @apply bg-bg text-ink font-sans antialiased;
   }
-  /* Foco visible en TODO lo interactivo: se opera con teclado. */
+  /*
+   * Foco visible en TODO lo interactivo: se opera con teclado (brief §6).
+   *
+   * El color NO se escribe acá: `var(--fh-foco)` trae el anillo entero. Antes
+   * decía `2px solid var(--fh-ink)`, y cuando los tokens pasaron a canales eso
+   * quedó como `2px solid 22 24 26` — CSS inválido, descartado en silencio, y
+   * la pantalla que se opera sin mouse se quedó sin indicar dónde está el foco.
+   */
   :focus-visible {
-    outline: 2px solid var(--fh-ink);
+    outline: var(--fh-foco);
     outline-offset: 2px;
   }
   /* Un POS que "anima" se siente lento aunque no lo sea. */

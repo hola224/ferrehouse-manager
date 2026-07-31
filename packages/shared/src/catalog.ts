@@ -15,6 +15,7 @@
  * unidades ya resueltas.
  */
 import { z } from "zod";
+import { roundSym, netFromGross } from "./money.js";
 
 // ============================================================
 // Piezas sueltas
@@ -238,7 +239,7 @@ export function parsePesos(texto: string | number | null | undefined): number | 
  */
 export function parseCantidadMilli(texto: string | number | null | undefined): number | null {
   if (texto == null || texto === "") return null;
-  if (typeof texto === "number") return Number.isFinite(texto) ? Math.round(texto * 1000) : null;
+  if (typeof texto === "number") return Number.isFinite(texto) ? roundSym(texto * 1000) : null;
 
   const t = texto.trim().replace(/\s/g, "");
   let normalizado: string;
@@ -254,8 +255,9 @@ export function parseCantidadMilli(texto: string | number | null | undefined): n
   if (!/^-?\d+(\.\d+)?$/.test(normalizado)) return null;
   const valor = Number(normalizado);
   if (!Number.isFinite(valor)) return null;
-  // Redondeo simétrico: `Math.round(-2.5)` da -2 y rompería el signo.
-  return Math.sign(valor) * Math.round(Math.abs(valor) * 1000);
+  // Simétrico, con la función de `money.ts`: `Math.round(-2.5)` da -2 y una
+  // cantidad negativa se correría hacia el cero.
+  return roundSym(valor * 1000);
 }
 
 /**
@@ -295,7 +297,7 @@ export function costoPorUnidadDeVenta(p: {
   saleUnit: { factorMilli: number };
 }): number {
   // milésimas de peso por base × (milésimas de base por venta / 1000) / 1000
-  return roundSymLocal((p.costNetMilliPeso * p.saleUnit.factorMilli) / 1_000_000);
+  return roundSym((p.costNetMilliPeso * p.saleUnit.factorMilli) / 1_000_000);
 }
 
 /**
@@ -309,14 +311,10 @@ export function margenPorcentaje(p: {
   taxRatePercent?: number;
 }): number | null {
   if (p.costNetMilliPeso === undefined) return null;
-  const tasa = p.taxRatePercent ?? 19;
-  const neto = roundSymLocal(p.priceGross / (1 + tasa / 100));
+  // El neto sale por residuo, con la misma función que usa la venta: si acá se
+  // calculara distinto, el margen del catálogo y el del reporte no coincidirían.
+  const neto = netFromGross(p.priceGross, p.taxRatePercent ?? 19);
   if (neto <= 0) return null;
   const costo = costoPorUnidadDeVenta({ costNetMilliPeso: p.costNetMilliPeso, saleUnit: p.saleUnit });
   return ((neto - costo) / neto) * 100;
-}
-
-/** Copia local del redondeo simétrico para no cruzar módulos (ver money.ts). */
-function roundSymLocal(x: number): number {
-  return Math.sign(x) * Math.round(Math.abs(x));
 }
