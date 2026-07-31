@@ -13,7 +13,8 @@
  * arregla el Excel de una pasada, no de diez subidas.
  */
 import { useRef, useState } from "react";
-import { getToken } from "@/lib/api";
+import { getToken, ApiError } from "@/lib/api";
+import { descargarArchivo } from "@/lib/descargar";
 import { Acciones, Boton, Modal } from "@/components/ui";
 
 type Informe = {
@@ -110,27 +111,12 @@ export function ImportarProductos({ onCerrar, onImportado }: { onCerrar: () => v
           <a
             href="/api/import/products/template.xlsx"
             className="ml-auto text-sm underline underline-offset-4"
-            /*
-              La plantilla NO se puede bajar con un `href` a secas: la ruta
-              exige rol de administrador y una descarga del navegador no manda
-              la cabecera `authorization`, así que devolvería 401 y el usuario
-              vería un archivo roto sin ninguna explicación. Se pide con
-              `fetch`, que sí lleva el token, y el blob se guarda a mano.
-            */
+            /* Por qué no es un `href` a secas: ver `lib/descargar.ts`. */
             onClick={(e) => {
               e.preventDefault();
-              void fetch("/api/import/products/template.xlsx", {
-                headers: { authorization: `Bearer ${getToken() ?? ""}` },
-              })
-                .then((r) => r.blob())
-                .then((b) => {
-                  const url = URL.createObjectURL(b);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "plantilla-productos.xlsx";
-                  a.click();
-                  URL.revokeObjectURL(url);
-                });
+              void descargarArchivo("/api/import/products/template.xlsx", "plantilla-productos.xlsx").catch((err) =>
+                setError(err instanceof ApiError ? err.message : "No se pudo bajar la plantilla"),
+              );
             }}
           >
             Bajar la plantilla vacía

@@ -15,6 +15,7 @@
  *   quiebre (ALE-02) no lo ve nunca.
  */
 import type { FastifyInstance } from "fastify";
+import ExcelJS from "exceljs";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "../db.js";
@@ -34,6 +35,8 @@ import {
   normalizeSearch,
   normalizeBarcode,
   puedeEditarCosto,
+  costoMilliPorUnidadDeVenta,
+  margenDeListaPct,
   type UnitLike,
   TIPOS_QUE_FIJAN_COSTO,
 } from "@ferrehouse/shared";
@@ -435,6 +438,87 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       producto: await db.product.findUniqueOrThrow({ where: { id }, ...productoCompleto }),
       conversion: describirConversion(venta, compra),
     };
+  });
+
+  /**
+   * El catálogo en un Excel. Solo el administrador: lleva costo y margen.
+   *
+   * **NO es la plantilla de importación, y la hoja lo dice en su primera fila.**
+   * El importador solo CREA productos —reserva SKU nuevos con `reserveSkuRange`
+   * y llama a `product.create`; no existe ningún camino que actualice uno
+   * existente—, así que exportar con la forma de la plantilla y volver a
+   * subirla duplicaría la ferretería entera con SKU nuevos. Por eso este
+   * archivo lleva el SKU adelante, incluye columnas que la plantilla no tiene
+   * (margen, estado, saldo) y no pretende viajar de vuelta.
+   */
+  app.get("/api/products/export.xlsx", soloAdmin, async (_req, reply) => {
+    const productos = await db.product.findMany({
+      where: { deletedAt: null },
+      ...productoCompleto,
+      orderBy: { name: "asc" },
+    });
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Ferrehouse Manager";
+    const hoja = wb.addWorksheet("Catálogo");
+
+    hoja.columns = [
+      { header: "SKU", key: "sku", width: 12 },
+      { header: "Nombre", key: "nombre", width: 40 },
+      { header: "Categoría", key: "categoria", width: 18 },
+      { header: "Marca", key: "marca", width: 16 },
+      { header: "Proveedor", key: "proveedor", width: 20 },
+      { header: "Unidad de venta", key: "unidad", width: 16 },
+      { header: "Precio con IVA", key: "precio", width: 15 },
+      { header: "Costo neto (unidad base)", key: "costo", width: 22 },
+      { header: "Margen %", key: "margen", width: 11 },
+      { header: "Saldo (unidad base)", key: "saldo", width: 18 },
+      { header: "Stock mínimo", key: "minimo", width: 14 },
+      { header: "Estado", key: "estado", width: 14 },
+      { header: "Códigos de barra", key: "codigos", width: 32 },
+    ];
+    hoja.getRow(1).font = { bold: true };
+    hoja.getRow(1).getCell(1).note =
+      "Este archivo es para LEER, no para volver a subir. La importación solo crea productos nuevos: " +
+      "si subes esto, la ferretería queda duplicada con SKU nuevos. Para cambiar precios, edítalos en el sistema.";
+
+    for (const p of productos) {
+      const saldoMilli = p.stockLevels.reduce((s, n) => s + n.qtyBaseMilli, 0);
+      /*
+        El costo y el margen salen de `@ferrehouse/shared`, NO de una cuenta
+        escrita acá. El costo se guarda por unidad BASE y el precio por unidad
+        de VENTA, y mezclarlos es un error que ya ocurrió: un saco de 25 kg
+        aparecía con 96,7% de margen cuando el real era 17,5%. La conversión
+        vive en un solo lugar justamente para que no vuelva a pasar.
+      */
+      const costoVenta = costoMilliPorUnidadDeVenta(p);
+      const margen = margenDeListaPct(p);
+      const bajo = saldoMilli <= p.reorderLevelBaseMilli;
+      hoja.addRow({
+        sku: p.sku,
+        nombre: p.name,
+        categoria: p.category?.name ?? "",
+        marca: p.brand?.name ?? "",
+        proveedor: p.supplier?.name ?? "",
+        unidad: p.saleUnit.symbol,
+        precio: p.priceGross,
+        // Costo cero es «todavía no se cargó», no «sale gratis»: va vacío, que
+        // es lo que la pantalla muestra como raya.
+        costo: p.costNetMilliPeso === 0 ? "" : Math.round(costoVenta / 1000),
+        margen: margen === null ? "" : Number(margen.toFixed(1)),
+        saldo: saldoMilli / 1000,
+        minimo: p.reorderLevelBaseMilli / 1000,
+        estado: !p.active ? "Inactivo" : bajo ? "Stock bajo" : "OK",
+        codigos: p.barcodes.map((b) => b.code).join(", "),
+      });
+    }
+
+    const buffer = Buffer.from(await wb.xlsx.writeBuffer());
+    const hoy = new Date().toISOString().slice(0, 10);
+    return reply
+      .type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      .header("content-disposition", `attachment; filename="catalogo-ferrehouse-${hoy}.xlsx"`)
+      .send(buffer);
   });
 
   /**

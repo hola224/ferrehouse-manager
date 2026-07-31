@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, getToken } from "@/lib/api";
+import { descargarArchivo } from "@/lib/descargar";
 import { useAuth } from "@/lib/auth";
 import { useAtajos } from "@/lib/atajos";
 import { Boton, Chip } from "@/components/ui";
@@ -111,6 +112,7 @@ export function Catalogo() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState(0);
+  const [exportando, setExportando] = useState(false);
   const [abierto, setAbierto] = useState<Producto | null>(null);
   /** `undefined` = cerrado, `null` = alta, número = editar ese producto. */
   const [formulario, setFormulario] = useState<number | null | undefined>(undefined);
@@ -222,6 +224,29 @@ export function Catalogo() {
     formulario === undefined && !importando && !abierto,
   );
 
+  /**
+   * El catálogo en un Excel, para revisar precios fuera del sistema o mandarle
+   * la lista a alguien.
+   *
+   * **No es la plantilla de importación y no se puede volver a subir**: el
+   * importador solo crea productos nuevos, así que reimportar esto duplicaría
+   * la ferretería entera con SKU nuevos. La advertencia va también dentro del
+   * archivo, en una nota sobre la primera celda, porque el archivo se abre en
+   * otro computador y en otro momento — donde este comentario no llega.
+   */
+  async function exportar() {
+    setExportando(true);
+    setError(null);
+    try {
+      const hoy = new Date().toISOString().slice(0, 10);
+      await descargarArchivo("/api/products/export.xlsx", `catalogo-ferrehouse-${hoy}.xlsx`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo exportar el catálogo");
+    } finally {
+      setExportando(false);
+    }
+  }
+
   function cerrarFormulario() {
     setFormulario(undefined);
     volverAlFoco();
@@ -248,9 +273,14 @@ export function Catalogo() {
           </p>
         </div>
         {esAdmin ? (
-          <Boton variante="principal" className="shrink-0" onClick={() => setFormulario(null)} tecla="F2">
-            + Producto nuevo
-          </Boton>
+          <div className="flex shrink-0 gap-2">
+            <Boton onClick={() => void exportar()} disabled={exportando}>
+              {exportando ? "Armando…" : "Exportar Excel"}
+            </Boton>
+            <Boton variante="principal" onClick={() => setFormulario(null)} tecla="F2">
+              + Producto nuevo
+            </Boton>
+          </div>
         ) : null}
       </div>
 
