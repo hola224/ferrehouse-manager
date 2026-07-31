@@ -45,9 +45,19 @@ export function toBaseMilli(qtyMilli: number, factorMilli: number): number {
  * Costo promedio ponderado (ADR-005). Solo lo llaman los movimientos que
  * INGRESAN mercadería: sacar no cambia lo que costó lo que queda.
  *
- * Devuelve el nuevo costo unitario en milésimas de peso. Si el saldo resultante
- * es cero o negativo, conserva el costo anterior: dividir por él daría infinito
- * y un valorizado sin sentido.
+ * Devuelve el nuevo costo unitario en milésimas de peso.
+ *
+ * **La guarda de saldo ≤ 0 (tarea 4.2) no es solo para no dividir por cero.**
+ * Si el saldo anterior es negativo —y lo es cada vez que se vendió contra
+ * stock sin cargar, que es exactamente el estado en que llega este sprint—,
+ * el promedio ponderado estaría promediando contra una deuda cuyo costo nunca
+ * existió: el valor previo entra negativo y el promedio sale muy por debajo de
+ * lo que se acaba de pagar. En ese caso el costo del ingreso PASA A SER el
+ * costo del producto, sin promediar. Es el único dato real que hay.
+ *
+ * Conservar el costo anterior sería peor y además silencioso: se digita una
+ * factura con el precio nuevo del proveedor y el sistema sigue calculando el
+ * margen con el costo viejo sin avisar nada.
  */
 export function recalcAverageCost(params: {
   prevBalanceBaseMilli: number;
@@ -57,6 +67,11 @@ export function recalcAverageCost(params: {
 }): number {
   const { prevBalanceBaseMilli, prevCostNetMilliPeso, incomingBaseMilli, incomingTotalCostNet } = params;
   const newBalance = prevBalanceBaseMilli + incomingBaseMilli;
+
+  if (prevBalanceBaseMilli <= 0) {
+    if (incomingBaseMilli <= 0) return prevCostNetMilliPeso;
+    return roundSym((Math.abs(incomingTotalCostNet) * 1_000_000) / incomingBaseMilli);
+  }
   if (newBalance <= 0) return prevCostNetMilliPeso;
   // Ojo con los denominadores: el saldo está en MILÉSIMAS de unidad base y el
   // costo en MILÉSIMAS de peso por unidad base, así que el valor en pesos

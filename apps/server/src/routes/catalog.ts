@@ -35,6 +35,7 @@ import {
   normalizeBarcode,
   puedeEditarCosto,
   type UnitLike,
+  TIPOS_QUE_FIJAN_COSTO,
 } from "@ferrehouse/shared";
 
 /** 400 con mensaje en español, que es lo que la UI muestra tal cual. */
@@ -262,7 +263,7 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       producto,
       conversion: describirConversion(producto.saleUnit, producto.purchaseUnit),
       // Cuántos movimientos tiene decide si el costo todavía se puede teclear.
-      movimientos: await db.stockMovement.count({ where: { productId: id } }),
+      movimientos: await db.stockMovement.count({ where: { productId: id, type: { in: TIPOS_QUE_FIJAN_COSTO } } }),
     };
   });
 
@@ -332,7 +333,16 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     const [venta, compra] = await resolverUnidades(saleUnitId, purchaseUnitId);
 
     if (datos.costNetMilliPeso !== undefined) {
-      const movimientos = await db.stockMovement.count({ where: { productId: id } });
+      /**
+       * Se cuentan SOLO los movimientos que traen un costo propio (Sprint 4).
+       * Contar todos —como se hacía— dejaba el costo bloqueado apenas el
+       * producto se vendía una vez, y una venta no fija ningún costo: lo copia
+       * del vigente. En un producto vendido antes de cargar el inventario
+       * inicial eso significaba no poder corregir nunca el costo tecleado mal.
+       */
+      const movimientos = await db.stockMovement.count({
+        where: { productId: id, type: { in: TIPOS_QUE_FIJAN_COSTO } },
+      });
       if (!puedeEditarCosto(movimientos)) {
         throw malaPeticion(
           "El costo de este producto ya lo manda el libro de stock: se recalcula solo con cada compra. " +

@@ -11,10 +11,12 @@
  *    de stock, movimiento de caja y trabajo de impresión. Una venta a medias
  *    —cobrada y sin descontar stock, o al revés— no es representable.
  *
- * 3. **En este sprint la venta descuenta stock SIN validar saldo.** Es
- *    deliberado y está en el plan: el kardex llega en el Sprint 4 y con él la
- *    validación (tarea 4.5). Vender contra saldo negativo hoy es correcto
- *    porque el inventario inicial todavía no se cargó.
+ * 3. **Desde el Sprint 4 la venta valida saldo antes de descontar** (tarea
+ *    4.5). Se bloquea con el detalle de lo que falta, y un administrador puede
+ *    autorizar igual: la ferretería no deja de vender porque el sistema esté
+ *    atrasado, pero la autorización queda en la bitácora como `STOCK_OVERRIDE`.
+ *    El interruptor general es `stock.allowNegative`, que sirve mientras se
+ *    carga el inventario inicial.
  *
  * 4. **El costo se congela en la línea** (decisión sellada 6). Si no, el margen
  *    histórico cambia solo cuando sube un precio de proveedor.
@@ -36,7 +38,13 @@ import {
   toBaseMilli,
   roundSym,
   formatCLP,
+  formatQty,
+  etiquetaDeVenta,
+  resumirLineas,
+  SALE_STATUS_TEXT,
+  SALE_STATUS_TONE,
 } from "@ferrehouse/shared";
+import { registrarMovimiento } from "../stock-ledger.js";
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
   const e = new Error(mensaje) as Error & { statusCode: number };
@@ -45,6 +53,20 @@ function malaPeticion(mensaje: string): Error & { statusCode: number } {
 }
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
+
+/**
+ * Valida un PIN contra CADA administrador activo, no contra uno fijo: el PIN
+ * lo digita quien esté en el mesón. Devuelve el id del que autorizó, que es lo
+ * que después va a la bitácora — la razón de existir del override.
+ */
+async function validarPinAdmin(pin: string, stationId: number): Promise<number | null> {
+  const admins = await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } });
+  for (const a of admins) {
+    const r = await verificarLogin({ userId: a.id, pin, stationId });
+    if (r.ok) return a.id;
+  }
+  return null;
+}
 
 export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
   const cualquiera = { preHandler: requireRole("ADMIN", "SELLER") };
@@ -136,15 +158,81 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
        * lo digita quien esté en el mesón. Y queda en la bitácora quién
        * autorizó, que es la razón de existir del override.
        */
-      const admins = await db.user.findMany({ where: { role: "ADMIN", active: true }, select: { id: true } });
-      for (const a of admins) {
-        const r = await verificarLogin({ userId: a.id, pin: datos.adminPin, stationId: req.user.stationId });
-        if (r.ok) {
-          autorizadoPor = a.id;
-          break;
-        }
-      }
+      autorizadoPor = await validarPinAdmin(datos.adminPin, req.user.stationId);
       if (!autorizadoPor) throw malaPeticion("Ese PIN de administrador no es correcto.");
+    }
+
+    /**
+     * 4.5: saldo antes de descontar.
+     *
+     * Se juntan TODAS las líneas que no alcanzan antes de reclamar. Fallar en
+     * la primera obliga a corregir, reintentar y descubrir la segunda: en el
+     * mesón, con el cliente al frente, eso son tres viajes a la bodega en vez
+     * de uno.
+     */
+    let autorizadoStockPor: number | null = null;
+    const permitirNegativo = await getSetting("stock.allowNegative");
+    if (!permitirNegativo) {
+      const niveles = await db.stockLevel.findMany({
+        where: { productId: { in: ids }, locationId: req.user.locationId },
+      });
+      const saldoPorProducto = new Map(niveles.map((n) => [n.productId, n.qtyBaseMilli]));
+
+      // Un producto puede venir en varias líneas: lo que se compara contra el
+      // saldo es el TOTAL de la venta, no cada línea por separado.
+      const pedidoPorProducto = new Map<number, number>();
+      for (const it of datos.items) {
+        const p = porId.get(it.productId)!;
+        const base = toBaseMilli(it.qtyMilli, p.saleUnit.factorMilli);
+        pedidoPorProducto.set(it.productId, (pedidoPorProducto.get(it.productId) ?? 0) + base);
+      }
+
+      const faltantes = [...pedidoPorProducto.entries()]
+        .map(([productId, pedido]) => {
+          const p = porId.get(productId)!;
+          const saldo = saldoPorProducto.get(productId) ?? 0;
+          return { p, pedido, saldo, falta: pedido - saldo };
+        })
+        .filter((f) => f.falta > 0);
+
+      if (faltantes.length > 0) {
+        const fraccion = (f: (typeof faltantes)[number]) => f.p.saleUnit.group.allowsFraction;
+        const detalle = faltantes
+          .map((f) => {
+            // Se informa en la unidad de VENTA, que es en la que el vendedor
+            // está pensando. El libro lleva unidad base y decirle "quedan
+            // 92.500" cuando son 92,5 m no ayuda a nadie.
+            const enVenta = (base: number) => formatQty(roundSym((base * 1000) / f.p.saleUnit.factorMilli), fraccion(f));
+            return `${f.p.name}: quedan ${enVenta(f.saldo)} ${f.p.saleUnit.symbol} y se piden ${enVenta(f.pedido)}`;
+          })
+          .join("; ");
+
+        const puedeAutorizar = await getSetting("stock.adminOverride");
+        if (req.user.role === "ADMIN") {
+          // Queda registrado igual: la autorización no es el PIN, es el hecho.
+          autorizadoStockPor = req.user.sub;
+        } else if (!puedeAutorizar) {
+          throw malaPeticion(`No hay stock suficiente. ${detalle}.`);
+        } else {
+          if (!datos.adminPin) {
+            throw malaPeticion(
+              `No hay stock suficiente. ${detalle}. Un administrador puede autorizar la venta con su PIN.`,
+            );
+          }
+          autorizadoStockPor = autorizadoPor ?? (await validarPinAdmin(datos.adminPin, req.user.stationId));
+          if (!autorizadoStockPor) throw malaPeticion("Ese PIN de administrador no es correcto.");
+        }
+
+        await audit({
+          userId: autorizadoStockPor,
+          action: "STOCK_OVERRIDE",
+          entity: "Sale",
+          payload: {
+            vendedor: req.user.sub,
+            faltantes: faltantes.map((f) => ({ productId: f.p.id, sku: f.p.sku, falta: f.falta })),
+          },
+        });
+      }
     }
 
     const tienda = (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse";
@@ -194,34 +282,20 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
           },
         });
 
-        // --- Stock: sale mercadería, así que el movimiento es negativo ---
-        const nivel = await tx.stockLevel.findUnique({
-          where: { productId_locationId: { productId: p.id, locationId: req.user.locationId } },
-        });
-        const saldoAntes = nivel?.qtyBaseMilli ?? 0;
-        const saldoDespues = saldoAntes - qtyBaseMilli;
-
-        await tx.stockMovement.create({
-          data: {
-            productId: p.id,
-            locationId: req.user.locationId,
-            type: "SALE",
-            qtyBaseMilli: -qtyBaseMilli,
-            totalCostNet: -lineCostNet,
-            balanceBaseMilli: saldoDespues,
-            // Vender NO cambia el costo promedio: sacar mercadería no altera
-            // lo que costó la que queda. Se copia el vigente.
-            balanceCostNetMilliPeso: p.costNetMilliPeso,
-            userId: req.user.sub,
-            refType: "SALE",
-            refId: sale.id,
-          },
-        });
-
-        await tx.stockLevel.upsert({
-          where: { productId_locationId: { productId: p.id, locationId: req.user.locationId } },
-          create: { productId: p.id, locationId: req.user.locationId, qtyBaseMilli: saldoDespues },
-          update: { qtyBaseMilli: saldoDespues },
+        /**
+         * El signo, el saldo, la foto del costo y el caché los pone el libro
+         * (`stock-ledger.ts`). Vender NO cambia el costo promedio: sacar
+         * mercadería no altera lo que costó la que queda.
+         */
+        await registrarMovimiento(tx, {
+          productId: p.id,
+          locationId: req.user.locationId,
+          type: "SALE",
+          qtyBaseMilli,
+          totalCostNet: lineCostNet,
+          userId: req.user.sub,
+          refType: "SALE",
+          refId: sale.id,
         });
       }
 
@@ -330,18 +404,90 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
   // Consultar y reimprimir (3.9)
   // ============================================================
 
+  /**
+   * 4.9 — El listado del día, con la etiqueta de estado ya derivada.
+   *
+   * Las cinco etiquetas (STATE.md) se calculan ACÁ y no en cada pantalla. Si
+   * cada una las derivara por su cuenta, el listado, el kardex y el detalle
+   * terminarían discrepando sobre la misma venta, y la regla —que una venta
+   * con devoluciones parciales sigue siendo una venta por su monto original—
+   * se perdería en la tercera copia.
+   */
+  app.get("/api/sales", cualquiera, async (req) => {
+    const q = z
+      .object({
+        desde: z.coerce.date().optional(),
+        hasta: z.coerce.date().optional(),
+        take: z.coerce.number().int().min(1).max(200).default(50),
+      })
+      .parse(req.query ?? {});
+
+    // Sin rango, el día de hoy: es lo que se mira en el mesón.
+    const hoy = new Date();
+    const desde = q.desde ?? new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+    const hasta = q.hasta ?? new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + 1);
+
+    const ventas = await db.sale.findMany({
+      where: { locationId: req.user.locationId, createdAt: { gte: desde, lt: hasta } },
+      orderBy: { id: "desc" },
+      take: q.take,
+      include: {
+        user: { select: { name: true } },
+        items: { select: { id: true, qtyMilli: true, reversedByItems: { select: { qtyMilli: true } } } },
+        payments: { select: { method: true, amount: true } },
+      },
+    });
+
+    return {
+      ventas: ventas.map((v) => {
+        const etiqueta = etiquetaDeVenta(v);
+        return {
+          id: v.id,
+          createdAt: v.createdAt,
+          totalGross: v.totalGross,
+          fiscalDocType: v.fiscalDocType,
+          fiscalFolio: v.fiscalFolio,
+          user: v.user,
+          reversesId: v.reversesId,
+          etiqueta,
+          etiquetaTexto: SALE_STATUS_TEXT[etiqueta],
+          etiquetaTono: SALE_STATUS_TONE[etiqueta],
+          medios: [...new Set(v.payments.map((p) => p.method))],
+        };
+      }),
+    };
+  });
+
   app.get("/api/sales/:id", cualquiera, async (req) => {
     const { id } = idParam.parse(req.params);
     const venta = await db.sale.findUnique({
       where: { id },
       include: {
         user: { select: { name: true } },
-        items: { include: { unit: true, product: { select: { sku: true } } } },
+        items: {
+          include: {
+            unit: true,
+            product: { select: { sku: true } },
+            reversedByItems: { select: { qtyMilli: true } },
+          },
+        },
         payments: true,
+        reversedBy: { select: { id: true, reversalKind: true, totalGross: true, createdAt: true } },
       },
     });
     if (!venta) throw malaPeticion("Esa venta no existe");
-    return { venta };
+
+    const etiqueta = etiquetaDeVenta(venta);
+    const resumen = resumirLineas(venta.items);
+    return {
+      venta,
+      etiqueta,
+      etiquetaTexto: SALE_STATUS_TEXT[etiqueta],
+      etiquetaTono: SALE_STATUS_TONE[etiqueta],
+      // Cuánto queda vivo por línea: lo mismo que necesita la devolución, y
+      // sale de la misma función.
+      lineas: resumen,
+    };
   });
 
   app.post("/api/sales/:id/reprint", cualquiera, async (req, reply) => {

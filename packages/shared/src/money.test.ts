@@ -78,12 +78,33 @@ describe("costo promedio ponderado", () => {
     expect(c2).toBe(1_500_000); // $1.500
   });
 
-  it("conserva el costo si el saldo queda en cero", () => {
+  /**
+   * Cambió en el Sprint 4 (tarea 4.2). Antes, con saldo anterior negativo se
+   * conservaba el costo viejo; ahora manda el costo de lo que entra.
+   *
+   * El caso real: se vendió contra stock sin cargar, el saldo quedó bajo cero,
+   * y llega la factura del proveedor con el precio nuevo. Promediar contra una
+   * deuda cuyo costo nunca existió da un promedio por debajo de lo que se
+   * acaba de pagar; conservar el viejo es peor todavía, porque el sistema
+   * sigue calculando el margen con un costo obsoleto sin avisar nada.
+   */
+  it("con saldo anterior negativo, manda el costo de lo que entra", () => {
     const c = recalcAverageCost({
       prevBalanceBaseMilli: -5_000,
       prevCostNetMilliPeso: 3_500,
       incomingBaseMilli: 5_000,
       incomingTotalCostNet: 100,
+    });
+    // $100 por 5 unidades = $20 cada una = 20.000 milésimas.
+    expect(c).toBe(20_000);
+  });
+
+  it("un movimiento que no ingresa nada deja el costo como estaba", () => {
+    const c = recalcAverageCost({
+      prevBalanceBaseMilli: -5_000,
+      prevCostNetMilliPeso: 3_500,
+      incomingBaseMilli: 0,
+      incomingTotalCostNet: 0,
     });
     expect(c).toBe(3_500);
   });

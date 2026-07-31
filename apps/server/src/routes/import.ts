@@ -23,6 +23,7 @@ import multipart from "@fastify/multipart";
 import ExcelJS from "exceljs";
 import { db } from "../db.js";
 import { audit } from "../audit.js";
+import { registrarMovimiento } from "../stock-ledger.js";
 import { requireRole } from "../roles.js";
 import { reserveSkuRange } from "../sku.js";
 import {
@@ -34,6 +35,7 @@ import {
   parsePesos,
   parseCantidadMilli,
   type UnitLike,
+  roundSym,
 } from "@ferrehouse/shared";
 
 /**
@@ -61,6 +63,13 @@ const COLUMNAS = [
   { clave: "precio", titulo: "Precio con IVA (por unidad de venta)", alias: ["Precio con IVA", "Precio"], obligatoria: true, ancho: 30 },
   { clave: "costo", titulo: "Costo neto (por unidad base)", alias: ["Costo neto", "Costo"], obligatoria: false, ancho: 26 },
   { clave: "stockMinimo", titulo: "Stock mínimo (en unidad base)", alias: ["Stock mínimo"], obligatoria: false, ancho: 26 },
+  {
+    clave: "stockInicial",
+    titulo: "Stock inicial (en unidad base)",
+    alias: ["Stock inicial", "Existencia inicial"],
+    obligatoria: false,
+    ancho: 26,
+  },
   { clave: "codigos", titulo: "Códigos de barra", alias: [], obligatoria: false, ancho: 26 },
 ] as const;
 
@@ -92,6 +101,8 @@ type FilaRevisada = {
     priceGross: number;
     costNetMilliPeso: number;
     reorderLevelBaseMilli: number;
+    /** Lo que hay hoy en repisa. Entra al libro como movimiento `INITIAL`. */
+    stockInicialBaseMilli: number;
     barcodes: string[];
   };
 };
@@ -180,6 +191,11 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
       u.symbol,
     ]),
   );
+  // Los grupos sin fracción (CONTEO) no admiten medio tornillo, y el stock
+  // inicial se digita en unidad base: hay que poder rechazarlo acá.
+  const fraccionDeGrupo = new Map<number, boolean>(
+    (await db.unitGroup.findMany({ select: { id: true, allowsFraction: true } })).map((g) => [g.id, g.allowsFraction]),
+  );
   const codigosUsados = new Map<string, string>(
     (await db.productBarcode.findMany({ select: { code: true, product: { select: { sku: true } } } })).map((b) => [
       b.code,
@@ -210,6 +226,24 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
     if (f.costo && costo === null) errores.push(`No entiendo el costo "${f.costo}"`);
     const minimo = parseCantidadMilli(f.stockMinimo ?? "");
     if (f.stockMinimo && minimo === null) errores.push(`No entiendo el stock mínimo "${f.stockMinimo}"`);
+
+    /**
+     * 4.4 — El inventario inicial entra por acá, como movimiento `INITIAL`.
+     *
+     * Es la ÚNICA forma de que el libro arranque con saldo sin inventar una
+     * compra a un proveedor que nunca facturó eso. Y exige costo: mercadería
+     * que entra sin costo deja el promedio en cero y el margen de todo lo que
+     * se venda después sale igual al precio.
+     */
+    const inicial = parseCantidadMilli(f.stockInicial ?? "");
+    if (f.stockInicial && inicial === null) errores.push(`No entiendo el stock inicial "${f.stockInicial}"`);
+    if (inicial !== null && inicial < 0) errores.push("El stock inicial no puede ser negativo");
+    if (inicial && inicial > 0 && !costo) {
+      errores.push("Hay stock inicial pero no hay costo: sin costo, el margen de ese producto sale igual al precio");
+    }
+    if (inicial && uVenta && fraccionDeGrupo.get(uVenta.groupId) === false && inicial % 1000 !== 0) {
+      errores.push(`${uVenta.name} no se cuenta fraccionado: el stock inicial tiene que ser un número entero`);
+    }
 
     const codigos = (f.codigos ?? "")
       .split(/[,;|]/)
@@ -265,6 +299,11 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
         `mínimo ${new Intl.NumberFormat("es-CL", { maximumFractionDigits: 3 }).format(minimo / 1000)} ${simboloBase}`,
       );
     }
+    if (inicial) {
+      partes.push(
+        `entran ${new Intl.NumberFormat("es-CL", { maximumFractionDigits: 3 }).format(inicial / 1000)} ${simboloBase}`,
+      );
+    }
     if (uVenta.id !== uCompra.id) partes.push(`se compra en ${uCompra.symbol}`);
 
     const avisos: string[] = [];
@@ -312,6 +351,7 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
         priceGross: parsed.data.priceGross,
         costNetMilliPeso: parsed.data.costNetMilliPeso ?? 0,
         reorderLevelBaseMilli: parsed.data.reorderLevelBaseMilli,
+        stockInicialBaseMilli: inicial ?? 0,
         barcodes: parsed.data.barcodes,
       },
     };
@@ -369,6 +409,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       precio: "Por UNIDAD DE VENTA. Si vendes el cemento por kilo, va el precio del kilo — no el del saco.",
       costo: "Por UNIDAD BASE del grupo (kg, m, un, L). Ojo: no siempre es la misma unidad que el precio.",
       stockMinimo: "En unidad base. Acepta decimales con coma: 7,5",
+      stockInicial: "Lo que hay hoy en repisa, en unidad base. Entra como movimiento INITIAL y exige costo",
       codigos: "Varios códigos separados por coma.",
       unidadVenta: "Escribe el símbolo de la hoja 'Unidades disponibles': m, kg, un, sc25…",
       unidadCompra: "Tiene que ser del mismo grupo que la de venta.",
@@ -391,6 +432,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       precio: "690",
       costo: "410",
       stockMinimo: "50",
+      stockInicial: "120",
       codigos: "7801234567890, 7809999999999",
     });
 
@@ -519,6 +561,24 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         await tx.stockLevel.createMany({
           data: ubicaciones.map((u) => ({ productId: producto.id, locationId: u.id, qtyBaseMilli: 0 })),
         });
+
+        /**
+         * 4.4 — El inventario inicial, como movimiento del libro y no como un
+         * saldo puesto a mano. Escribir `StockLevel` directamente dejaría un
+         * saldo que el libro no explica, y el job de reconciliación (4.7) lo
+         * acusaría —con razón— como divergencia en la primera pasada.
+         */
+        if (d.stockInicialBaseMilli > 0) {
+          await registrarMovimiento(tx, {
+            productId: producto.id,
+            locationId: req.user.locationId,
+            type: "INITIAL",
+            qtyBaseMilli: d.stockInicialBaseMilli,
+            totalCostNet: roundSym((d.stockInicialBaseMilli * d.costNetMilliPeso) / 1_000_000),
+            userId: req.user.sub,
+            reason: "Carga de inventario inicial",
+          });
+        }
       }
       return validas.length;
     });

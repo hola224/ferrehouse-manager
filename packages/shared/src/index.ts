@@ -8,3 +8,5 @@ export * from "./code128.js";
 export * from "./atajos.js";
 export * from "./cash.js";
 export * from "./sale.js";
+export * from "./stock.js";
+export * from "./returns.js";

@@ -7,6 +7,7 @@
  * que ve el usuario, y se calcula en el servidor para que las pantallas no la
  * reinventen cada una a su manera.
  */
+import { resumirLineas, type LineaConReversas } from "./returns.js";
 
 export type SaleStatusLabel =
   | "COMPLETADA"
@@ -34,6 +35,20 @@ export const SALE_STATUS_TONE: Record<SaleStatusLabel, "ok" | "warn" | "error" |
   DEVOLUCION: "neutral",
   ANULACION: "neutral",
 };
+
+/**
+ * La versión que se usa contra la base: recibe las líneas con sus reversas y
+ * deriva la cantidad devuelta con `resumirLineas`, que es la única función que
+ * sabe sumar eso. `deriveSaleStatus` queda debajo para poder probarla con
+ * tablas de casos sin armar filas de reversa.
+ */
+export function etiquetaDeVenta(sale: {
+  status: string;
+  reversalKind: string | null;
+  items: LineaConReversas[];
+}): SaleStatusLabel {
+  return deriveSaleStatus({ ...sale, items: resumirLineas(sale.items) });
+}
 
 export function deriveSaleStatus(sale: {
   status: string;
