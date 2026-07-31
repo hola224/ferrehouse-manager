@@ -26,6 +26,7 @@
  *   servidor no se los manda (decisión sellada 17).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Boton, Campo, Chip } from "@/components/ui";
@@ -93,7 +94,16 @@ export function Kardex() {
 
   const [texto, setTexto] = useState("");
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>([]);
-  const [productoId, setProductoId] = useState<number | null>(null);
+  /**
+   * `?producto=12` abre el kardex directo en ese producto. Lo usa el panel de
+   * alertas: una alerta que dice "el cable se agotó" y no lleva al cable
+   * obliga a copiar el SKU a mano en la caja de búsqueda de al lado.
+   */
+  const [params] = useSearchParams();
+  const [productoId, setProductoId] = useState<number | null>(() => {
+    const p = Number(params.get("producto"));
+    return Number.isInteger(p) && p > 0 ? p : null;
+  });
 
   const [kardex, setKardex] = useState<Kardex | null>(null);
   const [cargando, setCargando] = useState(false);

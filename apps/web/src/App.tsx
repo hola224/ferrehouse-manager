@@ -6,10 +6,12 @@ import { Catalogo } from "@/pages/Catalogo";
 import { Caja } from "@/pages/Caja";
 import { Venta } from "@/pages/Venta";
 import { Kardex } from "@/pages/Kardex";
+import { Reportes } from "@/pages/Reportes";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
   const { usuario, salir } = useAuth();
+  const esAdmin = usuario?.role === "ADMIN";
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-3">
@@ -29,10 +31,15 @@ function Layout({ children }: { children: React.ReactNode }) {
               { a: "/catalogo", texto: "Catálogo" },
               { a: "/caja", texto: "Caja" },
               { a: "/kardex", texto: "Kardex" },
+              // El panel y los reportes solo para el administrador: al
+              // vendedor no le viaja ninguna cifra de plata del día, así que
+              // ofrecerle la pestaña sería ofrecerle una pantalla vacía.
+              ...(esAdmin ? [{ a: "/", texto: "Panel" }, { a: "/reportes", texto: "Reportes" }] : []),
             ].map((i) => (
               <NavLink
                 key={i.a}
                 to={i.a}
+                end={i.a === "/"}
                 className={({ isActive }) =>
                   isActive ? "font-semibold text-ink underline underline-offset-8" : "text-ink-soft hover:text-ink"
                 }
@@ -65,6 +72,11 @@ function Privado({ children, soloAdmin = false }: { children: React.ReactNode; s
   return <Layout>{children}</Layout>;
 }
 
+function Inicio() {
+  const { usuario } = useAuth();
+  return usuario?.role === "ADMIN" ? <Dashboard /> : <Navigate to="/venta" replace />;
+}
+
 function Entrada() {
   const { usuario, cargando } = useAuth();
   if (cargando) return <div className="grid min-h-screen place-items-center text-ink-soft">Cargando…</div>;
@@ -77,11 +89,24 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Entrada />} />
+          {/*
+            El vendedor entra directo a Venta (decidido con Cristian el
+            2026-07-30): es lo que abre el 100% de las veces, y su panel no
+            tendría ninguna cifra que mostrarle.
+          */}
           <Route
             path="/"
             element={
               <Privado>
-                <Dashboard />
+                <Inicio />
+              </Privado>
+            }
+          />
+          <Route
+            path="/reportes"
+            element={
+              <Privado soloAdmin>
+                <Reportes />
               </Privado>
             }
           />
