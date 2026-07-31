@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Tarjeta } from "@/components/ui";
+import { Acciones, Boton, Campo, Modal, Tarjeta } from "@/components/ui";
 
 type Alerta = {
   id: number | null;
@@ -62,7 +62,7 @@ type Respaldo = {
   antiguedad: string;
   cantidad: number;
   carpeta: string;
-  copia: { configurada: boolean; alDia: boolean; problema: string | null };
+  copia: { configurada: boolean; carpeta: string | null; alDia: boolean; problema: string | null };
   ultimo: { archivo: string; bytes: number } | null;
 };
 
@@ -116,6 +116,7 @@ export function Dashboard() {
   const [respaldo, setRespaldo] = useState<Respaldo | null>(null);
   const [respaldando, setRespaldando] = useState(false);
   const [ultimoAviso, setUltimoAviso] = useState<string | null>(null);
+  const [configurando, setConfigurando] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -276,7 +277,20 @@ export function Dashboard() {
                     que no lleva a ninguna parte debajo de «nunca se ha
                     respaldado la base».
                   */}
-                  {a.type.startsWith("BACKUP") ? (
+                  {a.type === "BACKUP_COPY" && !respaldo?.copia.configurada ? (
+                    /*
+                     * Acá NO va «Respaldar»: respaldar de nuevo deja el archivo
+                     * en el mismo PC, que es exactamente lo que la alerta dice
+                     * que está mal. La acción que la cierra es elegir dónde se
+                     * copia.
+                     */
+                    <button
+                      onClick={() => setConfigurando(true)}
+                      className="text-sm underline underline-offset-4 hover:text-ink"
+                    >
+                      Configurar
+                    </button>
+                  ) : a.type.startsWith("BACKUP") ? (
                     <button
                       onClick={() => void respaldarAhora()}
                       disabled={respaldando}
@@ -364,10 +378,100 @@ export function Dashboard() {
             >
               {respaldando ? "Respaldando…" : "Respaldar ahora"}
             </button>
+            <button onClick={() => setConfigurando(true)} className="underline underline-offset-4 hover:text-ink">
+              {respaldo.copia.configurada ? "Cambiar dónde se copia" : "Configurar la copia"}
+            </button>
             {ultimoAviso ? <span className="text-ink-soft">{ultimoAviso}</span> : null}
           </>
         )}
       </section>
+
+      {configurando ? (
+        <CopiaExterna
+          actual={respaldo?.copia.carpeta ?? ""}
+          onCerrar={() => setConfigurando(false)}
+          onListo={async (mensaje) => {
+            setConfigurando(false);
+            setUltimoAviso(mensaje);
+            await cargar();
+          }}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * Dónde se copia el respaldo.
+ *
+ * Un solo campo, y la explicación arriba en vez de abajo: el que abre esto no
+ * sabe qué escribir, y "E:\Respaldos" dicho como ejemplo enseña más que
+ * cualquier etiqueta. El servidor valida escribiendo de verdad en esa carpeta,
+ * así que un pendrive que no está puesto se rechaza acá y no dentro de doce
+ * horas.
+ */
+function CopiaExterna({
+  actual,
+  onCerrar,
+  onListo,
+}: {
+  actual: string;
+  onCerrar: () => void;
+  onListo: (mensaje: string) => Promise<void>;
+}) {
+  const [carpeta, setCarpeta] = useState(actual);
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  async function guardar() {
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>("/backup/copia", {
+        method: "PUT",
+        body: JSON.stringify({ carpeta: carpeta.trim() }),
+      });
+      await onListo(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar");
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Modal
+      titulo="Dónde se copia el respaldo"
+      bajada={
+        <>
+          El respaldo se guarda siempre en este PC. Si además se copia a un pendrive o a una carpeta de la nube,
+          sobrevive a que el equipo se pierda, se lo roben o se le queme el disco — que son los casos por los que uno
+          respalda.
+        </>
+      }
+      onCerrar={onCerrar}
+    >
+      <div className="grid gap-4">
+        <Campo
+          etiqueta="Carpeta"
+          value={carpeta}
+          autoFocus
+          onChange={(e) => setCarpeta(e.target.value)}
+          placeholder="E:\Respaldos Ferrehouse"
+        />
+        <p className="text-sm text-ink-soft">
+          Déjala vacía para no copiar a ninguna parte. Se prueba escribiendo un archivo ahí mismo: si el pendrive no
+          está conectado, te lo digo ahora.
+        </p>
+        {error ? <p className="text-sm text-error">{error}</p> : null}
+        <Acciones>
+          <Boton variante="secundaria" onClick={onCerrar} type="button">
+            Cancelar
+          </Boton>
+          <Boton variante="principal" onClick={() => void guardar()} disabled={guardando} type="button">
+            {guardando ? "Probando…" : "Guardar"}
+          </Boton>
+        </Acciones>
+      </div>
+    </Modal>
   );
 }

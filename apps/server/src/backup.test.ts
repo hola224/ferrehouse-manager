@@ -73,6 +73,21 @@ async function tieneProducto(archivo: string, sku: string): Promise<boolean> {
   }
 }
 
+/**
+ * Una carpeta donde es imposible escribir, de forma determinista y en cualquier
+ * sistema: su carpeta padre es un archivo, así que `mkdir` da ENOTDIR al toque.
+ *
+ * Antes esto apuntaba a `/proc/...`, que además de depender del sistema **se
+ * colgaba**: `mkdirSync` sobre procfs no devolvía nunca en esta máquina y el
+ * archivo de pruebas entero quedaba esperando sin decir por qué. Una ruta
+ * inventada tampoco sirve: corriendo como root se crearía de verdad.
+ */
+function carpetaImposible(): string {
+  const base = carpetaNueva();
+  writeFileSync(join(base, "pendrive"), "esto es un archivo, no una carpeta");
+  return join(base, "pendrive", "respaldos");
+}
+
 /** Un respaldo de mentira, con la fecha metida en el nombre. */
 function respaldoFalso(carpeta: string, diasAtras: number, ahora = new Date()): string {
   const nombre = nombreDeRespaldo(new Date(ahora.getTime() - diasAtras * 24 * 3_600_000));
@@ -221,7 +236,7 @@ describe("la copia externa", () => {
   /** El pendrive desconectado es lo normal, no una falla del respaldo. */
   it("si el pendrive no está, el respaldo local igual se hace y el panel avisa", async () => {
     await usarCarpeta();
-    await setSetting("backup.copyTo", "/no/existe/este/pendrive");
+    await setSetting("backup.copyTo", carpetaImposible());
 
     const r = await respaldar();
     expect(r.ok).toBe(true); // el respaldo local sirve igual
@@ -287,6 +302,8 @@ describe("el panel", () => {
     app.inject({ method: "GET", url, headers: { authorization: `Bearer ${token}` } });
   const post = (url: string, token: string) =>
     app.inject({ method: "POST", url, headers: { authorization: `Bearer ${token}` } });
+  const put = (url: string, token: string, payload: unknown) =>
+    app.inject({ method: "PUT", url, headers: { authorization: `Bearer ${token}` }, payload });
 
   it("le muestra al administrador dónde está todo", async () => {
     dir = await usarCarpeta();
@@ -318,6 +335,41 @@ describe("el panel", () => {
   it("al vendedor no le llega nada de esto", async () => {
     expect((await get("/api/backup", tokenVendedor)).statusCode).toBe(403);
     expect((await post("/api/backup", tokenVendedor)).statusCode).toBe(403);
+    expect((await put("/api/backup/copia", tokenVendedor, { carpeta: "/tmp" })).statusCode).toBe(403);
+  });
+
+  /**
+   * Sin esta ruta la copia externa no se configura NUNCA: el valor vive en
+   * `Setting` y no había forma de tocarlo desde la aplicación, así que el
+   * respaldo se quedaba para siempre en el mismo disco que la base.
+   */
+  it("deja elegir dónde se copia, y lo prueba escribiendo de verdad", async () => {
+    const afuera = join(carpetaNueva(), "pendrive");
+    const r = await put("/api/backup/copia", tokenAdmin, { carpeta: afuera });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body).mensaje).toContain(afuera);
+
+    dir = await usarCarpeta();
+    const hecho = await respaldar();
+    expect(hecho.copia.ok, hecho.copia.problema ?? "").toBe(true);
+  });
+
+  /**
+   * Que la carpeta se vea bien desde afuera no dice nada: un pendrive protegido
+   * contra escritura o una unidad de red sin permiso se ven igual. Se rechaza
+   * ahora y no dentro de doce horas, de noche, sin nadie mirando.
+   */
+  it("rechaza en el acto una carpeta donde no se puede escribir", async () => {
+    const r = await put("/api/backup/copia", tokenAdmin, { carpeta: carpetaImposible() });
+    expect(r.statusCode).toBe(400);
+    expect(JSON.parse(r.body).message ?? JSON.parse(r.body).error).toContain("pendrive");
+  });
+
+  it("vacío significa sin copia, y lo dice", async () => {
+    const r = await put("/api/backup/copia", tokenAdmin, { carpeta: "" });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.parse(r.body).mensaje).toContain("solo en este PC");
+    expect((await estadoDeRespaldo()).copia.configurada).toBe(false);
   });
 });
 
