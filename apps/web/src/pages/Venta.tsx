@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Barcode } from "lucide-react";
+import clsx from "clsx";
 import { api, ApiError } from "@/lib/api";
 import { useAtajos } from "@/lib/atajos";
 import { copiarAlPortapapeles } from "@/lib/portapapeles";
@@ -844,15 +845,19 @@ function Cobrar({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
+  const campoDebito = useRef<HTMLInputElement>(null);
   const botonCobrar = useRef<HTMLButtonElement>(null);
   /**
-   * Los dos campos de monto arrancan PLEGADOS. La venta corriente es «todo
-   * con débito» o «todo en efectivo justo», y para esas dos no hay nada que
-   * digitar: un botón deja el monto puesto. Los campos aparecen al elegir
-   * pago mixto, o al usar un botón —para que se VEA lo que va a cobrar antes
-   * de confirmar—.
+   * CÓMO PAGA, elegido antes de digitar un peso.
+   *
+   * Los campos arrancan plegados porque la venta corriente no necesita teclear
+   * nada: se elige el medio y el diálogo deja el cursor donde corresponde. Al
+   * elegir se abren LOS DOS campos, no solo el del medio elegido — el pago
+   * mixto no se anuncia al principio, aparece cuando el cliente dice «esto con
+   * la tarjeta y el resto en efectivo» con el voucher ya impreso.
    */
-  const [mostrarCampos, setMostrarCampos] = useState(false);
+  const [medio, setMedio] = useState<"nada" | "efectivo" | "debito">("nada");
+  const mostrarCampos = medio !== "nada";
   /** El Nº de comprobante de la tarjeta, plegado: casi nadie lo anota. */
   const [pideReferencia, setPideReferencia] = useState(false);
   const [copiado, setCopiado] = useState(false);
@@ -909,22 +914,72 @@ function Cobrar({
    * primero que sí se puede apretar, y desde ahí Tab llega a débito.
    */
   const botonEfectivo = useRef<HTMLButtonElement>(null);
+  const botonDebito = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     botonEfectivo.current?.focus();
   }, []);
 
-  function todoEn(medio: "efectivo" | "debito"): void {
-    if (medio === "efectivo") {
-      setEfectivo(String(montoEfectivo));
-      setDebito("");
+  /**
+   * Elegir el medio deja el cursor donde el cajero va a escribir, y esa es toda
+   * la diferencia entre las dos ramas:
+   *
+   *   EFECTIVO — «Recibido» VACÍO y enfocado. Vacío a propósito: el campo pide
+   *   el billete que puso el cliente, y dejarlo con el total escrito invita a
+   *   apretar Enter sobre una cifra que nadie contó. El monto a cobrar se lee
+   *   igual, impreso en el botón y bajo el campo, y los cuatro billetes lo
+   *   llenan de un toque.
+   *
+   *   DÉBITO — el total exacto ya puesto y el campo enfocado CON EL TEXTO
+   *   SELECCIONADO. Esa selección es la que hace barato el pago mixto: para
+   *   cobrar una parte con la máquina se teclea el monto encima, sin borrar
+   *   nada. Y el Nº de voucher se despliega solo, porque en este flujo el
+   *   cajero lo va a tener en la mano.
+   */
+  function elegir(cual: "efectivo" | "debito"): void {
+    setMedio(cual);
+    setError(null);
+    if (cual === "efectivo") {
+      /*
+        F2 NO BORRA EL DÉBITO. Si hay un monto ahí, la máquina ya cobró y el
+        voucher está impreso: deshacerlo en la pantalla no lo deshace en el
+        banco. En el pago mixto esta tecla es «llévame al campo del efectivo»,
+        que es justo el momento en que el cajero la va a apretar.
+
+        La única excepción es el total intacto que dejó F4 sin voucher
+        digitado: eso no es un cobro, es haberse equivocado de tecla.
+      */
+      if (nDebito === montoTarjeta && referencia.trim() === "") setDebito("");
+      setTimeout(() => campo.current?.focus(), 0);
     } else {
-      setDebito(String(montoTarjeta));
-      setEfectivo("");
+      // Solo rellena si está vacío: F4 dos veces no pisa un monto ya digitado.
+      if (debito === "") setDebito(String(montoTarjeta));
+      setPideReferencia(true);
+      setTimeout(() => {
+        campoDebito.current?.focus();
+        campoDebito.current?.select();
+      }, 0);
     }
-    // Se muestran los campos con el monto ya puesto: el vendedor ve lo que va
-    // a cobrar antes de confirmar, y puede corregirlo sin volver atrás.
-    setMostrarCampos(true);
-    setTimeout(() => botonCobrar.current?.focus(), 0);
+  }
+
+  /**
+   * F2 y F4 eligen el medio. Van impresas en los dos botones.
+   *
+   * F2 decía «Cobrar e imprimir» en el botón de abajo y no tenía manejador: el
+   * atajo global de Venta se apaga mientras hay un panel abierto, así que la
+   * tecla estaba escrita y no hacía nada. Cobrar pasa a Enter, que es la que de
+   * verdad se aprieta al terminar de teclear un monto.
+   */
+  useAtajos({ F2: () => elegir("efectivo"), F4: () => elegir("debito") }, true);
+
+  /** Las flechas recorren los dos medios, que es lo que se espera de dos opciones. */
+  function alTecladoDeMedios(e: React.KeyboardEvent<HTMLButtonElement>): void {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      botonDebito.current?.focus();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      botonEfectivo.current?.focus();
+    }
   }
 
   async function copiarTotal(): Promise<void> {
@@ -944,6 +999,50 @@ function Cobrar({
    * todavía no cuadran, `calcularVenta` lanza y acá se muestra el motivo — que
    * es exactamente el mensaje que daría el servidor.
    */
+  const lineasCalc = useMemo(
+    () =>
+      lineas.map((l) => ({
+        productId: l.producto.id,
+        qtyMilli: l.qtyMilli,
+        unitPriceGross: l.producto.priceGross,
+        discountAmount: l.discountAmount,
+      })),
+    [lineas],
+  );
+
+  /**
+   * CUÁNTO FALTA EN EFECTIVO una vez descontado el débito.
+   *
+   * Se calcula APARTE de `previa` y no se lee de ella. `previa` refleja lo que
+   * el cajero lleva escrito, y mientras teclea el «6» de «6.490» el recibido
+   * todavía no alcanza: `calcularVenta` lanza, `previa.venta` queda en null y
+   * la cifra se borraría de la pantalla justo mientras se la mira para
+   * teclearla.
+   *
+   * Por eso acá va una pata en efectivo FICTICIA —un billete imposible— que
+   * hace cerrar el cálculo siempre. Lo que interesa es el `amount` imputado a
+   * efectivo, y sale de la MISMA función del servidor: el redondeo cae solo
+   * sobre la pata en efectivo, y reimplementar esa regla acá sería tener dos.
+   */
+  const faltaEnEfectivo = useMemo(() => {
+    const pagos: Parameters<typeof calcularVenta>[0]["pagos"] = [];
+    if (nDebito > 0) pagos.push({ method: "DEBIT", amount: nDebito, reference: null });
+    pagos.push({ method: "CASH", receivedAmount: 999_999_999 });
+    try {
+      const v = calcularVenta({
+        lineas: lineasCalc,
+        descuentoVenta: descuento,
+        pagos,
+        taxRatePercent: config.taxRatePercent,
+        multiploRedondeo: config.multiploRedondeo,
+      });
+      return v.pagos.find((p) => p.method === "CASH")?.amount ?? 0;
+    } catch {
+      // El débito se pasó del total. De eso se queja `previa`, con su mensaje.
+      return null;
+    }
+  }, [nDebito, lineasCalc, config, descuento]);
+
   const previa = useMemo(() => {
     const pagos: Parameters<typeof calcularVenta>[0]["pagos"] = [];
     if (nDebito > 0) pagos.push({ method: "DEBIT", amount: nDebito, reference: referencia || null });
@@ -1024,8 +1123,28 @@ function Cobrar({
     }
   }
 
+  /**
+   * Enter cobra, desde cualquiera de los campos de monto. Es la tecla que se
+   * aprieta al terminar de teclear una cifra, y era la única forma de cerrar
+   * una venta que obligaba a soltar el teclado o a tabular hasta el botón.
+   */
+  function alEnterCobrar(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!enviando && previa.venta) void cobrar();
+  }
+
   const efectivoACobrar = previa.venta?.pagos.find((p) => p.method === "CASH")?.amount ?? null;
   const vuelto = previa.venta?.changeAmount ?? 0;
+
+  /**
+   * Lo que le falta al billete para cubrir la pata en efectivo. Positivo
+   * mientras el cajero teclea, cero o negativo cuando ya alcanza.
+   */
+  const faltante = faltaEnEfectivo === null ? null : faltaEnEfectivo - nEfectivo;
+  const alcanza = faltante !== null && faltante <= 0;
+  /** El bloque grande pasa a decir «Falta» en vez de un vuelto que todavía no existe. */
+  const muestraFalta = mostrarCampos && faltante !== null && !alcanza && efectivo !== "";
 
   return (
     <Dialogo
@@ -1056,42 +1175,59 @@ function Cobrar({
         va IMPRESO en el botón: elegir a ciegas entre dos cifras parecidas es
         justo lo que hace que se cobre la equivocada.
       */}
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          ref={botonEfectivo}
-          onClick={() => todoEn("efectivo")}
-          className="min-h-touch rounded-[var(--fh-radio)] border border-line bg-surface p-3 text-left hover:bg-bg"
-        >
-          <span className="block text-sm font-medium text-ink-soft">Todo en efectivo</span>
-          <span className="fh-num block text-2xl font-black">{formatCLP(montoEfectivo)}</span>
-          <span className="block text-xs text-ink-soft">justo, sin vuelto</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => todoEn("debito")}
-          className="min-h-touch rounded-[var(--fh-radio)] border border-line bg-surface p-3 text-left hover:bg-bg"
-        >
-          <span className="block text-sm font-medium text-ink-soft">Todo con débito o crédito</span>
-          <span className="fh-num block text-2xl font-black">{formatCLP(montoTarjeta)}</span>
-          <span className="block text-xs text-ink-soft">
-            {total.roundingAmount !== 0 ? "al peso exacto, sin redondeo" : "al peso exacto"}
-          </span>
-        </button>
-      </div>
+      {/*
+        Los dos medios, con su tecla y su monto IMPRESOS. El monto va en el
+        botón porque elegir a ciegas entre dos cifras parecidas —una redondeada
+        y una al peso— es justo lo que hace que se cobre la equivocada.
 
-      {!mostrarCampos ? (
-        <button
-          type="button"
-          onClick={() => {
-            setMostrarCampos(true);
-            setTimeout(() => campo.current?.focus(), 0);
-          }}
-          className="mt-2 text-sm text-ink-soft underline underline-offset-4"
-        >
-          Pago mixto, o efectivo con vuelto
-        </button>
-      ) : null}
+        El elegido se marca con regla de 2px Y con la palabra. Un borde más
+        grueso solo no distingue nada en un mesón con luz de tubo.
+      */}
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        {(
+          [
+            {
+              cual: "efectivo" as const,
+              ref: botonEfectivo,
+              tecla: "F2",
+              titulo: "Efectivo",
+              monto: montoEfectivo,
+              pie: "se digita lo que puso el cliente",
+            },
+            {
+              cual: "debito" as const,
+              ref: botonDebito,
+              tecla: "F4",
+              titulo: "Débito o crédito",
+              monto: montoTarjeta,
+              pie: total.roundingAmount !== 0 ? "al peso exacto, sin redondeo" : "al peso exacto",
+            },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.cual}
+            type="button"
+            ref={o.ref}
+            onClick={() => elegir(o.cual)}
+            onKeyDown={alTecladoDeMedios}
+            aria-pressed={medio === o.cual}
+            className={clsx(
+              "min-h-touch bg-surface p-3 text-left hover:bg-bg",
+              medio === o.cual ? "border-2 border-ink" : "border border-line",
+            )}
+          >
+            <span className="flex items-center justify-between">
+              <span className="text-sm font-medium text-ink-soft">{o.titulo}</span>
+              <Tecla>{o.tecla}</Tecla>
+            </span>
+            <span className="fh-num block text-2xl font-black">{formatCLP(o.monto)}</span>
+            <span className="block text-xs text-ink-soft">
+              {medio === o.cual ? "ELEGIDO · " : ""}
+              {o.pie}
+            </span>
+          </button>
+        ))}
+      </div>
 
       {mostrarCampos ? (
         <div className="mt-4 grid grid-cols-2 gap-4">
@@ -1101,11 +1237,28 @@ function Cobrar({
               ref={campo}
               value={efectivo === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nEfectivo)}
               onChange={(e) => setEfectivo(soloDigitos(e.target.value))}
+              onKeyDown={alEnterCobrar}
               inputMode="numeric"
               placeholder="$0"
               className="fh-num h-[70px] w-full border-2 border-ink bg-bg px-4 font-mono text-4xl font-extrabold"
             />
-            <span className="mt-1 block text-xs text-ink-soft">Lo que puso el cliente sobre el mesón.</span>
+            {/*
+              EL SALDO A COBRAR EN EFECTIVO, en vivo y con el débito ya
+              descontado. Es la cifra que el pago mixto vuelve imposible de
+              calcular de cabeza: el débito va al peso, el efectivo se redondea,
+              y la resta no es la que uno haría a ojo.
+            */}
+            <span className="mt-1 block text-xs text-ink-soft">
+              {faltaEnEfectivo === null ? (
+                "Lo que puso el cliente sobre el mesón."
+              ) : (
+                <>
+                  A cobrar en efectivo{" "}
+                  <span className="fh-num font-semibold text-ink">{formatCLP(faltaEnEfectivo)}</span>
+                  {nDebito > 0 ? " — el resto ya va con la tarjeta." : "."}
+                </>
+              )}
+            </span>
             {/*
               Los cuatro billetes que el cliente pone sobre el mesón el 90% de
               las veces. SUMAN en vez de reemplazar: si paga con dos de veinte,
@@ -1131,9 +1284,17 @@ function Cobrar({
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-ink-soft">Débito o crédito</span>
+            {/*
+              Arranca con el total puesto y SELECCIONADO. Para cobrar solo una
+              parte con la máquina se teclea el monto encima: no hay que borrar
+              el total primero, que es el paso que en el mesón se hace con el
+              voucher ya impreso y el cliente esperando.
+            */}
             <input
+              ref={campoDebito}
               value={debito === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nDebito)}
               onChange={(e) => setDebito(soloDigitos(e.target.value))}
+              onKeyDown={alEnterCobrar}
               inputMode="numeric"
               placeholder="$0"
               className={`fh-num h-[70px] w-full border bg-bg px-4 font-mono text-4xl font-extrabold ${
@@ -1148,11 +1309,17 @@ function Cobrar({
             */}
             {nDebito > 0 ? (
               pideReferencia ? (
+                /*
+                  Sin `autoFocus`: al elegir débito el foco lo pone `elegir()`
+                  en el MONTO, y dos cosas peleando por el foco en el mismo
+                  render se resuelven por orden de montaje, que no es una regla
+                  que uno quiera que decida dónde escribe el cajero.
+                */
                 <input
                   value={referencia}
                   onChange={(e) => setReferencia(e.target.value)}
-                  autoFocus
-                  placeholder="Nº de comprobante de la tarjeta"
+                  onKeyDown={alEnterCobrar}
+                  placeholder="Nº de voucher que imprimió la máquina"
                   className="mt-1 min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-sm"
                 />
               ) : (
@@ -1169,20 +1336,36 @@ function Cobrar({
         </div>
       ) : null}
 
-      {efectivoACobrar !== null && previa.venta ? (
+      {efectivoACobrar !== null && previa.venta && previa.venta.roundingAmount !== 0 ? (
         <p className="mt-3 text-sm text-ink-soft">
-          Efectivo a cobrar <span className="fh-num font-semibold text-ink">{formatCLP(efectivoACobrar)}</span>
-          {previa.venta.roundingAmount !== 0
-            ? ` — se redondeó ${formatCLP(previa.venta.roundingAmount)}: la tarjeta va al peso exacto.`
-            : ""}
+          Se redondeó {formatCLP(previa.venta.roundingAmount)}: la tarjeta va al peso exacto y el efectivo al
+          múltiplo de la caja.
         </p>
       ) : null}
 
-      {/* El vuelto aparece apenas se escribe el efectivo, no después de cobrar. */}
-      <div className="mt-4 border-t border-line pt-4 text-center">
-        <div className="text-xs uppercase tracking-wide text-ink-soft">Vuelto</div>
-        <div className="fh-num text-[3rem] font-black leading-none tracking-tight">{formatCLP(vuelto)}</div>
-      </div>
+      {/*
+        LA CIFRA GRANDE CAMBIA DE TRABAJO según lo que falte, en lugar de
+        mostrar un vuelto de $0 mientras el cajero todavía no termina de
+        teclear. Un cero grande y quieto se lee como «no hay vuelto», que es
+        una afirmación distinta de «todavía no sé».
+
+        Cuando falta plata NO se pinta de rojo pleno: superficie tintada, borde
+        y LA PALABRA. El rojo pleno de esta pantalla es «Cobrar», y es uno solo.
+      */}
+      {muestraFalta ? (
+        <div className="mt-4 border-2 border-accent bg-accent-tint p-3 text-center">
+          <div className="text-xs font-semibold uppercase tracking-wide text-accent-ink">Falta</div>
+          <div className="fh-num text-[3rem] font-black leading-none tracking-tight text-accent-ink">
+            {formatCLP(faltante)}
+          </div>
+          <div className="text-xs text-accent-ink">El efectivo recibido todavía no cubre el saldo.</div>
+        </div>
+      ) : (
+        <div className="mt-4 border-t border-line pt-4 text-center">
+          <div className="text-xs uppercase tracking-wide text-ink-soft">Vuelto</div>
+          <div className="fh-num text-[3rem] font-black leading-none tracking-tight">{formatCLP(vuelto)}</div>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <fieldset>
@@ -1297,7 +1480,11 @@ function Cobrar({
         )}
       </div>
 
-      {previa.problema ? <p className="mt-4 text-sm text-warn">{previa.problema}</p> : null}
+      {/*
+        El aviso de texto se calla cuando el bloque grande ya dice «Falta»: es
+        el mismo dato dos veces, y la cifra de 48px lo dice mejor.
+      */}
+      {previa.problema && !muestraFalta ? <p className="mt-4 text-sm text-warn">{previa.problema}</p> : null}
       {error ? (
         <div className="mt-4 rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
           {error}
@@ -1305,7 +1492,7 @@ function Cobrar({
       ) : null}
 
       <div className="mt-5 flex gap-3">
-        <Boton ref={botonCobrar} variante="principal" disabled={enviando || !previa.venta} onClick={cobrar} tecla="F2">
+        <Boton ref={botonCobrar} variante="principal" disabled={enviando || !previa.venta} onClick={cobrar} tecla="Enter">
           Cobrar e imprimir
         </Boton>
         <Boton variante="fantasma" onClick={onCerrar}>
