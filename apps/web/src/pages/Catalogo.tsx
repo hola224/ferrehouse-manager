@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, getToken } from "@/lib/api";
 import { descargarArchivo } from "@/lib/descargar";
+import { useCascaron } from "@/components/cascarones";
 import { useAuth } from "@/lib/auth";
 import { useAtajos } from "@/lib/atajos";
 import { Boton, Chip } from "@/components/ui";
@@ -105,6 +106,16 @@ function textoMargen(p: Producto): string {
 export function Catalogo() {
   const { usuario } = useAuth();
   const esAdmin = usuario?.role === "ADMIN";
+  /*
+    Costo y margen dependen de DOS cosas, no de una. Del rol, porque al vendedor
+    el servidor ni siquiera se los manda. Y del cascarón: un administrador
+    atendiendo el mesón está en la pantalla que el traspaso llama «Buscar», que
+    trae SKU, nombre, precio y stock y nada más. Si quiere ver costos, cruza al
+    backoffice con la celda ADMIN del riel — es un paso, y es el paso correcto:
+    los costos no se miran con el cliente al frente.
+  */
+  const cascaron = useCascaron();
+  const conPlata = esAdmin && cascaron === "admin";
 
   const [texto, setTexto] = useState("");
   const [productos, setProductos] = useState<Producto[]>([]);
@@ -178,7 +189,7 @@ export function Catalogo() {
    * responder "no autorizado". Le quedan ↑↓ y Enter, que es lo que necesita
    * para consultar un precio.
    */
-  const atajos = useMemo(() => (esAdmin ? atajosVisibles("catalogo") : []), [esAdmin]);
+  const atajos = useMemo(() => (conPlata ? atajosVisibles("catalogo") : []), [conPlata]);
 
   /**
    * Enter y Escape se quedan en el contenedor a propósito: significan cosas
@@ -215,9 +226,9 @@ export function Catalogo() {
     {
       ArrowDown: () => moverSeleccion(1),
       ArrowUp: () => moverSeleccion(-1),
-      F2: esAdmin ? () => setFormulario(null) : undefined,
-      F4: esAdmin ? () => setImportando(true) : undefined,
-      F8: esAdmin && productos[seleccion] ? () => setFormulario(productos[seleccion]!.id) : undefined,
+      F2: conPlata ? () => setFormulario(null) : undefined,
+      F4: conPlata ? () => setImportando(true) : undefined,
+      F8: conPlata && productos[seleccion] ? () => setFormulario(productos[seleccion]!.id) : undefined,
     },
     // Con un diálogo abierto las teclas son suyas: el detalle del producto
     // tiene su propio F6/F8, y el formulario no quiere ninguno.
@@ -255,7 +266,10 @@ export function Catalogo() {
   return (
     <div className="flex flex-col gap-4" onKeyDown={alTeclear}>
       <div className="flex items-start gap-4">
-        <div className="flex-1">
+        {/* La caja de escaneo es la protagonista, pero no crece sin límite: a
+            ancho completo el ojo tiene que recorrer 1200px para llegar a los
+            botones de la derecha. */}
+        <div className="min-w-0 flex-1 lg:max-w-[460px]">
           <label className="sr-only" htmlFor="buscador">
             Buscar productos
           </label>
@@ -266,13 +280,19 @@ export function Catalogo() {
             onChange={(e) => setTexto(e.target.value)}
             placeholder="Escanea, o escribe nombre o código"
             autoComplete="off"
-            className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-4 text-lg text-ink placeholder:text-ink-soft/60"
+            className="h-12 w-full border-2 border-ink bg-surface px-4 text-lg text-ink placeholder:font-normal placeholder:text-ink-soft/60"
           />
           <p className="mt-1 text-xs text-ink-soft">
             Escaneo, nombre parcial o SKU: todo entra por la misma caja.
           </p>
         </div>
-        {esAdmin ? (
+        {/*
+          En el mesón esta pantalla es «Buscar»: se consulta, no se administra.
+          Crear un producto o exportar el catálogo con un cliente al frente no
+          es algo que pase — y los atajos de más abajo se apagan con la misma
+          condición, para que la pantalla no anuncie teclas que no hacen nada.
+        */}
+        {conPlata ? (
           <div className="flex shrink-0 gap-2">
             <Boton onClick={() => void exportar()} disabled={exportando}>
               {exportando ? "Armando…" : "Exportar Excel"}
@@ -312,7 +332,7 @@ export function Catalogo() {
       ) : (
         <Tabla
           productos={productos}
-          esAdmin={esAdmin}
+          conPlata={conPlata}
           seleccion={seleccion}
           onSeleccionar={setSeleccion}
           onAbrir={setAbierto}
@@ -380,36 +400,42 @@ export function Catalogo() {
 
 function Tabla({
   productos,
-  esAdmin,
+  conPlata,
   seleccion,
   onSeleccionar,
   onAbrir,
   filasRef,
 }: {
   productos: Producto[];
-  esAdmin: boolean;
+  /**
+   * Si se muestran costo y margen. No es lo mismo que «es administrador»: un
+   * administrador atendiendo el mesón usa la pantalla Buscar del POS, que trae
+   * SKU, nombre, precio y stock — y nada más. Los costos en la pantalla que
+   * mira el cliente por encima del hombro no ayudan a vender.
+   */
+  conPlata: boolean;
   seleccion: number;
   onSeleccionar: (i: number) => void;
   onAbrir: (p: Producto) => void;
   filasRef: React.MutableRefObject<(HTMLTableRowElement | null)[]>;
 }) {
   return (
-    <div className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-surface">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto border border-line bg-surface">
+      <table className="w-full">
         <thead>
-          <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
-            <th className="px-3 py-2 text-left font-semibold">SKU</th>
-            <th className="px-3 py-2 text-left font-semibold">Nombre</th>
-            <th className="px-3 py-2 text-left font-semibold">Unidad</th>
-            <th className="px-3 py-2 text-right font-semibold">Stock</th>
-            {/* Las columnas de plata del admin NO se renderizan para el
-                vendedor. No es `display:none`: no existen (brief §2.8). */}
-            {esAdmin ? <th className="px-3 py-2 text-right font-semibold">Costo</th> : null}
-            <th className="px-3 py-2 text-right font-semibold">Precio</th>
-            {esAdmin ? <th className="px-3 py-2 text-right font-semibold">Margen</th> : null}
+          <tr className="border-b-2 border-ink text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
+            <th className="w-[104px] px-[14px] py-[9px] text-left font-extrabold">SKU</th>
+            <th className="px-[14px] py-[9px] text-left font-extrabold">Producto</th>
+            <th className="w-[120px] px-[14px] py-[9px] text-right font-extrabold">Stock</th>
+            {/* Las columnas de plata NO se renderizan cuando no corresponden.
+                No es `display:none`: no existen (brief §2.8). */}
+            {conPlata ? <th className="w-[110px] px-[14px] py-[9px] text-right font-extrabold">Costo neto</th> : null}
+            <th className="w-[110px] px-[14px] py-[9px] text-right font-extrabold">Precio</th>
+            {conPlata ? <th className="w-[100px] px-[14px] py-[9px] text-right font-extrabold">Margen</th> : null}
+            <th className="w-[118px] px-[14px] py-[9px] text-left font-extrabold">Estado</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="text-sm">
           {productos.map((p, i) => {
             const estado = estadoStock(p);
             return (
@@ -420,29 +446,29 @@ function Tabla({
                 onDoubleClick={() => onAbrir(p)}
                 aria-selected={i === seleccion}
                 className={
-                  "cursor-default border-b border-line/60 last:border-0 " +
-                  (i === seleccion ? "bg-bg" : "hover:bg-bg/60")
+                  "cursor-default border-b border-line-soft last:border-0 " +
+                  (i === seleccion ? "bg-accent-tint shadow-[inset_4px_0_0_rgb(var(--fh-accent))]" : "hover:bg-bg")
                 }
               >
-                <td className="fh-num px-3 py-2 text-mono-ink">{p.sku}</td>
-                <td className="px-3 py-2">
-                  <span className={p.active ? "" : "text-ink-soft"}>{p.name}</span>
+                <td className="fh-num px-[14px] py-[10px] font-mono text-[12.5px] text-mono-ink">{p.sku}</td>
+                <td className="px-[14px] py-[10px]">
+                  <span className={p.active ? "font-semibold" : "text-ink-soft"}>{p.name}</span>
                   {!p.active ? <span className="ml-2 text-xs text-ink-soft">(inactivo)</span> : null}
-                  {estado ? (
-                    <span className="ml-2 align-middle">
-                      <Chip tono={estado.tono}>{estado.palabra}</Chip>
-                    </span>
-                  ) : null}
+                  <span className="ml-2 font-mono text-[11px] text-mono-ink">{p.saleUnit.symbol}</span>
                 </td>
-                <td className="fh-num px-3 py-2 text-ink-soft">{p.saleUnit.symbol}</td>
-                <td className="fh-num px-3 py-2 text-right">{formatQty(saldoEnUnidadDeVenta(p))}</td>
-                {esAdmin ? (
-                  <td className="fh-num px-3 py-2 text-right text-ink-soft">
-                    {textoCosto(p)}
-                  </td>
+                <td className="fh-num px-[14px] py-[10px] text-right">{formatQty(saldoEnUnidadDeVenta(p))}</td>
+                {conPlata ? (
+                  <td className="fh-num px-[14px] py-[10px] text-right text-ink-soft">{textoCosto(p)}</td>
                 ) : null}
-                <td className="fh-num px-3 py-2 text-right font-semibold">{formatCLP(p.priceGross)}</td>
-                {esAdmin ? <td className="fh-num px-3 py-2 text-right text-ink-soft">{textoMargen(p)}</td> : null}
+                <td className="fh-num px-[14px] py-[10px] text-right text-[15px] font-extrabold">
+                  {formatCLP(p.priceGross)}
+                </td>
+                {conPlata ? (
+                  <td className="fh-num px-[14px] py-[10px] text-right text-ink-soft">{textoMargen(p)}</td>
+                ) : null}
+                <td className="px-[14px] py-[10px]">
+                  {estado ? <Chip tono={estado.tono}>{estado.palabra}</Chip> : <Chip tono="ok">ok</Chip>}
+                </td>
               </tr>
             );
           })}
