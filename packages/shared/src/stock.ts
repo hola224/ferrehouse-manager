@@ -15,7 +15,6 @@
  */
 
 import { z } from "zod";
-import { roundSym } from "./money.js";
 
 export const STOCK_MOVEMENT_TYPES = [
   "INITIAL",
@@ -107,21 +106,6 @@ export function exigeMotivo(tipo: StockMovementType): boolean {
  * distintas.
  */
 export const TIPOS_QUE_FIJAN_COSTO: StockMovementType[] = ["INITIAL", "PURCHASE", "RETURN_IN", "TRANSFER_IN"];
-
-/**
- * Costo unitario de una línea de compra, en milésimas de peso por unidad BASE.
- *
- * Es la conversión que más se equivoca en todo el sistema: el proveedor cobra
- * por unidad de COMPRA (el saco, el rollo) y el libro lleva unidad BASE (el
- * kilo, el metro). Un saco de 25 kg a $4.500 son $180 el kilo, no $4.500.
- */
-export function costoUnitarioBaseMilliPeso(params: {
-  lineTotalNet: number;
-  qtyBaseMilli: number;
-}): number {
-  if (params.qtyBaseMilli === 0) return 0;
-  return roundSym((params.lineTotalNet * 1_000_000) / params.qtyBaseMilli);
-}
 
 // ============================================================
 // Lo que se digita (tareas 4.1 y 4.3)

@@ -727,6 +727,17 @@ ajuste pide **la diferencia**, y lo natural es teclear lo que uno contó. Ahora,
 mientras se escribe, la pantalla dice en cuánto queda. Escribir 275 donde iba
 −3 muestra «Queda en 553 m» antes de confirmar.
 
+### Dos limpiezas al cerrar
+
+`formatCostoMilli` entró a `money.ts` —el archivo con la disciplina más
+estricta del repo— sin un solo test; ahora tiene cuatro, incluido el del signo
+delante del peso, que es el que se rompe solo al copiar el patrón.
+
+Y se borró `costoUnitarioBaseMilliPeso`: se escribió con dos tests que pasaban
+y nadie lo llamaba nunca. Es la misma clase de cosa que este sprint arregló en
+`deriveSaleStatus` —un molde sin nadie que lo llene—, y dejarlo con tests
+verdes es peor que no tenerlo: parece verificado.
+
 ### Lo que no se construyó
 
 La **pantalla de compras**: la tarea 4.1 entrega el endpoint y el sprint pide

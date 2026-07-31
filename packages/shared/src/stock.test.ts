@@ -5,7 +5,6 @@ import {
   conSigno,
   ingresa,
   exigeMotivo,
-  costoUnitarioBaseMilliPeso,
   recalcAverageCost,
 } from "./index.js";
 
@@ -37,17 +36,6 @@ describe("tabla de tipos de movimiento", () => {
     expect(exigeMotivo("ADJUSTMENT")).toBe(true);
     expect(exigeMotivo("SHRINKAGE")).toBe(true);
     expect(exigeMotivo("PURCHASE")).toBe(false);
-  });
-});
-
-describe("costo unitario en unidad base", () => {
-  it("un saco de 25 kg a $4.500 son $180 el kilo", () => {
-    // 25 kg = 25.000 milésimas de kilo; $180 el kilo = 180.000 milésimas de peso
-    expect(costoUnitarioBaseMilliPeso({ lineTotalNet: 4500, qtyBaseMilli: 25_000 })).toBe(180_000);
-  });
-
-  it("una caja de 1.000 tarugos a $3.500 son $3,5 cada uno", () => {
-    expect(costoUnitarioBaseMilliPeso({ lineTotalNet: 3500, qtyBaseMilli: 1_000_000 })).toBe(3_500);
   });
 });
 

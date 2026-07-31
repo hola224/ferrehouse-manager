@@ -8,6 +8,7 @@ import {
   recalcAverageCost,
   formatCLP,
   formatHora,
+  formatCostoMilli,
 } from "./money.js";
 
 describe("redondeo de efectivo", () => {
@@ -145,5 +146,28 @@ describe("formato de plata negativa y horas", () => {
     const tarde = new Date(2026, 6, 30, 21, 1);
     expect(formatHora(tarde)).toBe("21:01");
     expect(formatHora(new Date(2026, 6, 30, 9, 5))).toBe("09:05");
+  });
+});
+
+describe("costo por unidad (no es un monto: lleva decimales)", () => {
+  /**
+   * La razón de ser de las milésimas (decisión sellada 2). Mostrar "$4" donde
+   * el costo es $3,5 es un 14% de error a la vista, justo en el número con el
+   * que se calcula el margen.
+   */
+  it("un tarugo de $3,5 no se muestra como $4", () => {
+    expect(formatCostoMilli(3_500)).toBe("$3,5");
+  });
+
+  it("dos decimales bastan: un metro de cable a $485,587", () => {
+    expect(formatCostoMilli(485_587)).toBe("$485,59");
+  });
+
+  it("un costo redondo no arrastra ceros de relleno", () => {
+    expect(formatCostoMilli(450_000)).toBe("$450");
+  });
+
+  it("el signo va delante del peso, igual que en formatCLP", () => {
+    expect(formatCostoMilli(-3_500)).toBe("-$3,5");
   });
 });
