@@ -286,14 +286,29 @@ dos corridas completas seguidas.
 - Responder la **pregunta abierta 4** (qué navegador corren los terminales, y en
   modo normal o kiosco). Sigue bloqueando la tabla de atajos del Sprint 3.
 
-### Observado, sin explicar
+### El test intermitente, explicado y corregido
 
-Una corrida de `users.test.ts` + `import.test.ts` falló al **cargar** el primer
-archivo. No se reprodujo en cuatro corridas posteriores, incluidas dos de la
-suite completa. Los archivos de test comparten una misma base SQLite que cada
-uno borra y recrea, así que la sospecha es una condición de carrera con el
-archivo WAL; queda anotado sin arreglar, porque arreglar lo que no se sabe
-reproducir suele ser cambiar de síntoma.
+Quedó anotado acá como "observado, sin explicar": una de cada tres o cuatro
+corridas, un archivo de test entero fallaba y sus casos salían como omitidos.
+La sospecha inicial —una carrera al borrar la base compartida— **era falsa**.
+
+El error real, una vez capturado, decía `Hook timed out in 60000ms`. Midiendo:
+la preparación de cada archivo tardaba **33 segundos**, con 485 ms por sentencia
+de migración y 341 ms por insert. Los tests nunca activaban WAL, así que SQLite
+quedaba en su modo por omisión y hacía un `fsync` **por sentencia**; el
+`beforeAll` rozaba su límite de 60 s y a veces lo pasaba.
+
+Con `journal_mode=WAL` y `synchronous=NORMAL`, y las 69 sentencias de migración
+en una sola transacción: **1,9 segundos**. La suite del servidor bajó de 217 s a
+10,5 s, y `pnpm check` corrió cinco veces seguidas en verde.
+
+Además cada archivo de test recibe ahora **su propia base**, con nombre único
+puesto antes de que se construya el cliente de Prisma. Ya no había carrera que
+arreglar, pero compartir un archivo entre tests no aportaba nada.
+
+Lo que se aprendió: perseguir un test intermitente hasta el mensaje literal vale
+la pena. Con la primera hipótesis —plausible, y equivocada— habría "arreglado"
+una carrera inexistente y el timeout habría seguido ahí, más raro todavía.
 
 ### Corrección del mismo día, tras revisar el importador
 
