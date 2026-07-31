@@ -1000,11 +1000,13 @@ function Cobrar({
   const vuelto = previa.venta?.changeAmount ?? 0;
 
   return (
-    <Dialogo onCerrar={onCerrar} ancho="max-w-2xl">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-bold">A cobrar</h2>
-        <div className="flex items-baseline gap-3">
-          <span className="fh-num text-3xl font-black">{formatCLP(previa.venta?.totalGross ?? total.totalGross)}</span>
+    <Dialogo
+      onCerrar={onCerrar}
+      ancho="max-w-[980px]"
+      titulo="A cobrar"
+      cifra={
+        <span className="flex items-baseline gap-3">
+          {formatCLP(previa.venta?.totalGross ?? total.totalGross)}
           {/*
             Copiar el monto de TARJETA —el exacto— porque es el que hay que
             teclear en la máquina del banco, que es el paso lento de una venta
@@ -1013,12 +1015,13 @@ function Cobrar({
           <button
             type="button"
             onClick={() => void copiarTotal()}
-            className="text-xs text-ink-soft underline underline-offset-4"
+            className="text-xs font-normal text-shell-muted underline underline-offset-4 hover:text-surface"
           >
             {copiado ? "copiado ✓" : "copiar"}
           </button>
-        </div>
-      </div>
+        </span>
+      }
+    >
 
       {/*
         Los dos caminos de siempre, sin teclear un peso. El monto de cada botón
@@ -1072,9 +1075,31 @@ function Cobrar({
               onChange={(e) => setEfectivo(soloDigitos(e.target.value))}
               inputMode="numeric"
               placeholder="$0"
-              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+              className="fh-num h-[70px] w-full border-2 border-ink bg-bg px-4 font-mono text-4xl font-extrabold"
             />
             <span className="mt-1 block text-xs text-ink-soft">Lo que puso el cliente sobre el mesón.</span>
+            {/*
+              Los cuatro billetes que el cliente pone sobre el mesón el 90% de
+              las veces. SUMAN en vez de reemplazar: si paga con dos de veinte,
+              se aprieta dos veces — que es lo que hace la mano, no calcular
+              cuarenta y teclearlo.
+            */}
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {[10_000, 20_000, 50_000, 100_000].map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setEfectivo(String((Number(efectivo) || 0) + b));
+                    campo.current?.focus();
+                  }}
+                  className="fh-num h-11 border border-line-key bg-surface font-mono text-sm font-semibold hover:bg-bg"
+                >
+                  {new Intl.NumberFormat("es-CL").format(b)}
+                </button>
+              ))}
+            </div>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-ink-soft">Débito o crédito</span>
@@ -1083,7 +1108,9 @@ function Cobrar({
               onChange={(e) => setDebito(soloDigitos(e.target.value))}
               inputMode="numeric"
               placeholder="$0"
-              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+              className={`fh-num h-[70px] w-full border bg-bg px-4 font-mono text-4xl font-extrabold ${
+                nDebito === 0 ? "border-line-field text-mono-ink" : "border-ink"
+              }`}
             />
             {/*
               El Nº de comprobante NO es el folio: el folio es el número del
@@ -1279,12 +1306,14 @@ function Dialogo({
   onCerrar,
   ancho = "max-w-lg",
   titulo,
+  cifra,
 }: {
   children: React.ReactNode;
   onCerrar: () => void;
   ancho?: string;
-  /** Opcional: los dos diálogos viejos pintan su propia cabecera, con el total al lado. */
   titulo?: string;
+  /** El número que se mira mientras se teclea: va en la barra negra, a la derecha. */
+  cifra?: React.ReactNode;
 }) {
   useEffect(() => {
     const alTeclado = (e: KeyboardEvent) => {
@@ -1312,10 +1341,20 @@ function Dialogo({
       aria-modal="true"
     >
       <div
-        className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface p-6`}
+        className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto border-2 border-ink bg-surface`}
       >
-        {titulo ? <h2 className="mb-4 text-lg font-bold">{titulo}</h2> : null}
-        {children}
+        {/*
+          La barra negra con el título a la izquierda y la cifra a la derecha.
+          El total va ACÁ y no en el cuerpo porque es el dato que se mira
+          mientras se teclea el efectivo, y en el cuerpo se lo comen los campos.
+        */}
+        {titulo ? (
+          <header className="flex items-center justify-between gap-4 bg-ink px-5 py-3 text-surface">
+            <h2 className="text-xl font-black">{titulo}</h2>
+            {cifra ? <div className="fh-num text-[38px] font-black leading-none">{cifra}</div> : null}
+          </header>
+        ) : null}
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );
