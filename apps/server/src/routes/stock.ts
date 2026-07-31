@@ -314,38 +314,19 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.get("/api/stock/alerts", soloAdmin, async () => {
-    const alertas = await db.alert.findMany({
-      where: { resolvedAt: null },
-      orderBy: { id: "desc" },
-      take: 100,
-      include: { product: { select: { id: true, sku: true, name: true } } },
-    });
-    return { alertas };
-  });
-
-  // ============================================================
-  // Valorizado: lo que hay en repisa y cuánto vale (INV-06)
-  // ============================================================
-
-  app.get("/api/stock/valued", soloAdmin, async (req) => {
-    const niveles = await db.stockLevel.findMany({
-      where: { locationId: req.user.locationId, NOT: { qtyBaseMilli: 0 } },
-      include: { product: { include: { saleUnit: { include: { group: true } } } } },
-      orderBy: { productId: "asc" },
-    });
-    const filas = niveles
-      .filter((n) => n.product.deletedAt === null)
-      .map((n) => ({
-        productId: n.productId,
-        sku: n.product.sku,
-        name: n.product.name,
-        qtyBaseMilli: n.qtyBaseMilli,
-        cantidad: `${formatQty(aUnidadDeVenta(n.qtyBaseMilli, n.product.saleUnit.factorMilli), n.product.saleUnit.group.allowsFraction)} ${n.product.saleUnit.symbol}`,
-        // Valor neto exacto en pesos: milésimas de base × milésimas de peso.
-        valorNeto: roundSym((n.qtyBaseMilli * n.product.costNetMilliPeso) / 1_000_000),
-      }));
-    const total = filas.reduce((t, f) => t + f.valorNeto, 0);
-    return { filas, total, totalTexto: formatCLP(total) };
-  });
+  /*
+   * `GET /api/stock/alerts` y `GET /api/stock/valued` vivían acá y se fueron
+   * en el Sprint 5, sin dejar alias:
+   *
+   * - Las alertas pasaron a `/api/alerts`, que además de las guardadas
+   *   devuelve las derivadas (venta en espera añeja) y permite resolverlas.
+   * - El valorizado pasó a `/api/reports/inventory`, que lo reconstruye
+   *   SUMANDO EL LIBRO en vez de multiplicar el caché `StockLevel` por el
+   *   PMP. Los dos números difieren en unos pesos —uno suma montos exactos,
+   *   el otro multiplica por una razón redondeada— y dejar los dos vivos
+   *   garantizaba que tarde o temprano alguien comparara el valorizado de una
+   *   pantalla con el de la otra y no supiera a cuál creerle.
+   *
+   * Ninguna pantalla los llamaba todavía, así que mover fue gratis.
+   */
 }

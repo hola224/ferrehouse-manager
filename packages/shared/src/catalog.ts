@@ -301,10 +301,18 @@ export function costoPorUnidadDeVenta(p: {
 }
 
 /**
- * Margen sobre el neto, en porcentaje. `null` cuando no se puede calcular:
- * sin costo (el vendedor no lo recibe) o con precio cero.
+ * Margen DE LISTA sobre el neto, en porcentaje: lo que el producto dejaría si
+ * se vendiera al precio de repisa. `null` cuando no se puede calcular: sin
+ * costo (el vendedor no lo recibe) o con precio cero.
+ *
+ * NO es el margen del reporte del Sprint 5, que es el REALIZADO
+ * (`margenRealizadoPct`): ese sale de lo que la venta dejó de verdad, con su
+ * descuento aplicado y con el costo congelado del día de la venta. Los dos
+ * son legítimos y dan números distintos para el mismo producto; se llaman
+ * distinto justamente para que nadie compare uno con otro creyendo que
+ * midieron lo mismo.
  */
-export function margenPorcentaje(p: {
+export function margenDeListaPct(p: {
   priceGross: number;
   costNetMilliPeso?: number;
   saleUnit: { factorMilli: number };

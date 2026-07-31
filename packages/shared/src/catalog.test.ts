@@ -13,7 +13,7 @@ import {
   validarFraccion,
   supplierInputSchema,
   costoPorUnidadDeVenta,
-  margenPorcentaje,
+  margenDeListaPct,
   type UnitLike,
 } from "./catalog.js";
 
@@ -200,21 +200,21 @@ describe("costo y margen llevados a la misma unidad", () => {
   it("el margen del saco es 17,5% y no 96,7%", () => {
     // Sin convertir: (5454 − 180) / 5454 = 96,7%, y el producto parecía un
     // negocio redondo. Convertido: (5454 − 4500) / 5454 = 17,5%.
-    const m = margenPorcentaje({ priceGross: 6490, costNetMilliPeso: 180_000, saleUnit: saco })!;
+    const m = margenDeListaPct({ priceGross: 6490, costNetMilliPeso: 180_000, saleUnit: saco })!;
     expect(m).toBeGreaterThan(17);
     expect(m).toBeLessThan(18);
   });
 
   it("el margen del cable, vendido en su unidad base, sigue igual", () => {
-    const m = margenPorcentaje({ priceGross: 690, costNetMilliPeso: 410_000, saleUnit: metro })!;
+    const m = margenDeListaPct({ priceGross: 690, costNetMilliPeso: 410_000, saleUnit: metro })!;
     expect(m).toBeCloseTo(29.3, 0);
   });
 
   it("sin costo no hay margen: es lo que recibe el vendedor", () => {
-    expect(margenPorcentaje({ priceGross: 690, saleUnit: metro })).toBeNull();
+    expect(margenDeListaPct({ priceGross: 690, saleUnit: metro })).toBeNull();
   });
 
   it("un precio en cero no divide por cero", () => {
-    expect(margenPorcentaje({ priceGross: 0, costNetMilliPeso: 1000, saleUnit: metro })).toBeNull();
+    expect(margenDeListaPct({ priceGross: 0, costNetMilliPeso: 1000, saleUnit: metro })).toBeNull();
   });
 });

@@ -17,7 +17,11 @@ import { registerSuspendedRoutes } from "./routes/suspended.js";
 import { registerPurchaseRoutes } from "./routes/purchases.js";
 import { registerStockRoutes } from "./routes/stock.js";
 import { registerReturnRoutes } from "./routes/returns.js";
-import { stripForRole, type Role } from "@ferrehouse/shared";
+import { registerReportRoutes } from "./routes/reports.js";
+import { registerAlertRoutes } from "./routes/alerts.js";
+import { alertasVigentes } from "./alerts.js";
+import { diaLocal, hoyTexto, resumenDeVentas } from "./reports.js";
+import { stripForRole, formatCLP, formatHora, type Role } from "@ferrehouse/shared";
 
 declare module "@fastify/jwt" {
   interface FastifyJWT {
@@ -121,21 +125,68 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
 
   app.get("/api/me", { preHandler: requireRole("ADMIN", "SELLER") }, async (req) => ({ usuario: req.user }));
 
-  // --- Dashboard: lo que ve cada rol ---
-
+  /**
+   * Dashboard (tarea 5.7). **La rama por rol es del SERVIDOR**, no de la
+   * pantalla: al vendedor no le viaja ninguna cifra de plata, ni siquiera
+   * nula (decisión sellada 17).
+   *
+   * Y no es solo el margen. **La venta del día tampoco**, porque el arqueo es
+   * a ciegas (Sprint 2): casi toda la venta del día es efectivo, así que
+   * mostrarle "vendiste $340.000" le está diciendo cuánto debería tener el
+   * cajón, que es exactamente el número que el cierre a ciegas le esconde.
+   * El vendedor ve cuántos documentos lleva, no cuánta plata.
+   */
   app.get("/api/dashboard", { preHandler: requireRole("ADMIN", "SELLER") }, async (req) => {
+    const sesion = await db.cashSession.findFirst({ where: { openStationId: req.user.stationId } });
     const comun = {
       tienda: (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse",
       estacion: (await db.station.findUnique({ where: { id: req.user.stationId } }))?.name ?? "?",
       productos: await db.product.count({ where: { deletedAt: null } }),
+      caja: sesion ? { abierta: true, desde: formatHora(sesion.openedAt) } : { abierta: false, desde: null },
     };
-    if (req.user.role !== "ADMIN") return { rol: "SELLER", ...comun };
+
+    const hoy = hoyTexto();
+    const desde = diaLocal(hoy);
+    const hasta = diaLocal(hoy, true);
+
+    if (req.user.role !== "ADMIN") {
+      return {
+        rol: "SELLER",
+        ...comun,
+        misDocumentos: await db.sale.count({
+          where: { locationId: req.user.locationId, userId: req.user.sub, createdAt: { gte: desde, lte: hasta } },
+        }),
+      };
+    }
+
+    const dia = await resumenDeVentas(req.user.locationId, desde, hasta);
+    const alertas = await alertasVigentes(req.user.locationId);
+    const saldo = sesion
+      ? ((await db.cashMovement.findFirst({ where: { sessionId: sesion.id }, orderBy: { id: "desc" } }))
+          ?.balanceAfter ?? 0)
+      : null;
+
     return {
       rol: "ADMIN",
       ...comun,
-      usuarios: await db.user.count({ where: { active: true } }),
-      unidades: await db.unit.count(),
-      alertas: await db.alert.count({ where: { resolvedAt: null } }),
+      caja: { ...comun.caja, saldo, saldoTexto: saldo === null ? null : formatCLP(saldo) },
+      dia: {
+        fecha: hoy,
+        total: dia.total,
+        totalTexto: dia.totalTexto,
+        documentos: dia.documentos,
+        devoluciones: dia.devoluciones,
+        margen: dia.margen,
+        margenTexto: formatCLP(dia.margen),
+        margenPct: dia.margenPct,
+      },
+      alertas: {
+        total: alertas.length,
+        criticas: alertas.filter((a) => a.severity === "CRITICAL").length,
+        // Cuatro datos y no cuarenta (UI-BRIEF §5.5): el panel completo está
+        // a un clic, acá van las que hay que mirar hoy.
+        primeras: alertas.slice(0, 5),
+      },
     };
   });
 
@@ -150,6 +201,8 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
   await registerPurchaseRoutes(app);
   await registerStockRoutes(app);
   await registerReturnRoutes(app);
+  await registerReportRoutes(app);
+  await registerAlertRoutes(app);
 
   return app;
 }

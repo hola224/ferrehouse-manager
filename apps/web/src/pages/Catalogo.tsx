@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Boton, Chip } from "@/components/ui";
-import { formatCLP, formatQty, atajosDe, costoPorUnidadDeVenta, margenPorcentaje } from "@ferrehouse/shared";
+import { formatCLP, formatQty, atajosDe, costoPorUnidadDeVenta, margenDeListaPct } from "@ferrehouse/shared";
 
 type Unidad = { id: number; name: string; symbol: string; factorMilli: number };
 type Nivel = { locationId: number; qtyBaseMilli: number; location: { id: number; name: string } };
@@ -84,7 +84,7 @@ function textoCosto(p: Producto): string {
 }
 
 function textoMargen(p: Producto): string {
-  const m = margenPorcentaje(p);
+  const m = margenDeListaPct(p);
   if (m === null) return "—";
   return `${m.toFixed(1)}%`.replace(".", ",");
 }

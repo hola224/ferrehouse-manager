@@ -124,9 +124,21 @@ describe("guard por rol", () => {
     const admin = await pedir(await token(idAdmin, PIN_ADMIN));
     const vendedor = await pedir(await token(idVendedor, PIN_VENDEDOR));
     expect(admin.rol).toBe("ADMIN");
-    expect(admin.usuarios).toBeGreaterThan(0);
+    expect(admin.dia.total).toBeTypeOf("number");
+    expect(admin.alertas.total).toBeTypeOf("number");
     expect(vendedor.rol).toBe("SELLER");
-    expect(vendedor.usuarios).toBeUndefined();
+
+    /**
+     * No basta con que venga en cero o en null: la clave NO EXISTE (decisión
+     * sellada 17). Y no es solo el margen — tampoco la venta del día, porque
+     * el arqueo es a ciegas y casi toda la venta del día es efectivo:
+     * decirle cuánto se vendió es decirle cuánto debería tener el cajón.
+     */
+    for (const clave of ["dia", "margen", "alertas"]) {
+      expect(Object.keys(vendedor)).not.toContain(clave);
+    }
+    expect(JSON.stringify(vendedor)).not.toContain("margen");
+    expect(vendedor.misDocumentos).toBeTypeOf("number");
   });
 });
 

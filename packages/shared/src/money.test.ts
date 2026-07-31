@@ -40,6 +40,24 @@ describe("IVA por residuo", () => {
     }
   });
 
+  /**
+   * De esto depende que el reporte del día pueda sumar todas las filas sin
+   * filtrar por estado (ADR-002): una devolución lleva `totalGross` negativo,
+   * y si el neto de −$12.990 no fuera exactamente −(neto de $12.990), el
+   * desglose neto + IVA dejaría de dar el total en cuanto existiera una sola
+   * devolución en el día. Se verificó sobre los 200.000 primeros brutos.
+   */
+  it("es simétrico: el neto de una devolución cancela el de su venta", () => {
+    for (const bruto of [12990, 1417, 1, 3, 99999, 17495, 33333]) {
+      // Escrito como suma y no como espejo a propósito: `taxFromGross(-1)` da
+      // `0` y `-taxFromGross(1)` da `-0`, que para JavaScript son valores
+      // distintos aunque sean el mismo número. Lo que el reporte necesita es
+      // que el par se cancele, y eso es exactamente lo que dice la suma.
+      expect(netFromGross(-bruto, 19) + netFromGross(bruto, 19)).toBe(0);
+      expect(taxFromGross(-bruto, 19) + taxFromGross(bruto, 19)).toBe(0);
+    }
+  });
+
   it("no usa neto * 0,19", () => {
     // 12990 bruto -> 10916 neto -> 2074 IVA. Con neto*0,19 daría 2074,04 y al
     // redondear por línea el total del día no cuadraría con el desglose.

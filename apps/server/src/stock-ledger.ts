@@ -22,6 +22,7 @@ import {
   roundSym,
   type StockMovementType,
 } from "@ferrehouse/shared";
+import { evaluarStockDeProducto } from "./alerts.js";
 
 export type MovimientoPedido = {
   productId: number;
@@ -133,6 +134,18 @@ export async function registrarMovimiento(
   if (costoDespues !== costoAntes) {
     await tx.product.update({ where: { id: pedido.productId }, data: { costNetMilliPeso: costoDespues } });
   }
+
+  /**
+   * Las alertas de stock (5.5) se evalúan acá y en ningún otro lado: este es
+   * el único instante en que el saldo de un producto puede cambiar, así que
+   * es el único en que la alerta puede nacer o dejar de ser cierta. Un
+   * barrido periódico llegaría tarde y encima repetido.
+   */
+  await evaluarStockDeProducto(tx, {
+    productId: pedido.productId,
+    locationId: pedido.locationId,
+    saldoDespues,
+  });
 
   return {
     id: movimiento.id,
