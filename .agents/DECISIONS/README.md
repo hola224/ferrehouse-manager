@@ -24,3 +24,4 @@ agregar a mano a la migración porque Prisma no lo genera).
 | [004](004-estaciones.md) | Estación como tabla y sesión única de caja | Vigente |
 | [005](005-unidades-y-costos.md) | Convención de unidades y precisión del costo | Vigente |
 | [006](006-concurrencia-sqlite.md) | Escrituras serializadas en SQLite | Vigente |
+| [007](007-marca-y-navegacion.md) | Marca roja y dos cascarones de navegación | Vigente |

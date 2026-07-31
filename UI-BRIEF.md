@@ -1,5 +1,21 @@
 # UI-BRIEF.md — Ferrehouse Manager
 
+> **⚠️ REGISTRO HISTÓRICO EN LO VISUAL (desde 2026-07-31).**
+> La dirección vigente es **"Mesón rojo"**: acento #F9353F (el rojo del logo),
+> radio 0, reglas de 2px, y dos cascarones de navegación en vez de una barra
+> única. Está documentada en `design_handoff_marca_ferrehouse/README.md`, y el
+> razonamiento en [ADR 007](.agents/DECISIONS/007-marca-y-navegacion.md).
+>
+> **Ese documento manda sobre este donde se contradigan** — que es en la §4
+> (dirección "Mesón" amarilla, #FFC400) y en la §5 (navegación). El amarillo se
+> retiró por completo: ya no es acento ni color secundario.
+>
+> Todo lo demás de este brief sigue vigente y sin cambios: los principios de la
+> §2, el teclado primero, el conteo ciego, el vendedor que no ve costos, las
+> fuentes servidas desde el repo. La §4 se conserva porque explica **por qué** se
+> había elegido el amarillo, y esa razón —que el rojo del error y el rojo de la
+> acción se confunden— es justo el problema que el ADR 007 tuvo que resolver.
+
 > Prompt de diseño para el agente Frontend Senior en Claude Code.
 > Complementa STATE.md y SPRINTS.md. Este documento manda sobre cualquier
 > intuición estética del agente: si algo no está definido acá, se pregunta

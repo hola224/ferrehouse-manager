@@ -39,56 +39,12 @@
   --fh-warn: 183 121 31;        /* #b7791f — stock bajo, descuadre chico */
   --fh-error: 179 17 26;        /* #b3111a — anulación, quiebre, caja descuadrada */
 
-  /*
-   * ── LOS QUE EL README NOMBRA Y SU tokens.css NO TRAÍA ──
-   *
-   * El traspaso especifica estos valores en «Componentes», «Navegación» y
-   * «Pantallas», pero su tokens.css solo traía los catorce de arriba. Como
-   * `check:tokens` prohíbe todo hexadecimal fuera de este archivo y el DoD pide
-   * "cero colores fuera de tokens.css", escribirlos en un .tsx no es una
-   * opción: o son tokens, o el rediseño no puede pasar su propio chequeo.
-   */
-
-  /* Grises de borde. Son tres y sí se distinguen: van de más oscuro a más
-     claro según cuánta atención pide lo que encierran. */
-  --fh-line-field: 201 202 201; /* #c9cac9 — borde de campo, botón secundario y tecla suelta */
-  --fh-line-idle: 227 228 227;  /* #e3e4e3 — fila de usuario sin elegir, en el login */
-  --fh-line-key: 214 215 214;   /* #d6d7d6 — tecla del teclado numérico en pantalla */
-
-  /* El verde y el ámbar tienen dos versiones: la del BORDE y el cuadrito, que
-     es --fh-ok / --fh-warn, y la del TEXTO sobre su propia superficie tintada,
-     que necesita un paso más profundo para llegar a contraste de lectura. */
-  --fh-ok-ink: 31 98 55;        /* #1f6237 — texto sobre superficie ok */
-  --fh-warn-ink: 140 92 21;     /* #8c5c15 — texto sobre superficie warn */
-  --fh-ok-bright: 79 190 116;   /* #4fbe74 — el cuadrito de "caja abierta" SOBRE la barra negra */
-
-  /*
-   * La familia del cascarón oscuro (barra del POS y barra lateral del admin).
-   * Sobre #16181a los grises claros de arriba se ven sucios: esta escala está
-   * calculada para fondo oscuro y no se mezcla con la de fondo claro.
-   */
-  --fh-shell-text: 201 204 206;      /* #c9ccce — ítem inactivo de la barra lateral */
-  --fh-shell-icon: 139 144 148;      /* #8b9094 — icono de ítem inactivo */
-  --fh-shell-label: 117 121 125;     /* #75797d — etiqueta de grupo, rol en el pie */
-  --fh-shell-muted: 166 171 175;     /* #a6abaf — texto secundario de la barra del POS */
-  --fh-shell-line: 44 47 50;         /* #2c2f32 — separador de la barra lateral */
-  --fh-shell-line-soft: 58 61 64;    /* #3a3d40 — separador y borde de botón en la barra del POS */
-  --fh-shell-border: 74 78 82;       /* #4a4e52 — borde del botón fantasma «Ir a vender» */
-  --fh-shell-hover: 34 38 42;        /* #22262a — ítem inactivo con el mouse encima */
-
   /* Radio CERO. Nada se redondea: el logo es todo ángulo recto y la dirección
      visual lo sigue. Se deja la variable para no tocar cada componente. */
   --fh-radio: 0px;
 
   /* El anillo de foco, completo. El teclado es el modo principal de operar. */
   --fh-foco: 2px solid rgb(var(--fh-accent));
-
-  /*
-   * La sombra de la lista de sugerencias. Vive acá y no en la clase de Tailwind
-   * porque `shadow-[0_18px_34px_rgb(...)]` escrito en un .tsx lleva la palabra
-   * `rgb(` y `check:tokens` la rechaza — con razón: es un color.
-   */
-  --fh-sombra-flotante: 0 18px 34px rgb(var(--fh-ink) / 0.18);
 }
 
 /*
