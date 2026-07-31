@@ -511,6 +511,42 @@ describe("el listado del día", () => {
     expect((await get(`/api/sales/${venta.id}`, tokenVendedor)).statusCode).toBe(200);
     expect((await get(`/api/sales/${venta.id}/returnable`, tokenVendedor)).statusCode).toBe(200);
   });
+
+  /**
+   * El precio de la línea viaja para que la pantalla pueda decir CUÁNTO se va a
+   * devolver antes de apretar — un botón que dice «Confirmar» no dice nada.
+   *
+   * Y viaja el precio CONGELADO en la línea, no el de la lista de hoy: si el
+   * producto subió de precio la semana pasada, al cliente hay que devolverle lo
+   * que pagó. Este test cambia el precio del producto DESPUÉS de vender, que es
+   * la única forma de distinguir los dos números.
+   */
+  it("el precio que viaja para devolver es el cobrado, no el de la lista de hoy", async () => {
+    const venta = JSON.parse(
+      (await vender({ items: [{ productId: pPerno, qtyMilli: 2_000 }], payments: [{ method: "CASH", receivedAmount: 5_000 }] })).body,
+    ).venta;
+    const cobrado = JSON.parse((await get(`/api/sales/${venta.id}/returnable`, tokenAdmin)).body).lineas[0]
+      .unitPriceGross as number;
+    expect(cobrado).toBeGreaterThan(0);
+
+    const cambiarPrecio = (p: number) =>
+      app.inject({ method: "PATCH", url: `/api/products/${pPerno}`, headers: como(tokenAdmin), payload: { priceGross: p } });
+
+    await cambiarPrecio(cobrado + 700);
+    try {
+      const despues = JSON.parse((await get(`/api/sales/${venta.id}/returnable`, tokenAdmin)).body).lineas[0];
+      expect(despues.unitPriceGross, "la subida de precio no puede alcanzar a una venta ya cobrada").toBe(cobrado);
+    } finally {
+      /*
+        Se devuelve el precio a como estaba. Los tests de este archivo comparten
+        `pPerno`, y dejarlo caro hacía fallar tres pruebas más abajo —las de
+        cobrar una espera— con un 400 que no tenía nada que ver con ellas. Un
+        test que rompe a sus vecinos es peor que no tenerlo: manda a buscar el
+        error donde no está.
+      */
+      await cambiarPrecio(cobrado);
+    }
+  });
 });
 
 /**

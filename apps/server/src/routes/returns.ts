@@ -107,6 +107,18 @@ export async function registerReturnRoutes(app: FastifyInstance): Promise<void> 
           qtyMilli: it.qtyMilli,
           returnedQtyMilli: r.returnedQtyMilli,
           vivoQtyMilli: r.vivoQtyMilli,
+          /*
+            El precio unitario cobrado, para que la pantalla pueda decir CUÁNTO
+            se está devolviendo antes de apretar. Es el del momento de la venta
+            —`unitPriceGross` está congelado en la línea—, no el de la lista de
+            hoy: devolver algo que subió de precio la semana pasada tiene que
+            devolver lo que el cliente pagó.
+
+            Es una estimación para la pantalla, no la cifra que se registra: el
+            monto exacto lo calcula el servidor al reversar, con el descuento
+            prorrateado y el redondeo de la venta original.
+          */
+          unitPriceGross: it.unitPriceGross,
           texto:
             r.vivoQtyMilli === 0
               ? "Ya se devolvió completa"

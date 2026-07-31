@@ -35,6 +35,8 @@ type Linea = {
   qtyMilli: number;
   returnedQtyMilli: number;
   vivoQtyMilli: number;
+  /** Precio unitario COBRADO, congelado en la línea. Sirve para el monto. */
+  unitPriceGross: number;
   texto: string;
 };
 
@@ -178,6 +180,17 @@ export function Devoluciones() {
         .filter((x) => x.milli > 0)
     : [];
 
+  /**
+   * El monto estimado, o `null` si no se puede calcular.
+   *
+   * `null` y no cero: si por lo que sea una línea llega sin precio —un servidor
+   * más viejo que esta pantalla, por ejemplo— el botón vuelve a decir «Devolver
+   * lo marcado» en vez de «Devolver $NaN». Un botón que mueve plata no puede
+   * mostrar basura, y «$NaN» además parece un monto.
+   */
+  const montoEstimado = marcadas.every((x) => Number.isFinite(x.l.unitPriceGross))
+    ? marcadas.reduce((s, x) => s + Math.round((x.l.unitPriceGross * x.milli) / 1000), 0)
+    : null;
   const excedida = marcadas.find((x) => x.milli > x.l.vivoQtyMilli);
   const puedeDevolver = marcadas.length > 0 && !excedida;
   const algoVivo = venta ? venta.lineas.some((l) => l.vivoQtyMilli > 0) : false;
@@ -259,16 +272,17 @@ export function Devoluciones() {
             if (n > 0) void buscar(n);
           }}
         >
-          <div className="w-56">
+          <div className="w-full max-w-[640px]">
             <Campo
               ref={campo}
               etiqueta="Número de la venta"
               hint="Sale en el ticket: «Venta #47»"
               inputMode="numeric"
+              protagonista
               value={numero}
               onChange={(e) => setNumero(e.target.value)}
               placeholder="123"
-              className="fh-num text-lg"
+              className="fh-num h-[58px] font-mono text-lg"
             />
           </div>
           <Boton variante="principal" type="submit" disabled={buscando || numero.trim() === ""}>
@@ -358,38 +372,46 @@ export function Devoluciones() {
             <p className="text-sm">Ya se devolvió todo lo de esta venta.</p>
           ) : (
             <>
-              <table className="w-full text-sm">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-soft">
-                    <th className="pb-2">Producto</th>
-                    <th className="pb-2 text-right">Vendido</th>
-                    <th className="pb-2 text-right">Ya devuelto</th>
-                    <th className="pb-2 text-right">Queda</th>
-                    <th className="pb-2 text-right">Devolver ahora</th>
+                  <tr className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
+                    <th className="py-[9px] font-extrabold">Producto</th>
+                    <th className="py-[9px] text-right font-extrabold">Vendido</th>
+                    <th className="py-[9px] text-right font-extrabold">Ya devuelto</th>
+                    <th className="py-[9px] text-right font-extrabold">Queda</th>
+                    <th className="py-[9px] text-right font-extrabold">Devolver ahora</th>
+                    <th className="py-[9px] text-right font-extrabold">Monto</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="text-sm">
                   {venta.lineas.map((l) => {
                     const valor = cantidades[l.itemId] ?? "";
                     const milli = Math.round((Number(valor.replace(",", ".")) || 0) * 1000);
                     const pasado = milli > l.vivoQtyMilli;
+                    const marcada = milli > 0 && !pasado;
                     return (
-                      <tr key={l.itemId} className="border-b border-line/60">
-                        <td className="py-2">{l.nombre}</td>
-                        <td className="fh-num py-2 text-right">
+                      <tr
+                        key={l.itemId}
+                        /* La fila marcada se tiñe: con seis líneas y dos
+                           marcadas, el número tecleado en la penúltima columna
+                           no se ve de un vistazo. El tinte sí. */
+                        className={`border-b border-line-soft ${marcada ? "bg-accent-tint" : ""}`}
+                      >
+                        <td className="py-[10px] font-semibold">{l.nombre}</td>
+                        <td className="fh-num py-[10px] text-right">
                           {formatQty(l.qtyMilli, l.allowsFraction)} {l.unidad}
                         </td>
-                        <td className="fh-num py-2 text-right text-ink-soft">
+                        <td className="fh-num py-[10px] text-right text-ink-soft">
                           {l.returnedQtyMilli === 0
                             ? "—"
                             : `${formatQty(l.returnedQtyMilli, l.allowsFraction)} ${l.unidad}`}
                         </td>
-                        <td className="fh-num py-2 text-right font-semibold">
+                        <td className="fh-num py-[10px] text-right font-semibold">
                           {/* Con unidad: es el número contra el que se compara lo que se teclea,
                               y en un producto fraccionable «0,5» sin «m» no dice nada. */}
                           {formatQty(l.vivoQtyMilli, l.allowsFraction)} {l.unidad}
                         </td>
-                        <td className="py-2 text-right">
+                        <td className="py-[10px] text-right">
                           {l.vivoQtyMilli === 0 ? (
                             <span className="text-xs text-ink-soft">nada</span>
                           ) : (
@@ -397,11 +419,16 @@ export function Devoluciones() {
                               value={valor}
                               inputMode="decimal"
                               onChange={(e) => setCantidades((c) => ({ ...c, [l.itemId]: e.target.value }))}
-                              className={`fh-num min-h-touch w-24 rounded-[var(--fh-radio)] border bg-surface px-2 text-right ${
-                                pasado ? "border-error text-error" : "border-line"
+                              className={`fh-num min-h-touch w-24 border-2 bg-surface px-2 text-right ${
+                                pasado ? "border-accent text-accent-ink" : "border-ink"
                               }`}
                             />
                           )}
+                        </td>
+                        <td className="fh-num py-[10px] text-right font-semibold">
+                          {marcada && Number.isFinite(l.unitPriceGross)
+                            ? formatCLP(Math.round((l.unitPriceGross * milli) / 1000))
+                            : "—"}
                         </td>
                       </tr>
                     );
@@ -417,8 +444,15 @@ export function Devoluciones() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
+                {/*
+                  El botón dice el monto. «Confirmar» no dice nada, y en una
+                  acción que saca plata del cajón el número es justamente lo
+                  que hay que leer antes de apretar. Es una estimación con el
+                  precio congelado de la línea: el monto exacto —con descuento
+                  prorrateado y redondeo— lo calcula el servidor.
+                */}
                 <Boton variante="principal" disabled={!puedeDevolver} onClick={() => setConfirmar("RETURN")}>
-                  Devolver lo marcado
+                  {puedeDevolver && montoEstimado !== null ? `Devolver ${formatCLP(montoEstimado)}` : "Devolver lo marcado"}
                 </Boton>
                 <Boton onClick={todo}>Marcar todo lo que queda</Boton>
                 <span className="flex-1" />
