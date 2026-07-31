@@ -12,7 +12,7 @@ git clone https://github.com/hola224/ferrehouse-manager.git
 cd ferrehouse-manager
 pnpm install
 cp .env.example apps/server/.env
-pnpm setup      # migra, siembra y carga el catálogo de prueba
+pnpm preparar   # compila, migra, siembra y carga el catálogo de prueba
 pnpm dev        # servidor :3000, web :5173
 ```
 

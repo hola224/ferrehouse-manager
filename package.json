@@ -16,7 +16,7 @@
     "db:migrate": "pnpm --filter @ferrehouse/server db:migrate",
     "db:seed": "pnpm --filter @ferrehouse/server db:seed",
     "db:demo": "pnpm --filter @ferrehouse/server db:demo",
-    "setup": "pnpm db:migrate && pnpm db:seed && pnpm db:demo",
+    "preparar": "pnpm --filter @ferrehouse/shared build && pnpm --filter @ferrehouse/server exec prisma generate && pnpm db:migrate && pnpm db:seed && pnpm db:demo",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check": "pnpm check:offline && pnpm check:tokens && pnpm typecheck && pnpm test"
   }

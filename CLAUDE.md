@@ -8,7 +8,7 @@ la cola de impresión, el instalador de Windows nunca corrió, falta el adaptado
 de WhatsApp y faltan los reportes exportables. Ese documento dice qué archivo
 tocar en cada caso.
 
-**Levantarlo:** `pnpm install && cp .env.example apps/server/.env && pnpm setup
+**Levantarlo:** `pnpm install && cp .env.example apps/server/.env && pnpm preparar
 && pnpm dev`. Entra con `111111` (admin) o `222222` (vendedor) — son públicos y
 están en el README, y una instalación real los pisa con `SEED_ADMIN_PIN` y
 `SEED_SELLER_PIN`.

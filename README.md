@@ -22,7 +22,7 @@ git clone https://github.com/hola224/ferrehouse-manager.git
 cd ferrehouse-manager
 pnpm install
 cp .env.example apps/server/.env
-pnpm setup      # migra la base, siembra lo básico y carga el catálogo de prueba
+pnpm preparar   # compila, migra, siembra y carga el catálogo de prueba
 pnpm dev        # servidor en :3000, web en :5173
 ```
 
@@ -35,10 +35,10 @@ Abre <http://localhost:5173> y entra con:
 
 > **Estos PIN son públicos.** Sirven para probar el proyecto recién clonado.
 > Una tienda de verdad los define en `apps/server/.env` (`SEED_ADMIN_PIN` y
-> `SEED_SELLER_PIN`) **antes** del primer `pnpm setup`, o los cambia después
+> `SEED_SELLER_PIN`) **antes** del primer `pnpm preparar`, o los cambia después
 > desde Usuarios → Editar. El seed nunca pisa un usuario que ya existe.
 
-`pnpm setup` deja además un catálogo de demostración —productos con marcas,
+`pnpm preparar` deja además un catálogo de demostración —productos con marcas,
 proveedores, categorías, saldo en bodega e historia en el kardex— porque sin
 productos media aplicación no se puede juzgar: el kardex es una pantalla en
 blanco y el buscador de la venta no tiene qué sugerir. Es idempotente y **no**
@@ -112,7 +112,7 @@ es tenerlas mal.
 
 | Comando | Qué hace |
 |---|---|
-| `pnpm setup` | Migra, siembra y carga el catálogo de prueba |
+| `pnpm preparar` | Compila `shared`, genera Prisma, migra, siembra y carga el catálogo de prueba |
 | `pnpm dev` | Servidor y web, en paralelo |
 | `pnpm check` | Todo lo que corre el CI: offline, tokens, typecheck y tests |
 | `pnpm check:offline` | Falla si algo depende de internet |
