@@ -577,3 +577,38 @@ secas habría bastado con quitar el pulso para que "pasara", sin probar nada del
 nombre del producto. Ahora el test vende una "Cañería PVC" y comprueba dos
 cosas por separado: que en el papel diga "Caneria PVC", y que los únicos bytes
 altos sean exactamente los del pulso.
+
+### La pantalla de venta, y el ticket que nunca salió
+
+Wireframe aprobado y construido. Verificada vendiendo de verdad con token de
+vendedor: escanear, sumar a una línea existente, cobrar mixto y confirmar.
+
+**La vista previa de los totales usa `calcularVenta` de `shared`, la misma
+función que el servidor ejecuta al cobrar.** No hay una aritmética "de pantalla"
+y otra "de verdad": el redondeo que el vendedor ve es el que se va a cobrar,
+porque es el mismo código.
+
+Vender de verdad destapó tres cosas:
+
+1. **El tipo de documento no se distinguía.** Boleta, Factura y Ninguno eran
+   tres botones idénticos, y "Boleta" ya estaba elegido sin que se notara. El
+   borde condicional que los diferenciaba competía en especificidad con el borde
+   base y perdía. Se reemplazaron por radios de verdad: el punto no depende del
+   color y además se recorren con las flechas, que en una pantalla que se opera
+   sin mouse no es un detalle.
+
+2. **Una nota afirmaba algo que nadie había verificado.** Con los montos sin
+   cuadrar, la vista previa es nula y aun así el pie decía "el cajón no se abre:
+   esta venta va toda con tarjeta", cuando sí había efectivo escrito. Es el
+   mismo error del chip de caja del Sprint 0: afirmar un estado que no se
+   calculó. Ahora la nota solo aparece cuando el cálculo es válido.
+
+3. **La venta se cobró y no salió ticket, en silencio.** La caja de pruebas no
+   tenía impresora configurada, así que el trabajo de impresión no se creó — y
+   eso está bien, la decisión sellada 15 dice que una venta jamás se bloquea por
+   la impresión. Lo que estaba mal era callarlo: la pantalla decía "Cobrado" y
+   prometía un ticket que nunca llegó. En la tienda eso significa vender toda una
+   mañana sin comprobante y enterarse cuando un cliente lo pida. Ahora la venta
+   sigue igual y aparece un aviso ámbar que nombra la caja.
+
+Las tres salieron de usar la pantalla, no de los tests. Los 280 pasaban.

@@ -4,6 +4,7 @@ import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Catalogo } from "@/pages/Catalogo";
 import { Caja } from "@/pages/Caja";
+import { Venta } from "@/pages/Venta";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -16,6 +17,9 @@ function Layout({ children }: { children: React.ReactNode }) {
             Ferrehouse
           </Link>
           <nav className="flex gap-4 text-sm">
+            <Link to="/venta" className="font-semibold text-ink">
+              Venta
+            </Link>
             <Link to="/catalogo" className="text-ink-soft hover:text-ink">
               Catálogo
             </Link>
@@ -80,6 +84,14 @@ export function App() {
             element={
               <Privado>
                 <Caja />
+              </Privado>
+            }
+          />
+          <Route
+            path="/venta"
+            element={
+              <Privado>
+                <Venta />
               </Privado>
             }
           />

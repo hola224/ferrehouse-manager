@@ -449,3 +449,36 @@ describe("demo de cierre del Sprint 3", () => {
     expect(Buffer.from(trabajo.payload, "base64").includes(Buffer.from([0x1b, 0x70]))).toBe(true);
   });
 });
+
+/**
+ * Decisión sellada 15: una venta jamás se bloquea porque falle la impresión.
+ * Pero callarlo significaría vender toda una mañana sin comprobante y que nadie
+ * se entere hasta que un cliente lo pida. Se descubrió vendiendo de verdad en
+ * una caja sin impresora configurada: la pantalla decía "Cobrado" y prometía un
+ * ticket que nunca salió.
+ */
+describe("sin impresora configurada, la venta sigue pero se avisa", () => {
+  it("cobra igual, y lo dice", async () => {
+    await db.station.update({ where: { id: idCaja1 }, data: { printerTarget: null } });
+    const r = await vender({ items: [{ productId: pPerno, qtyMilli: 1_000 }], payments: [{ method: "CASH", receivedAmount: 500 }] });
+
+    expect(r.statusCode).toBe(201);
+    const body = JSON.parse(r.body);
+    expect(body.impresion).toBeNull();
+    expect(body.avisoImpresion).toContain("no tiene impresora configurada");
+    expect(body.avisoImpresion).toContain("quedó registrada");
+
+    // Y la venta está de verdad escrita, con su movimiento de caja.
+    expect(await db.cashMovement.count({ where: { saleId: body.venta.id } })).toBe(1);
+
+    await db.station.update({ where: { id: idCaja1 }, data: { printerTarget: "\\\\SRV\\T1" } });
+  });
+
+  it("con impresora, no avisa nada", async () => {
+    const body = JSON.parse(
+      (await vender({ items: [{ productId: pPerno, qtyMilli: 1_000 }], payments: [{ method: "CASH", receivedAmount: 500 }] })).body,
+    );
+    expect(body.impresion).not.toBeNull();
+    expect(body.avisoImpresion).toBeNull();
+  });
+});

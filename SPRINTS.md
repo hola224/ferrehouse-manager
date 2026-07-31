@@ -176,11 +176,12 @@ acuerde de correrla a mano.
 
 ---
 
-## Sprint 3 — POS, la venta (Semana 4) 🟡 servidor entregado el 2026-07-30
+## Sprint 3 — POS, la venta (Semana 4) ✅ cerrado el 2026-07-30
 
-> Las 9 tareas de servidor hechas y probadas. **La 3.10 espera el ok al
-> wireframe** ([`.agents/WIREFRAMES/3.10-venta.md`](.agents/WIREFRAMES/3.10-venta.md)).
-> La 3.11 quedó cerrada en el Sprint 1 al responderse la pregunta del navegador.
+> Las 11 tareas entregadas, incluida la pantalla de venta. La 3.11 quedó
+> cerrada en el Sprint 1 al responderse la pregunta del navegador.
+> Lo único que no se puede verificar desde acá es lo físico: el ticket y el
+> cajón reales.
 
 **Objetivo:** vender. Escanear, cobrar con pagos múltiples, redondear, imprimir, abrir el cajón.
 
@@ -195,7 +196,7 @@ acuerde de correrla a mano.
 | 3.7 ✅ | **Venta en espera**: `SuspendedSale`/`SuspendedSaleItem`. Suspender, listar, recuperar, descartar. Al recuperar **se re-leen los precios** y se avisa el delta | POS-08, ADR-001 |
 | 3.8 ✅ | Ticket ESC/POS + pulso de cajón en el mismo trabajo de impresión; integración real con la térmica USB | POS-06 |
 | 3.9 ✅ | Reimpresión de comprobante desde `PrintJob.saleId`, marcada con `isReprint` | POS-18 |
-| 3.10 ⏸ | **Pantalla clave del sprint: la venta.** Dos columnas —líneas a la izquierda, total y cobro a la derecha— dentro de 1366×768. Total y vuelto en ≥40px. Wireframe aprobado antes de codear | UI-BRIEF §5.1 |
+| 3.10 ✅ | **Pantalla clave del sprint: la venta.** Dos columnas —líneas a la izquierda, total y cobro a la derecha— dentro de 1366×768. Total y vuelto en ≥40px. Wireframe aprobado antes de codear | UI-BRIEF §5.1 |
 | 3.11 ✅ | **Tabla canónica de atajos**, definida una vez en `packages/shared` y mostrada en pantalla: cobrar, editar cantidad, descuento, suspender, recuperar espera, buscar por nombre, quitar línea. **Decidido el 2026-07-30**: los terminales corren Chrome en modo normal, así que las teclas son **F2, F4, F6 y F8**. F3, F5 y F11 se las queda el navegador y F10 le abre la barra de menú, así que quedan fuera. La tabla vive en `packages/shared/atajos.ts` desde el Sprint 1, porque la pantalla de catálogo ya las muestra | UI-BRIEF §2.1 |
 
 **Invariantes que estrena este sprint:**

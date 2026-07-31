@@ -49,6 +49,22 @@ const idParam = z.object({ id: z.coerce.number().int().positive() });
 export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
   const cualquiera = { preHandler: requireRole("ADMIN", "SELLER") };
 
+  /**
+   * Los parámetros que la pantalla de venta necesita para calcular el total
+   * ANTES de cobrar.
+   *
+   * Los entrega el servidor en vez de que la pantalla los tenga escritos: así
+   * la vista previa usa `calcularVenta` de `shared` —la MISMA función que
+   * después escribe la venta— con los mismos parámetros. Dos implementaciones
+   * del redondeo terminan separándose, y la que se ve en pantalla no es la que
+   * cobra.
+   */
+  app.get("/api/pos/config", cualquiera, async (req) => ({
+    taxRatePercent: await getSetting("tax.rate"),
+    multiploRedondeo: await getSetting("cash.roundTo"),
+    topeDescuento: req.user.role === "ADMIN" ? 100 : await getSetting("discount.maxSeller"),
+  }));
+
   // ============================================================
   // Cobrar (3.1 a 3.6)
   // ============================================================
@@ -259,7 +275,18 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    /**
+     * Si la caja no tiene impresora, la venta NO se bloquea: la plata ya cambió
+     * de manos y una venta cobrada que se cae porque falló la impresión es peor
+     * que un ticket que falta (decisión sellada 15). Pero **se dice**. Callarlo
+     * significa que en la tienda se venda toda una mañana sin comprobante y
+     * nadie se entere hasta que un cliente lo pida.
+     */
     let impresion: { id: string } | null = null;
+    let avisoImpresion: string | null = null;
+    if (!estacion.printerTarget) {
+      avisoImpresion = `${estacion.name} no tiene impresora configurada: la venta quedó registrada, pero no salió ticket ni se abrió el cajón.`;
+    }
     if (estacion.printerTarget) {
       impresion = await db.printJob.create({
         data: {
@@ -291,6 +318,7 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
       venta: completa,
       cambio: venta.changeAmount,
       impresion,
+      avisoImpresion,
       mensaje:
         venta.changeAmount > 0
           ? `Cobrado ${formatCLP(venta.totalGross)}. Vuelto: ${formatCLP(venta.changeAmount)}.`
