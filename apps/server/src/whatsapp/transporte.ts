@@ -21,8 +21,14 @@
  *   correcto. Concatenar a mano funciona hasta que no.
  * - `LocalAuth` con la carpeta de sesión fuera del repo, para no re-escanear el
  *   QR en cada reinicio del servicio (7.1 lo reinicia solo).
- * - Emitir `qr` → `ESPERANDO_QR` guardando el string; `ready` → `CONECTADA` y
- *   QR a `null`; `disconnected` / `auth_failure` → `CAIDA`.
+ * - Emitir `qr` → `ESPERANDO_QR`; `ready` → `CONECTADA` y QR a `null`;
+ *   `disconnected` / `auth_failure` → `CAIDA`.
+ * - **Convertir el QR antes de guardarlo.** El evento `qr` no entrega un
+ *   dibujo: entrega el payload crudo (`2@aBcD…`), y el panel lo pinta tal cual
+ *   dentro de un `<pre>`. Guardar el payload deja al administrador mirando una
+ *   línea de basura que ningún teléfono escanea. Por eso todos los ejemplos de
+ *   la librería lo pasan por `qrcode-terminal` o equivalente: lo que `qr()`
+ *   devuelve tiene que ser **el QR ya dibujado con caracteres**.
  * - En `message`, llamar a `procesarMensajeEntrante` de `entrante.ts` — que ya
  *   está escrito y probado.
  * - Distinguir el fallo permanente (el número no tiene WhatsApp) del transitorio
@@ -50,7 +56,14 @@ export type ResultadoEnvio =
 
 export interface TransporteWhatsApp {
   estado(): EstadoSesion;
-  /** El QR para vincular, o `null`. **Es una credencial de sesión.** */
+  /**
+   * El QR **ya dibujado con caracteres**, listo para pintar en un `<pre>`, o
+   * `null`. No el payload crudo del evento `qr`: eso no lo escanea nadie.
+   *
+   * **Es una credencial de sesión**: quien lo escanea se lleva la sesión de la
+   * ferretería. Por eso las rutas que lo entregan son de ADMIN y además `qr`
+   * está en la lista de campos que nunca salen hacia un vendedor (decisión 17).
+   */
   qr(): string | null;
   /** Desde cuándo está en el estado actual. Para el panel: "caída hace 2 h". */
   desde(): Date | null;

@@ -1063,8 +1063,25 @@ Los defectos 2, 3 y 4 aparecieron **fingiendo la respuesta del servidor** para
 renderizar la sesión caída con mensajes fallidos: un estado que todavía no
 ocurrió y que no puede ocurrir hasta que alguien vincule un número.
 
+### Lo que se limpió de la base de demo, y por qué no era optativo
+
+Manejar la pantalla dejó un cliente con un **teléfono chileno inventado** y su
+mensaje encolado. Por diseño esa cola sobrevive intacta y sale sola en cuanto
+haya sesión — decisión sellada 29 —, así que el día que se vincule el número
+real, ese "gracias por tu compra por $90" habría salido de verdad hacia el
+teléfono de un desconocido. Borrados el cliente y el mensaje; la cola quedó en
+cero antes de subir nada.
+
+Es el costo de probar con datos verosímiles una integración que manda cosas
+hacia afuera, y vale la pena anotarlo: **cualquier prueba futura de esta
+pantalla tiene que terminar vaciando `WhatsAppJob` y `Customer`.**
+
 ### Lo que falta para cerrar el sprint
 
 Un número dedicado, `pnpm add whatsapp-web.js`, el adaptador contra el puerto y
-alguien escaneando el QR. Después de eso la demo se corre entera, incluida la
+alguien escaneando el QR. Ojo con dos cosas que el puerto deja escritas y que
+muerden en el momento menos oportuno: el evento `qr` entrega el **payload
+crudo**, no un dibujo —guardarlo tal cual deja al administrador mirando una
+línea que ningún teléfono escanea—, y el JID se resuelve con `getNumberId()`,
+nunca concatenando `@c.us`. Después de eso la demo se corre entera, incluida la
 mitad de "se corta el internet": la cola ya está construida para eso.

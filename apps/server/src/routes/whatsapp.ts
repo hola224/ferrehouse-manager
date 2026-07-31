@@ -30,6 +30,10 @@ function malaPeticion(mensaje: string): Error & { statusCode: number } {
   return e;
 }
 
+function horasDesde(d: Date | null): number {
+  return d === null ? 0 : (Date.now() - d.getTime()) / 3_600_000;
+}
+
 const idJob = z.object({ id: z.string().uuid() });
 const idCliente = z.object({ id: z.coerce.number().int().positive() });
 
@@ -57,8 +61,12 @@ export async function registerWhatsAppRoutes(app: FastifyInstance): Promise<void
          * urgente lo que importa es cuánto lleva así, no a qué hora empezó, y
          * el cálculo lo hace el servidor con la MISMA función que las alertas
          * — dos implementaciones de "hace cuánto" terminan discrepando.
+         *
+         * Bajo la hora se manda `null` y la pantalla no escribe nada:
+         * `haceCuanto` cuenta horas enteras, así que una sesión recién
+         * levantada diría "hace 0 horas", que se lee como un error del sistema.
          */
-        hace: t.desde() ? haceCuanto(t.desde()!, new Date()) : null,
+        hace: horasDesde(t.desde()) >= 1 ? haceCuanto(t.desde()!, new Date()) : null,
         /**
          * El paso que falta, dicho en la respuesta y no solo en un documento.
          * Mientras no exista el adaptador, el panel tiene que explicar por qué
