@@ -255,7 +255,7 @@ Sin interfaz, con su endpoint listo: el registro de compras al proveedor.
 
 ---
 
-## Sprint 5 — Reportes y alertas (Semana 6)
+## Sprint 5 — Reportes y alertas (Semana 6) — **CERRADO 2026-07-30**
 
 **Objetivo:** que el sistema le hable al admin.
 

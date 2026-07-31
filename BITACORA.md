@@ -744,3 +744,128 @@ La **pantalla de compras**: la tarea 4.1 entrega el endpoint y el sprint pide
 solo el kardex. Digitar una factura sigue siendo por API. Es la primera
 candidata para el próximo sprint, junto con las tres pantallas que el Sprint 1
 dejó pendientes.
+
+---
+
+## Sprint 5 — Reportes y alertas — cerrado el 2026-07-30
+
+Las 7 tareas, incluida la pantalla clave. **389 tests en verde** (150 shared,
+232 servidor, 7 web). El sistema empezó a hablarle al administrador: cuánto se
+vendió, cuánto de eso quedó, qué hay en repisa y qué hay que reponer.
+
+### Un solo lugar reparte la plata de una venta (5.1 y 5.2)
+
+`desglosarVenta`, en `packages/shared/src/reports.ts`. El total del día, el
+margen por producto, el margen por categoría y la venta por vendedor son cuatro
+cortes de los mismos números. Calculados por separado darían cifras **parecidas
+y distintas**, que es lo peor que pueden dar: nadie sospecha, y el que decide
+con el reporte de márgenes decide con otra plata que la que cuadró en caja.
+
+Dos repartos, los dos acumulativos como manda la decisión sellada 23:
+
+1. **El ajuste de cabecera.** El descuento y el redondeo se aplican a la venta
+   entera. Repartirlos por línea y redondear cada trozo deja migajas que no
+   suman el original; se calcula cuánto corresponde al bruto acumulado hasta
+   cada línea y se resta el de la anterior. La última línea se lleva el residuo
+   sola, porque su acumulado es exactamente el subtotal.
+2. **El neto.** El IVA es por residuo sobre el total del documento (decisión
+   sellada 1), no línea por línea. Mismo truco sobre el bruto ya ajustado.
+
+Resultado: Σ bruto === totalGross y Σ neto === netFromGross(totalGross), al
+peso, con o sin descuento, con o sin devoluciones.
+
+**El residuo se lo lleva siempre la misma línea**, la de `id` mayor, con el
+orden explícito en el código. Si lo decidiera la base de datos, el mismo reporte
+corrido dos veces le atribuiría el peso sobrante a un producto distinto y el
+margen de dos productos bailaría sin que nadie haya vendido nada.
+
+### El valorizado no lee la última foto: suma el libro (5.3)
+
+El plan del sprint decía "reconstruido desde `balanceBaseMilli` +
+`balanceCostNetMilliPeso`". **Eso no funciona**, y la razón la puso el propio
+Sprint 4: esas dos columnas son fotos tomadas en orden de ESCRITURA, mientras
+que `createdAt` es la fecha del HECHO. Una factura digitada hoy con recepción de
+la semana pasada lleva `createdAt` de la semana pasada y un `balanceBaseMilli`
+calculado sobre el saldo de hoy, ventas de esta semana incluidas. Buscar "la
+última fila con fecha ≤ X" y creerle su foto devuelve un número que **nunca fue
+cierto**.
+
+Sumar `qtyBaseMilli` y `totalCostNet` sí funciona, y es exactamente para lo que
+la decisión sellada 4 guardó el monto exacto de cada movimiento en vez de una
+razón: los montos se suman sin acumular error.
+
+Un producto con saldo bajo cero se muestra en negativo, no se esconde: es una
+deuda de stock, y esconderla haría que el valorizado no cuadre contra el libro,
+que es lo único que este reporte promete.
+
+### Dos clases de alerta, dos mecanismos (5.5 y 5.6)
+
+- **Estado** — `LOW_STOCK` y `OUT_OF_STOCK` describen cómo está la repisa
+  ahora. Se evalúan dentro del movimiento que cambia el saldo (el único instante
+  en que el estado puede cambiar) y ahí mismo se cierran solas cuando dejan de
+  ser ciertas. Una alerta que dice "quedan 3 m" cuando hay 200 no es una alerta
+  vieja: es una mentira en pantalla, y el panel entero pierde credibilidad por
+  ella. Resolverlas a mano sigue sirviendo: las calla hasta el próximo
+  movimiento de ese producto — "ya lo pedí".
+- **Hecho** — `CASH_DIFFERENCE` y `STOCK_RECONCILE_DIFF` describen algo que
+  pasó. No se deduplican ni se cierran solas.
+
+**La de venta en espera añeja no se guarda: se deriva al leer.** No existe
+ningún evento que dispararla —que pase el tiempo no es un evento—, así que
+persistirla obligaría a un barrido periódico, y un barrido cada N minutos sobre
+una condición que dura días escribe la misma alerta veinte veces. Derivarla es
+la misma doctrina de `deriveSaleStatus`. Sin migración y sin temporizador.
+
+### Cuadratura de folios por serie (5.4)
+
+Cada tipo de documento numera aparte: la boleta 120 y la factura 120 conviven, y
+mezclarlas en una sola secuencia inventa huecos que no existen y esconde los que
+sí. Solo se buscan huecos **dentro** del mínimo y el máximo observados en el
+rango: entre el último folio de ayer y el primero de hoy no hay hueco, hay
+noche. Y se acusa en el reporte y no con un `unique` en la base (POS-07), que
+impediría corregir el tipeo que casi siempre causa el duplicado.
+
+### El dashboard (5.7)
+
+Wireframe aprobado por Cristian: cuatro números arriba, alertas abajo a lo
+ancho. Y una decisión que salió de la pregunta: **el vendedor entra directo a
+Venta**. Su panel no tendría ninguna cifra que mostrarle, y no es solo el
+margen — **tampoco la venta del día**: el arqueo es a ciegas y casi toda la
+venta es efectivo, así que decirle cuánto se vendió es decirle cuánto debería
+tener el cajón, que es justo el número que el cierre a ciegas le esconde. La
+rama es del servidor: la clave no existe en su JSON.
+
+Tres defectos aparecieron al mirar la pantalla, con los 382 tests de entonces en
+verde:
+
+1. **El dashboard mostraba cinco alertas y no había adónde ir a ver el resto.**
+   La tarea 5.5 pide un panel con resolución y quedaba a medias: con doce
+   alertas, siete eran invisibles. Los reportes tienen ahora una cuarta pestaña
+   que es el panel completo.
+2. **Las dos acciones de la lista tenían distinto tamaño y distinta posición**
+   —una era botón y la otra un enlace chico—, así que la columna de acciones no
+   se podía barrer con la vista. Y el ● de crítica y el ▲ de aviso no miden lo
+   mismo: el mensaje se corría seis píxeles entre filas.
+3. **Dos fechas salían en formato de cable**: "Jueves, 30 de julio" con una coma
+   que en español no va, y "neto, al 2026-07-30" en la tarjeta del valorizado.
+
+### Dos endpoints que se movieron
+
+`/api/stock/alerts` → `/api/alerts` (ahora incluye las derivadas y permite
+resolver) y `/api/stock/valued` → `/api/reports/inventory`. Los dos valorizados
+daban números distintos —uno suma montos exactos, el otro multiplica el caché
+por una razón redondeada— y dejar los dos vivos garantizaba que alguien
+comparara y no supiera a cuál creerle. Ninguna pantalla los llamaba: mover fue
+gratis.
+
+`margenPorcentaje` se llamaba igual en dos partes y medía cosas distintas. Ahora
+son `margenDeListaPct` (lo que el producto dejaría al precio de repisa, que es
+lo que muestra el catálogo) y `margenRealizadoPct` (lo que la venta dejó de
+verdad, con su descuento repartido y el costo congelado). Dan números distintos
+para el mismo producto **a propósito**.
+
+### Lo que no se construyó
+
+Sigue sin pantalla la **compra a proveedor** (endpoint del Sprint 4) y las tres
+del Sprint 1: alta de producto, importación y usuarios. Digitar una factura
+sigue siendo por API.

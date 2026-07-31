@@ -87,6 +87,41 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
     de prorratear cada trozo. Así la devolución que agota la línea se lleva el
     residuo sin ninguna regla especial, y la suma de las parciales es exacta.
 
+24. **La plata de una venta se reparte en un solo lugar** (`desglosarVenta`,
+    en `packages/shared/src/reports.ts`). El total del día, el margen por
+    producto, el margen por categoría y la venta por vendedor son cuatro cortes
+    de los mismos números; calculados por separado dan cifras **parecidas y
+    distintas**, que es lo peor que pueden dar, porque nadie sospecha. El
+    reparto es acumulativo (decisión 23) tanto para el ajuste de cabecera como
+    para el neto del documento, y el residuo se lo lleva siempre la línea de
+    `id` mayor, con el orden explícito: si lo decidiera la base, el mismo
+    reporte le atribuiría el peso sobrante a otro producto en cada corrida.
+
+25. **Hay dos clases de alerta y no se escriben igual.** Las de ESTADO
+    (`LOW_STOCK`, `OUT_OF_STOCK`) se evalúan dentro del movimiento que cambia
+    el saldo y se cierran solas cuando dejan de ser ciertas: una alerta que
+    dice "quedan 3 m" cuando hay 200 es una mentira en pantalla, y el panel
+    entero pierde credibilidad por ella. Las de HECHO (`CASH_DIFFERENCE`,
+    `STOCK_RECONCILE_DIFF`) no se deduplican ni se cierran solas.
+    **Lo que no tiene evento que lo dispare no se guarda: se deriva al leer.**
+    `SUSPENDED_SALE_STALE` no es una fila —que pase el tiempo no es un evento—
+    y persistirla obligaría a un barrido periódico que escribiría la misma
+    alerta veinte veces mientras la espera sigue ahí.
+
+26. **El inventario valorizado a una fecha se reconstruye SUMANDO el libro**,
+    no leyendo la última foto de saldo. `balanceBaseMilli` y
+    `balanceCostNetMilliPeso` son fotos tomadas en orden de ESCRITURA, y
+    `createdAt` es la fecha del HECHO: una factura digitada hoy con recepción de
+    la semana pasada lleva fecha vieja y un saldo calculado sobre el stock de
+    hoy. Sumar `qtyBaseMilli` y `totalCostNet` es exactamente para lo que la
+    decisión 4 guardó el monto exacto en vez de una razón.
+
+**Precisión de la decisión 17 (Sprint 5):** al vendedor tampoco le viaja **la
+venta del día**, no solo el margen. El arqueo es a ciegas y casi toda la venta
+es efectivo, así que decirle cuánto se vendió es decirle cuánto debería tener el
+cajón. Por eso el vendedor entra directo a Venta: su panel no tendría ninguna
+cifra que mostrarle.
+
 ## Decisiones provisionales
 
 **Ya no queda ninguna.** La pregunta abierta 1 se cerró el 2026-07-30 como *dos cajas en la misma tienda*, y con eso lo que estaba provisional pasó a sellado:
@@ -127,7 +162,13 @@ la pantalla de kardex. **331 tests en verde.** La venta ya valida saldo antes
 de descontar, con override de administrador registrado. Queda sin interfaz, con
 su endpoint listo y probado: el registro de compras al proveedor.
 
-**Sprint actual: 5 — Reportes y alertas.**
+**Sprint 5 — Reportes y alertas: cerrado el 2026-07-30.** Las 7 tareas,
+incluido el dashboard de admin. **389 tests en verde.** Reporte de ventas por
+rango con cuadratura de folios, margen realizado por producto y por categoría,
+inventario valorizado a una fecha reconstruido desde el libro, alertas de stock
+que se cierran solas y panel con resolución. El vendedor entra directo a Venta.
+
+**Sprint actual: 6 — WhatsApp.**
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.
