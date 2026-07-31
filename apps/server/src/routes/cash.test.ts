@@ -5,7 +5,7 @@ import { db } from "../db.js";
 import { PIN_ADMIN, PIN_VENDEDOR } from "../test-setup.js";
 
 let app: FastifyInstance;
-let tokenAdmin: string, tokenVendedor: string, tokenCaja2: string;
+let tokenAdmin: string, tokenVendedor: string, tokenCaja2: string, tokenCaja2Admin: string;
 let idCaja1: number, idCaja2: number, idLocal: number;
 
 beforeAll(async () => {
@@ -28,6 +28,7 @@ beforeAll(async () => {
   tokenAdmin = await entrar(idAdmin, PIN_ADMIN, idCaja1);
   tokenVendedor = await entrar(idVendedor, PIN_VENDEDOR, idCaja1);
   tokenCaja2 = await entrar(idVendedor, PIN_VENDEDOR, idCaja2);
+  tokenCaja2Admin = await entrar(idAdmin, PIN_ADMIN, idCaja2);
 });
 
 const como = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -36,10 +37,10 @@ const post = (url: string, payload: unknown, t = tokenVendedor) =>
 const get = (url: string, t = tokenVendedor) => app.inject({ method: "GET", url, headers: como(t) });
 
 /** Deja la caja de este token cerrada, pase lo que pase antes. */
-async function cerrarSiEstaAbierta(t: string) {
+async function cerrarSiEstaAbierta(t: string, tAdmin: string) {
   const r = await get("/api/cash/current", t);
   if (JSON.parse(r.body).abierta) {
-    const esperado = JSON.parse((await get("/api/cash/expected", t)).body).esperado;
+    const esperado = JSON.parse((await get("/api/cash/expected", tAdmin)).body).esperado;
     await post("/api/cash/close", { countedAmount: esperado }, t);
   }
 }
@@ -50,7 +51,7 @@ describe("apertura de caja (tarea 2.1)", () => {
     expect(r.statusCode).toBe(201);
     expect(JSON.parse(r.body).mensaje).toContain("$50.000");
 
-    const actual = JSON.parse((await get("/api/cash/current")).body);
+    const actual = JSON.parse((await get("/api/cash/current", tokenAdmin)).body);
     expect(actual.abierta).toBe(true);
     expect(actual.saldo).toBe(50_000);
     expect(actual.movimientos).toHaveLength(1);
@@ -76,12 +77,12 @@ describe("apertura de caja (tarea 2.1)", () => {
     const r = await post("/api/cash/open", { openingAmount: 30_000 }, tokenCaja2);
     expect(r.statusCode).toBe(201);
     // Y no se contaminan entre sí.
-    expect(JSON.parse((await get("/api/cash/current", tokenCaja2)).body).saldo).toBe(30_000);
-    expect(JSON.parse((await get("/api/cash/current")).body).saldo).toBe(50_000);
+    expect(JSON.parse((await get("/api/cash/current", tokenCaja2Admin)).body).saldo).toBe(30_000);
+    expect(JSON.parse((await get("/api/cash/current", tokenAdmin)).body).saldo).toBe(50_000);
   });
 
   it("un monto con decimales se rechaza: el peso no los tiene", async () => {
-    await cerrarSiEstaAbierta(tokenCaja2);
+    await cerrarSiEstaAbierta(tokenCaja2, tokenCaja2Admin);
     const r = await post("/api/cash/open", { openingAmount: 1000.5 }, tokenCaja2);
     expect(r.statusCode).toBe(400);
     expect(JSON.parse(r.body).error).toContain("pesos enteros");
@@ -96,20 +97,23 @@ describe("retiros e ingresos (tareas 2.2 y 2.3)", () => {
       description: "Flete de la mañana",
     });
     expect(r.statusCode).toBe(201);
-    const body = JSON.parse(r.body);
-    expect(body.saldo).toBe(40_000);
-    expect(body.movimiento.amount).toBe(-10_000); // el signo lo pone el servidor
-    expect(body.movimiento.balanceBefore).toBe(50_000);
-    expect(body.movimiento.balanceAfter).toBe(40_000);
-    expect(body.mensaje).toContain("Quedan $40.000");
+    // Se mira con token de admin: al vendedor el saldo no le viaja (conteo ciego).
+    const conAdmin = JSON.parse((await get("/api/cash/current", tokenAdmin)).body);
+    expect(conAdmin.saldo).toBe(40_000);
+    const mov = conAdmin.movimientos.at(-1);
+    expect(mov.amount).toBe(-10_000); // el signo lo pone el servidor
+    expect(mov.balanceBefore).toBe(50_000);
+    expect(mov.balanceAfter).toBe(40_000);
   });
 
   it("un ingreso lo sube", async () => {
-    const body = JSON.parse(
-      (await post("/api/cash/movements", { type: "DEPOSIT", amount: 5_000, description: "Vuelto que sobró" })).body,
-    );
-    expect(body.saldo).toBe(45_000);
-    expect(body.movimiento.amount).toBe(5_000);
+    expect(
+      (await post("/api/cash/movements", { type: "DEPOSIT", amount: 5_000, description: "Vuelto que sobró" }))
+        .statusCode,
+    ).toBe(201);
+    const conAdmin = JSON.parse((await get("/api/cash/current", tokenAdmin)).body);
+    expect(conAdmin.saldo).toBe(45_000);
+    expect(conAdmin.movimientos.at(-1).amount).toBe(5_000);
   });
 
   /** Un retiro sin motivo es indistinguible de plata que falta. */
@@ -126,9 +130,11 @@ describe("retiros e ingresos (tareas 2.2 y 2.3)", () => {
       description: "Intento imposible",
     });
     expect(r.statusCode).toBe(400);
+    // Al vendedor el mensaje NO dice cuánto hay: sería un oráculo para
+    // averiguar el esperado antes de contar.
     const error = JSON.parse(r.body).error as string;
     expect(error).toContain("$999.000");
-    expect(error).toContain("$45.000");
+    expect(error).not.toContain("$45.000");
   });
 
   it("todo movimiento queda en la bitácora con su motivo", async () => {
@@ -163,8 +169,8 @@ describe("retiros e ingresos (tareas 2.2 y 2.3)", () => {
 });
 
 describe("cierre con arqueo (tareas 2.4 y 2.6)", () => {
-  it("el sistema dice lo esperado ANTES de que el vendedor cuente", async () => {
-    const body = JSON.parse((await get("/api/cash/expected")).body);
+  it("el administrador sí puede consultar lo esperado", async () => {
+    const body = JSON.parse((await get("/api/cash/expected", tokenAdmin)).body);
     expect(body.esperado).toBe(45_000); // 50.000 − 10.000 + 5.000
   });
 
@@ -367,9 +373,12 @@ describe("demo de cierre del Sprint 2", () => {
       amount: 10_000,
       description: "Flete",
     });
-    expect(JSON.parse(flete.body).saldo).toBe(40_000);
+    expect(flete.statusCode).toBe(201);
+    // El vendedor NO ve el saldo: el arqueo es a ciegas.
+    expect(JSON.parse(flete.body).saldo).toBeNull();
 
-    expect(JSON.parse((await get("/api/cash/expected")).body).esperado).toBe(40_000);
+    // El administrador sí, y son los $40.000 que corresponden.
+    expect(JSON.parse((await get("/api/cash/expected", tokenAdmin)).body).esperado).toBe(40_000);
 
     // El vendedor cuenta y le faltan $500.
     const cierre = JSON.parse((await post("/api/cash/close", { countedAmount: 39_500 })).body);
@@ -379,5 +388,70 @@ describe("demo de cierre del Sprint 2", () => {
 
     // Y la caja queda lista para el turno siguiente.
     expect(JSON.parse((await get("/api/cash/current")).body).abierta).toBe(false);
+  });
+});
+
+
+/**
+ * Conteo ciego (decidido por Cristian el 2026-07-30).
+ *
+ * No es una regla de pantalla: si el monto esperado igual se le puede pedir al
+ * servidor, basta abrir la pestaña de red para anular el control. Es el mismo
+ * razonamiento de la decisión sellada 17 con los costos, y por eso se prueba
+ * igual: golpeando los endpoints con token de vendedor.
+ */
+describe("el arqueo es a ciegas: al vendedor no le llega el esperado", () => {
+  beforeAll(async () => {
+    await cerrarSiEstaAbierta(tokenVendedor, tokenAdmin);
+    await post("/api/cash/open", { openingAmount: 77_000 });
+    await post("/api/cash/movements", { type: "WITHDRAWAL", amount: 7_000, description: "Flete" });
+  });
+
+  it("no puede consultar lo esperado", async () => {
+    expect((await get("/api/cash/expected")).statusCode).toBe(403);
+  });
+
+  it("el estado de la caja le llega sin saldo ni apertura", async () => {
+    const body = JSON.parse((await get("/api/cash/current")).body);
+    expect(body.abierta).toBe(true);
+    expect(body.saldo).toBeNull();
+    expect(body.sesion.openingAmount).toBeUndefined();
+    // Ni el saldo corrido de cada movimiento.
+    for (const m of body.movimientos) {
+      expect(m.balanceBefore).toBeUndefined();
+      expect(m.balanceAfter).toBeUndefined();
+    }
+    // Pero sí ve QUÉ quedó registrado, que es con lo que detecta un olvido.
+    expect(body.movimientos.some((m: { description: string }) => m.description === "Flete")).toBe(true);
+  });
+
+  it("el número esperado no aparece por ninguna parte del cuerpo", async () => {
+    const crudo = (await get("/api/cash/current")).body;
+    expect(crudo).not.toContain("77000");
+    expect(crudo).not.toContain("70000");
+  });
+
+  it("registrar un movimiento tampoco le devuelve el saldo", async () => {
+    const body = JSON.parse(
+      (await post("/api/cash/movements", { type: "DEPOSIT", amount: 1_000, description: "Ajuste" })).body,
+    );
+    expect(body.saldo).toBeNull();
+    expect(body.movimiento.balanceAfter).toBeUndefined();
+    expect(body.mensaje).toContain("registrado");
+    expect(body.mensaje).not.toContain("Quedan");
+  });
+
+  /** Al admin sí: si no, no podría revisar una caja antes de que se cierre. */
+  it("al administrador sí le llega todo", async () => {
+    const body = JSON.parse((await get("/api/cash/current", tokenAdmin)).body);
+    expect(body.saldo).toBe(71_000);
+    expect(body.sesion.openingAmount).toBe(77_000);
+  });
+
+  it("y el esperado aparece recién al cerrar, con el conteo ya comprometido", async () => {
+    const body = JSON.parse((await post("/api/cash/close", { countedAmount: 70_500 })).body);
+    expect(body.esperado).toBe(71_000);
+    expect(body.diferencia).toBe(-500);
+    expect(body.estado.palabra).toBe("falta poco");
   });
 });

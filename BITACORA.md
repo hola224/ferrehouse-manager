@@ -453,10 +453,37 @@ se generó una propia siguiendo la misma convención.
    `estadoArqueo` de `shared`. En papel térmico no hay color, así que la palabra
    no es un complemento del color: es la única señal que queda.
 
+### Conteo ciego: la decisión, y por qué costó más que reordenar la pantalla
+
+Cristian eligió el **conteo ciego**: el sistema no muestra cuánto debería haber
+hasta que el vendedor ingresó lo que contó. El motivo es el anclaje — cuando la
+cuenta da $226.930 y la pantalla dice $227.430, la tentación de pensar "habré
+contado mal" y teclear el número redondo es real, y ahí el arqueo deja de medir.
+
+Lo que no era obvio: **implementarlo solo en la pantalla lo dejaba decorativo**.
+Si el monto esperado igual viaja en el JSON, basta abrir la pestaña de red. Es
+exactamente el razonamiento de la decisión sellada 17 con los costos, aplicado a
+otra cosa. Hubo que cerrar cuatro fugas, y tres no eran evidentes:
+
+1. `GET /api/cash/expected` pasó a ser solo del administrador.
+2. `GET /api/cash/current` le devolvía el saldo corrido y el `balanceAfter` de
+   cada movimiento. También el monto de apertura, que sumado a los movimientos
+   da el esperado.
+3. La respuesta de cada movimiento traía el saldo resultante y un mensaje
+   "Quedan $40.000 en la caja".
+4. El error al retirar de más decía cuánto había: probando retiros cada vez
+   menores, un vendedor podía averiguar el esperado antes de contar. Ahora al
+   vendedor le dice "no alcanza el efectivo" y al administrador el número.
+
+El vendedor **sí** sigue viendo la lista de movimientos con su motivo: es con
+eso que detecta un olvido antes de cerrar, y no permite deducir el total. Seis
+tests nuevos golpean cada endpoint con token de vendedor y fallan si el número
+se filtra, incluido uno que busca el número crudo en el cuerpo de la respuesta.
+
+El brief quedó corregido: §5.2 prometía "sistema muestra esperado → vendedor
+cuenta".
+
 ### Pendiente para Cristian
 
-- **Aprobar el wireframe del cierre de caja (2.8).** Trae una pregunta que no me
-  corresponde decidir: el brief dice mostrar el monto esperado antes de contar,
-  pero en manejo de efectivo lo habitual es el **conteo ciego**, porque ver el
-  número esperado ancla y la tentación de teclearlo es real. Con una persona por
-  turno el riesgo es bajo; si no dice nada, queda el orden del brief.
+- **Aprobar el wireframe del cierre de caja (2.8)**, ya reescrito con el conteo
+  ciego.

@@ -73,6 +73,31 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
       orderBy: { id: "asc" },
       include: { user: { select: { id: true, name: true } } },
     });
+
+    /**
+     * Al vendedor NO le viaja el saldo corrido, ni el `balanceBefore` /
+     * `balanceAfter` de cada movimiento. El arqueo es a ciegas, y un conteo a
+     * ciegas contra un número que igual está en el JSON no es a ciegas.
+     *
+     * Sí ve la lista de movimientos con su monto y su motivo: necesita saber
+     * qué quedó registrado, y esa es justamente la información con la que se
+     * detecta un olvido antes de cerrar.
+     */
+    if (req.user.role === "SELLER") {
+      return {
+        abierta: true,
+        sesion: { ...sesion, openingAmount: undefined },
+        saldo: null,
+        movimientos: movimientos.map((m) => ({
+          ...m,
+          balanceBefore: undefined,
+          balanceAfter: undefined,
+          // La apertura tampoco: sumada a los movimientos da el esperado.
+          amount: m.type === "OPENING" ? undefined : m.amount,
+        })),
+      };
+    }
+
     return {
       abierta: true,
       sesion,
@@ -173,8 +198,16 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
      * contra un número imposible y la diferencia deja de significar nada.
      */
     if (despues < 0) {
+      /**
+       * Al administrador se le dice cuánto hay; al vendedor no. Decirle el
+       * saldo acá le daría un oráculo: probando retiros cada vez menores
+       * averiguaría el esperado antes de contar, y el arqueo a ciegas dejaría
+       * de serlo. El mensaje igual dice qué hacer, que es lo que pide el brief.
+       */
       throw malaPeticion(
-        `No puedes retirar ${formatCLP(datos.amount)}: en la caja hay ${formatCLP(antes)}.`,
+        req.user.role === "ADMIN"
+          ? `No puedes retirar ${formatCLP(datos.amount)}: en la caja hay ${formatCLP(antes)}.`
+          : `No alcanza el efectivo de la caja para retirar ${formatCLP(datos.amount)}.`,
       );
     }
 
@@ -198,13 +231,19 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
       payload: { type: datos.type, amount: monto, description: datos.description, saldo: despues },
     });
 
+    // El saldo resultante tampoco viaja hacia un vendedor: es el número que el
+    // cierre a ciegas no le puede adelantar.
+    const esAdmin = req.user.role === "ADMIN";
     return reply.code(201).send({
-      movimiento,
-      saldo: despues,
-      mensaje:
-        datos.type === "WITHDRAWAL"
+      movimiento: esAdmin ? movimiento : { ...movimiento, balanceBefore: undefined, balanceAfter: undefined },
+      saldo: esAdmin ? despues : null,
+      mensaje: esAdmin
+        ? datos.type === "WITHDRAWAL"
           ? `Retirados ${formatCLP(datos.amount)}. Quedan ${formatCLP(despues)} en la caja.`
-          : `Ingresados ${formatCLP(datos.amount)}. Hay ${formatCLP(despues)} en la caja.`,
+          : `Ingresados ${formatCLP(datos.amount)}. Hay ${formatCLP(despues)} en la caja.`
+        : datos.type === "WITHDRAWAL"
+          ? `Retiro de ${formatCLP(datos.amount)} registrado.`
+          : `Ingreso de ${formatCLP(datos.amount)} registrado.`,
     });
   });
 
@@ -212,8 +251,20 @@ export async function registerCashRoutes(app: FastifyInstance): Promise<void> {
   // 2.4 — Cierre con arqueo
   // ============================================================
 
-  /** Lo que el sistema dice que debería haber, para mostrarlo ANTES de contar. */
-  app.get("/api/cash/expected", cualquiera, async (req) => {
+  /**
+   * Lo que el sistema dice que debería haber. **Solo el administrador**
+   * (decidido el 2026-07-30: el arqueo es a ciegas).
+   *
+   * No es una restricción de pantalla, y por eso vive acá: si el vendedor
+   * pudiera pedir este número antes de contar, el conteo ciego sería
+   * decorativo —bastaría abrir la pestaña de red—. Es el mismo razonamiento de
+   * la decisión sellada 17 con los costos: lo que no se puede ver no sale del
+   * servidor.
+   *
+   * El vendedor recibe el esperado y la diferencia en la RESPUESTA de
+   * `/api/cash/close`, o sea después de haber comprometido su conteo.
+   */
+  app.get("/api/cash/expected", soloAdmin, async (req) => {
     const sesion = await sesionAbierta(req.user.stationId);
     if (!sesion) throw malaPeticion("La caja está cerrada.");
     return { esperado: await saldoActual(sesion.id), sesionId: sesion.id };

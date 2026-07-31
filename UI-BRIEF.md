@@ -161,9 +161,13 @@ antes de codear el resto.
    derecha. Caja de escaneo arriba, siempre con foco. La cantidad se edita
    con Enter sobre la línea. Cobro abre panel de medios de pago con
    calculadora de vuelto en grande.
-2. **Cierre de caja (S2).** Guiado en 3 pasos: sistema muestra esperado →
-   vendedor cuenta e ingresa → diferencia en pantalla con color de estado.
-   Imprime resumen.
+2. **Cierre de caja (S2).** Guiado en 3 pasos: **vendedor cuenta e ingresa →
+   confirma → diferencia en pantalla con color y palabra**. Imprime resumen.
+   *(Corregido el 2026-07-30: decía "sistema muestra esperado → vendedor cuenta".
+   Cristian eligió el conteo ciego, que es la práctica habitual en manejo de
+   efectivo: ver el número esperado ancla, y la tentación de teclearlo cuando la
+   cuenta no calza es real. El esperado no se muestra —ni se sirve— hasta que el
+   conteo está ingresado.)*
 3. **Búsqueda/catálogo (S1).** Una sola caja: escaneo, nombre parcial o SKU.
    Resultados con precio y stock visible. Para el vendedor es solo lectura.
 4. **Kardex de producto (S4).** Tabla cronológica: fecha, tipo de movimiento

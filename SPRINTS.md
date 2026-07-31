@@ -131,8 +131,7 @@ en el Sprint 3 con el ticket, y el lector es físico.
 
 > Las 7 tareas de servidor están hechas y probadas. **La 2.8 espera el ok al
 > wireframe** ([`.agents/WIREFRAMES/2.8-cierre-de-caja.md`](.agents/WIREFRAMES/2.8-cierre-de-caja.md)),
-> que además trae una pregunta: si el vendedor debe ver el monto esperado antes
-> de contar, o si conviene el conteo ciego.
+> El **conteo ciego** ya quedó decidido e implementado en el servidor.
 
 **Objetivo:** el ciclo de la plata completo, sin ventas todavía. Apertura → movimientos → cierre con arqueo.
 
@@ -145,7 +144,7 @@ en el Sprint 3 con el ticket, y el lector es físico.
 | 2.5 ✅ | Reporte de cierre imprimible (cola `PrintJob` hacia `Station.printerTarget`, puede salir a archivo si la impresora no está integrada) | — |
 | 2.6 ✅ | Alerta si la diferencia supera `alert.cashDiffLimit` | ALE-03 |
 | 2.7 ✅ | CRUD mínimo de estaciones (admin): nombre, ubicación, destino de impresión | ADR-004 |
-| 2.8 ⏸ | **Pantalla clave del sprint: cierre de caja en 3 pasos.** El sistema muestra lo esperado → el vendedor cuenta e ingresa → la diferencia aparece con color **y palabra**. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
+| 2.8 ⏸ | **Pantalla clave del sprint: cierre de caja en 3 pasos.** **Conteo ciego** (decidido el 2026-07-30): el vendedor cuenta e ingresa → confirma → recién ahí aparece la diferencia, con color **y palabra**. El servidor ya no le sirve el monto esperado, con tests que lo comprueban. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
 
 **Invariantes que estrena este sprint:**
 - `closedAt IS NULL ⟺ openStationId IS NOT NULL` — **lo impone la base** vía los `CHECK` de la tarea 0.2, no el código. Es la única señal de abierta/cerrada: no hay campo `status`.
