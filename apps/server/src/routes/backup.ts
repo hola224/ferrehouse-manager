@@ -11,33 +11,31 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { join } from "node:path";
-import { mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { audit } from "../audit.js";
 import { requireRole } from "../roles.js";
 import { fechaDeRespaldo } from "@ferrehouse/shared";
-import { carpetaDeRespaldos, estadoDeRespaldo, respaldar } from "../backup.js";
-import { readdirSync } from "node:fs";
+import { carpetaDeRespaldos, estadoDeRespaldo, olvidarUltimaCopia, respaldar } from "../backup.js";
 import { esRespaldo } from "@ferrehouse/shared";
 import { getSetting, setSetting } from "../settings.js";
 
-function listar(dir: string): Array<{ archivo: string; fecha: Date; bytes: number }> {
+async function listar(dir: string): Promise<Array<{ archivo: string; fecha: Date; bytes: number }>> {
   let nombres: string[];
   try {
-    nombres = readdirSync(dir).filter(esRespaldo).sort().reverse();
+    nombres = (await readdir(dir)).filter(esRespaldo).sort().reverse();
   } catch {
     return [];
   }
-  return nombres.slice(0, 30).map((n) => ({
-    archivo: n,
-    fecha: fechaDeRespaldo(n)!,
-    bytes: (() => {
-      try {
-        return statSync(join(dir, n)).size;
-      } catch {
-        return 0;
-      }
-    })(),
-  }));
+  return Promise.all(
+    nombres.slice(0, 30).map(async (n) => ({
+      archivo: n,
+      fecha: fechaDeRespaldo(n)!,
+      bytes: await stat(join(dir, n))
+        .then((s) => s.size)
+        .catch(() => 0),
+    })),
+  );
 }
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
@@ -50,8 +48,10 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
   const soloAdmin = { preHandler: requireRole("ADMIN") };
 
   app.get("/api/backup", soloAdmin, async () => {
-    const estado = await estadoDeRespaldo();
-    return { ...estado, respaldos: listar(estado.carpeta) };
+    // Acá SÍ se sondea la carpeta externa: el administrador entró a mirar el
+    // respaldo, así que la espera es suya y la está esperando.
+    const estado = await estadoDeRespaldo(new Date(), { probarCopia: true });
+    return { ...estado, respaldos: await listar(estado.carpeta) };
   });
 
   /**
@@ -125,6 +125,7 @@ export async function registerBackupRoutes(app: FastifyInstance): Promise<void> 
 
     const antes = await getSetting("backup.copyTo");
     await setSetting("backup.copyTo", carpeta);
+    olvidarUltimaCopia();
     await audit({
       userId: req.user.sub,
       action: "BACKUP_COPY_SET",

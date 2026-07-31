@@ -245,10 +245,22 @@ presente.**
   acá: es lo único del sprint escrito a ciegas), la pantalla de estaciones y la
   marcha blanca.
 
-**Antes de la marcha blanca hay que construir la pantalla de devoluciones y
-anulaciones.** El endpoint existe y está probado desde el Sprint 4, pero no hay
-interfaz, y una ferretería tiene una devolución en la primera semana. Es lo
-único del backlog que bloquea la 7.6, y se puede hacer sin nadie presente.
+**Antes de la marcha blanca hay tres pantallas que construir**, las tres con su
+endpoint hecho y probado, y las tres se pueden hacer sin nadie presente:
+
+1. **Devoluciones y anulaciones** (Sprint 4). Una ferretería tiene una devolución
+   en la primera semana.
+2. **Descuento en la venta** (Sprint 3). Su tecla, F4, estaba anunciada en
+   pantalla sin hacer nada.
+3. **Venta en espera** (Sprint 3). Igual que la anterior, y su F8 además dejaba
+   el teclado muerto: abría un panel que no se renderiza y el manejador se
+   cortaba, así que ni F2 cobraba. Corregido el 2026-07-31 — la tecla sigue
+   reservada en `atajos.ts` con `pendiente: true`, pero ya no se imprime.
+
+**Regla que estrena esto:** una tecla se reserva en `atajos.ts` para que nadie la
+reasigne, pero **no se imprime en pantalla hasta que su acción exista**
+(`atajosVisibles`). Una leyenda que promete una tecla muerta hace que el vendedor
+deje de creerle a todas.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

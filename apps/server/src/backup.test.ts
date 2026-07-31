@@ -24,6 +24,7 @@ import {
   carpetaDeRespaldos,
   carpetaPrisma,
   estadoDeRespaldo,
+  olvidarUltimaCopia,
   respaldar,
   restaurar,
   rutaBaseDeDatos,
@@ -247,6 +248,27 @@ describe("la copia externa", () => {
     expect(alertas.find((a) => a.type === "BACKUP_COPY")?.severity).toBe("WARNING");
   });
 
+  /**
+   * El panel de alertas se calcula en CADA carga del tablero, y una lectura de
+   * disco lenta se paga en el bucle de eventos, o sea en el servidor entero —
+   * el mesón incluido. Así que desde ahí no se mira la carpeta externa: con la
+   * copia configurada y sin ningún intento todavía, no se inventa un problema
+   * que no se miró.
+   */
+  it("el tablero no sondea el pendrive: sin intentos, no acusa nada", async () => {
+    await usarCarpeta();
+    // Una carpeta externa configurada y vacía: sondeándola diría "atrasada".
+    await setSetting("backup.copyTo", carpetaNueva());
+    olvidarUltimaCopia();
+
+    const conSondeo = await estadoDeRespaldo(new Date(), { probarCopia: true });
+    expect(conSondeo.copia.alDia).toBe(false);
+
+    const sinSondeo = await estadoDeRespaldo(new Date(), { probarCopia: false });
+    expect(sinSondeo.copia.alDia).toBe(true);
+    expect(sinSondeo.copia.problema).toBeNull();
+  });
+
   it("sin copia configurada lo dice en vez de callarlo", async () => {
     await usarCarpeta();
     await setSetting("backup.copyTo", "");
@@ -428,6 +450,33 @@ describe("la restauración", () => {
     expect(await db.product.count({ where: { sku: despues } })).toBe(0);
 
     // Y el servidor puede arrancar contra ella: seed completo, settings, SYSTEM.
+    expect(await runStartupChecks()).toEqual([]);
+  });
+
+  /**
+   * El caso que nadie mira: falta el `.db` pero sobrevivió su `-wal`.
+   *
+   * Pasa de verdad —el antivirus pone en cuarentena un archivo y no los otros,
+   * alguien borra "la base de datos" y deja los de al lado— y es el peor,
+   * porque el WAL huérfano se queda junto a la base recién restaurada y SQLite
+   * intenta aplicárselo encima. Los otros dos tests no lo tocan: uno borra los
+   * tres archivos y el otro tiene el `.db` presente.
+   */
+  it("se lleva el -wal huérfano aunque la base no esté", async () => {
+    dir = await usarCarpeta();
+    const r = await respaldar();
+    const ruta = rutaBaseDeDatos();
+
+    await db.$disconnect();
+    rmSync(ruta, { force: true }); // se perdió la base…
+    writeFileSync(ruta + "-wal", "wal huérfano de la base perdida"); // …pero no su -wal
+
+    const vuelta = await restaurar(r.archivo!);
+    expect(vuelta.ok, vuelta.error ?? "").toBe(true);
+    expect(existsSync(ruta + "-wal")).toBe(false);
+    expect(vuelta.pasos.join(" ")).toContain("-wal viejo");
+
+    expect(await enableWAL()).toBe("wal");
     expect(await runStartupChecks()).toEqual([]);
   });
 

@@ -14,20 +14,21 @@ fondo). Si no está abierta, la pantalla de venta te lo va a decir.
 
 ## 2 · Vender
 
-La caja de búsqueda tiene el cursor puesto siempre. **El lector de códigos
-escribe solo**: apuntar y disparar agrega el producto.
+La caja de búsqueda tiene el cursor puesto. **El lector de códigos escribe
+solo**: apuntar y disparar agrega el producto.
 
-Buscando a mano sirve el nombre o el código, sin tildes ni mayúsculas: `caneria`
-encuentra *Cañería*. Las flechas ↑ ↓ eligen y Enter agrega.
-
-Para cambiar la cantidad, se escribe encima. Para sacar una línea, la X.
+A mano sirve el nombre o el código, sin tildes ni mayúsculas —`caneria` encuentra
+*Cañería*— y **Enter agrega**. No hay lista que elegir: se agrega el que calza.
 
 | Tecla | Qué hace |
 |---|---|
+| **↑ ↓** | Moverse entre las líneas ya agregadas |
+| **Enter** | Cambiar la cantidad de la línea marcada |
+| **Supr** | Quitar la línea marcada |
 | **F2** | **Cobrar** |
-| **F4** | Descuento |
-| **F6** | Dejar la venta en espera |
-| **F8** | Recuperar una venta en espera |
+
+*El descuento y la venta en espera todavía no están construidos.* Si alguien te
+dijo que van en F4 y F6, todavía no.
 
 ## 3 · Cobrar
 
@@ -51,8 +52,8 @@ Al confirmar, sale el ticket y se abre el cajón.
   autorizar la venta igual, y queda registrado quién autorizó.
 - **Se cortó la luz o se colgó el navegador** → se vuelve a entrar y se sigue.
   Nada de lo cobrado se pierde.
-- **El cliente se arrepiente antes de cobrar** → se borran las líneas o se deja
-  en espera con **F6**.
+- **El cliente se arrepiente antes de cobrar** → se quitan las líneas con
+  **Supr**. Dejar la venta en espera todavía no se puede.
 - **El cliente devuelve algo después de pagar** → *todavía no se hace desde el
   sistema.* Anótalo en el cuaderno y avísale al administrador el mismo día.
 - **Te equivocaste en una venta ya cobrada** → no se borra ni se edita nunca.

@@ -1214,3 +1214,49 @@ las cuatro pantallas construidas esta mañana. Una ferretería tiene una
 devolución en la primera semana, así que **la marcha blanca (7.6) no puede
 empezar sin eso** — está anotado en la guía del vendedor como "anótalo en el
 cuaderno y avísale al administrador", que es un parche, no una solución.
+
+### Tres cosas que aparecieron en la revisión, ya cerrado el sprint
+
+**1. Un defecto en el mecanismo que este sprint dice haber probado.** En
+`restaurar`, el nombre de reserva se calculaba solo si la base existía, así que
+cuando el `.db` faltaba pero su `-wal` sobrevivía —el antivirus pone en
+cuarentena un archivo y no los otros, alguien borra "la base de datos" y deja los
+de al lado— el `renameSync` apartaba el WAL **sobre sí mismo**: no hace nada. El
+WAL viejo se quedaba junto a la base recién copiada, que es exactamente la trampa
+que la función existe para evitar, y los pasos informaban que se había apartado.
+Ninguno de los dos tests lo tocaba: uno borra los tres archivos y el otro tiene
+el `.db` presente. Ahora hay un tercero, y se comprobó que **falla con el error
+puesto de vuelta** — un test que no muerde no sirve de nada.
+
+**2. Una lectura de disco síncrona en la ruta de una petición.** `estadoDeRespaldo`
+hacía `readdirSync` sobre la carpeta externa, y eso quedó colgando de
+`/api/dashboard`. `readdirSync` **bloquea el bucle de eventos entero**: una
+carpeta de red que se cayó no atrasa esa petición, atrasa el servidor completo,
+con el mesón vendiendo. Y no es teórico — en esta misma sesión un `mkdirSync`
+sobre procfs no devolvió nunca y se comió una corrida de pruebas. Ahora toda la
+lectura del módulo es asíncrona, y **el tablero no sondea el pendrive**: usa lo
+que sabe del último intento de copia y, si no hubo ninguno, no inventa un
+problema que no miró. El sondeo de verdad quedó en `/api/backup`, donde el
+administrador entró a preguntar. De paso: cambiar la carpeta de destino olvida
+el fallo de la anterior, porque si no el panel seguiría acusando algo que acaban
+de arreglar.
+
+**3. La pantalla de venta anunciaba tres teclas y una dejaba el teclado muerto.**
+Salió proofreando la guía del vendedor: la guía decía "F6 dejar en espera" porque
+la pantalla lo dice. Manejándola: **F4 no hace nada, F6 no hace nada, y F8 abre
+un panel `esperas` que no se renderiza en ninguna parte** — y como el manejador
+de teclas se corta cuando hay un panel abierto, después de F8 no responden ni las
+flechas, ni Supr, ni F2 para cobrar. En medio de una venta, con el cliente
+esperando, y sin nada en pantalla que explique por qué. La salida es recargar,
+que se lleva las líneas.
+
+La causa es que la leyenda se pinta desde `atajos.ts`, que lista las teclas
+**reservadas** para que nadie las reasigne creyéndolas libres. Reservar y
+anunciar no son lo mismo: ahora las reservadas llevan `pendiente` y
+`atajosVisibles` las deja fuera de la pantalla. Hoy en venta se imprime una sola
+tecla, F2, y es verdad. Las otras pantallas se revisaron una por una: caja y
+kardex implementan todo lo que anuncian.
+
+Esto suma a la deuda que bloquea la marcha blanca: además de la pantalla de
+devoluciones faltan **el descuento en la venta y la venta en espera**, las dos
+con su endpoint hecho desde el Sprint 3.

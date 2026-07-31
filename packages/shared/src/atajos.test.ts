@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ATAJOS, TECLAS_DEL_NAVEGADOR, atajosDe, teclaDisponible } from "./atajos.js";
+import { ATAJOS, TECLAS_DEL_NAVEGADOR, atajosDe, atajosVisibles, teclaDisponible } from "./atajos.js";
 
 describe("tabla de atajos (tarea 3.11)", () => {
   /**
@@ -24,6 +24,25 @@ describe("tabla de atajos (tarea 3.11)", () => {
       const teclas = atajosDe(donde).map((a) => a.tecla);
       expect(new Set(teclas).size, donde).toBe(teclas.length);
     }
+  });
+
+  /**
+   * La tecla se reserva igual —para que nadie la reasigne creyéndola libre—
+   * pero no se imprime hasta que exista la acción. Se descubrió manejando la
+   * pantalla de venta: anunciaba «F4 descuento» y «F6 dejar en espera», y
+   * ninguna de las dos hacía nada.
+   */
+  it("las teclas reservadas sin construir no se imprimen en pantalla", () => {
+    const reservadas = ATAJOS.filter((a) => a.pendiente);
+    expect(reservadas.length).toBeGreaterThan(0);
+    for (const a of reservadas) {
+      expect(atajosDe(a.donde), `${a.tecla} sigue reservada`).toContainEqual(a);
+      expect(atajosVisibles(a.donde), `${a.tecla} no se anuncia`).not.toContainEqual(a);
+    }
+  });
+
+  it("en venta hoy solo se imprime F2 cobrar", () => {
+    expect(atajosVisibles("venta").map((a) => `${a.tecla} ${a.accion}`)).toEqual(["F2 Cobrar"]);
   });
 
   it("el catálogo tiene sus cuatro atajos", () => {

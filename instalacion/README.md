@@ -99,9 +99,10 @@ pantalla gana el alto de la barra, que a 1366×768 se nota.
 entrada, junto al usuario, y define dos cosas: de qué ubicación sale el stock y
 a qué impresora van sus tickets. Si hay una sola, se elige sola y no aparece.
 
-Las cajas se administran en el sistema (Panel → Usuarios no; se crean por API o
-en la pantalla de estaciones cuando exista). Por ahora el seed deja `CAJA-1`
-activa y `CAJA-2` inactiva, lista para el día que se abra la segunda.
+**Las estaciones todavía no se administran desde la interfaz.** El seed deja
+`CAJA-1` activa y `CAJA-2` inactiva, lista para el día que se abra la segunda;
+activarla o crear una tercera se hace hoy por API (`POST /api/stations`, con
+token de administrador). La pantalla está pendiente.
 
 ---
 

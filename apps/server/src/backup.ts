@@ -19,7 +19,8 @@
  * archivo corrupto que se queda es peor que ninguno, porque la rotación lo
  * cuenta como bueno y el panel dice "respaldado hoy".
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
@@ -64,17 +65,27 @@ export async function carpetaDeRespaldos(): Promise<string> {
   return isAbsolute(dir) ? dir : resolve(dirname(rutaBaseDeDatos()), dir);
 }
 
-function bytesDe(ruta: string): number {
+/**
+ * TODA la lectura de disco de este módulo es asíncrona, y no por estilo.
+ *
+ * `readdirSync` sobre una carpeta de red que se cayó **bloquea el bucle de
+ * eventos entero**: no se atrasa esa petición, se atrasa el servidor completo,
+ * incluida la venta que se está cobrando en el mesón. Y no es teórico —en esta
+ * misma máquina un `mkdirSync` sobre procfs no devolvió nunca y se comió una
+ * corrida de pruebas de dos minutos—. En la versión asíncrona la espera ocurre
+ * en el pool de hilos y el mesón sigue vendiendo.
+ */
+async function bytesDe(ruta: string): Promise<number> {
   try {
-    return statSync(ruta).size;
+    return (await stat(ruta)).size;
   } catch {
     return 0;
   }
 }
 
-function respaldosDe(dir: string): string[] {
+async function respaldosDe(dir: string): Promise<string[]> {
   try {
-    return readdirSync(dir).filter(esRespaldo).sort();
+    return (await readdir(dir)).filter(esRespaldo).sort();
   } catch {
     return []; // La carpeta no existe todavía, o el pendrive no está puesto.
   }
@@ -174,7 +185,7 @@ export async function respaldar(ahora = new Date()): Promise<ResultadoRespaldo> 
       return { ...vacio, error: `El respaldo salió malo y se descartó: ${problema}.`, ms: Date.now() - t0 };
     }
 
-    const bytes = bytesDe(destino);
+    const bytes = await bytesDe(destino);
     const copia = await copiarAfuera(destino);
     const borrados = await rotar(dir);
 
@@ -193,9 +204,24 @@ export async function respaldar(ahora = new Date()): Promise<ResultadoRespaldo> 
  * Que el pendrive no esté puesto es lo normal, no un error: degrada a aviso
  * visible y el respaldo local sigue siendo bueno.
  */
+let ultimaCopia: { ok: boolean; problema: string | null } | null = null;
+
+/**
+ * Olvida cómo le fue al último intento de copia.
+ *
+ * Lo llama la ruta que cambia la carpeta de destino: el fallo de la carpeta
+ * vieja no dice nada de la nueva, y dejarlo puesto haría que el tablero siguiera
+ * acusando un problema que acaban de arreglar — que es la forma más rápida de
+ * que dejen de creerle al panel.
+ */
+export function olvidarUltimaCopia(): void {
+  ultimaCopia = null;
+}
+
 async function copiarAfuera(archivo: string): Promise<{ destino: string | null; ok: boolean; problema: string | null }> {
   const carpeta = (await getSetting("backup.copyTo")).trim();
   if (!carpeta) {
+    ultimaCopia = { ok: false, problema: "No hay copia externa configurada." };
     return { destino: null, ok: false, problema: "No hay copia externa configurada." };
   }
   try {
@@ -203,22 +229,21 @@ async function copiarAfuera(archivo: string): Promise<{ destino: string | null; 
     const destino = join(carpeta, archivo.split(/[\\/]/).pop()!);
     copyFileSync(archivo, destino);
     await rotar(carpeta);
+    ultimaCopia = { ok: true, problema: null };
     return { destino: carpeta, ok: true, problema: null };
   } catch (e) {
     const detalle = e instanceof Error ? e.message : String(e);
     console.error("[respaldo] no se pudo copiar a", carpeta, detalle);
-    return {
-      destino: carpeta,
-      ok: false,
-      problema: `No se pudo copiar a ${carpeta}. ¿Está conectado el pendrive?`,
-    };
+    const problema = `No se pudo copiar a ${carpeta}. ¿Está conectado el pendrive?`;
+    ultimaCopia = { ok: false, problema };
+    return { destino: carpeta, ok: false, problema };
   }
 }
 
 /** Borra los vencidos de una carpeta. La decisión de cuáles vive en `shared`. */
 async function rotar(dir: string): Promise<string[]> {
   const dias = await getSetting("backup.keepDays");
-  const { borrar } = aRotar(respaldosDe(dir), { ahora: new Date(), dias });
+  const { borrar } = aRotar(await respaldosDe(dir), { ahora: new Date(), dias });
   for (const nombre of borrar) rmSync(join(dir, nombre), { force: true });
   return borrar;
 }
@@ -243,10 +268,21 @@ export type EstadoRespaldo = {
  * en el pendrive. Un registro en la base podría decir "respaldado" de un
  * archivo que alguien borró.
  */
-export async function estadoDeRespaldo(ahora = new Date()): Promise<EstadoRespaldo> {
+export async function estadoDeRespaldo(
+  ahora = new Date(),
+  /**
+   * `probarCopia: false` no mira la carpeta externa.
+   *
+   * Lo usa el panel de alertas, que se calcula en cada carga del tablero: ahí
+   * un pendrive desconectado o una carpeta de red caída no pueden costar una
+   * espera. El sondeo de verdad queda para `/api/backup`, donde el
+   * administrador entró a mirar el respaldo y sabe que está preguntando.
+   */
+  opts: { probarCopia?: boolean } = {},
+): Promise<EstadoRespaldo> {
   const ruta = rutaBaseDeDatos();
   const dir = await carpetaDeRespaldos();
-  const nombres = respaldosDe(dir);
+  const nombres = await respaldosDe(dir);
   const ultimoNombre = nombres[nombres.length - 1] ?? null;
 
   const externa = (await getSetting("backup.copyTo")).trim();
@@ -256,8 +292,21 @@ export async function estadoDeRespaldo(ahora = new Date()): Promise<EstadoRespal
     alDia: false,
     problema: "El respaldo se guarda en el mismo PC. Si se pierde el equipo, se pierde con él.",
   };
-  if (externa) {
-    const afuera = respaldosDe(externa);
+  if (externa && opts.probarCopia === false) {
+    /**
+     * Sin sondear, lo único que se sabe con certeza es cómo le fue al último
+     * intento de copia de este proceso. Si todavía no hubo ninguno **no se
+     * inventa nada**: se dice que está al día, que es lo mismo que decir "no
+     * tengo nada que reportar", en vez de acusar un problema que no se miró.
+     */
+    copia = {
+      configurada: true,
+      carpeta: externa,
+      alDia: ultimaCopia?.ok !== false,
+      problema: ultimaCopia?.ok === false ? ultimaCopia.problema : null,
+    };
+  } else if (externa) {
+    const afuera = await respaldosDe(externa);
     const alDia = ultimoNombre !== null && afuera.includes(ultimoNombre);
     copia = {
       configurada: true,
@@ -274,15 +323,15 @@ export async function estadoDeRespaldo(ahora = new Date()): Promise<EstadoRespal
   }
 
   return {
-    base: { ruta, existe: existsSync(ruta), bytes: bytesDe(ruta) },
+    base: { ruta, existe: existsSync(ruta), bytes: await bytesDe(ruta) },
     carpeta: dir,
     cantidad: nombres.length,
-    bytesTotales: nombres.reduce((s, n) => s + bytesDe(join(dir, n)), 0),
+    bytesTotales: (await Promise.all(nombres.map((n) => bytesDe(join(dir, n))))).reduce((s, b) => s + b, 0),
     ultimo: ultimoNombre
       ? {
           archivo: ultimoNombre,
           fecha: fechaDeRespaldo(ultimoNombre)!,
-          bytes: bytesDe(join(dir, ultimoNombre)),
+          bytes: await bytesDe(join(dir, ultimoNombre)),
         }
       : null,
     antiguedad: antiguedadDeRespaldo(ultimoNombre ? fechaDeRespaldo(ultimoNombre) : null, ahora),
@@ -337,15 +386,27 @@ export async function restaurar(archivo: string, ahora = new Date()): Promise<Re
     pasos.push(`Respaldo verificado: ${origen}`);
 
     const destino = rutaBaseDeDatos();
+    /**
+     * El nombre de reserva se calcula SIEMPRE, exista o no la base.
+     *
+     * Antes se calculaba solo si el `.db` estaba, y entonces los `-wal`/`-shm`
+     * se "apartaban" con `renameSync(x, x)` — que no hace nada. O sea que en el
+     * caso de un `.db` perdido con su `-wal` sobreviviente (el antivirus puso en
+     * cuarentena un archivo y no los otros, alguien borró "la base de datos" y
+     * dejó los de al lado) el WAL viejo se quedaba junto a la base recién
+     * copiada: exactamente la trampa que esta función existe para evitar. Y los
+     * pasos informaban que se había apartado.
+     */
+    const aparte = `${destino}.antes-de-restaurar-${nombreDeRespaldo(ahora).replace(/^ferrehouse-|\.db$/g, "")}`;
     let apartada: string | null = null;
     if (existsSync(destino)) {
-      apartada = `${destino}.antes-de-restaurar-${nombreDeRespaldo(ahora).replace(/^ferrehouse-|\.db$/g, "")}`;
-      renameSync(destino, apartada);
-      pasos.push(`La base que había se guardó como ${apartada}`);
+      renameSync(destino, aparte);
+      apartada = aparte;
+      pasos.push(`La base que había se guardó como ${aparte}`);
     }
     for (const suf of ["-wal", "-shm", "-journal"]) {
       if (existsSync(destino + suf)) {
-        renameSync(destino + suf, `${apartada ?? destino}${suf}`);
+        renameSync(destino + suf, aparte + suf);
         pasos.push(`Se apartó el ${suf} viejo (aplicarlo sobre la base restaurada la mezclaría)`);
       }
     }
@@ -391,7 +452,7 @@ export function iniciarRespaldoDiario(cadaMs = 15 * 60_000): void {
   const pasada = async () => {
     try {
       const dir = await carpetaDeRespaldos();
-      const nombres = respaldosDe(dir);
+      const nombres = await respaldosDe(dir);
       const ultimo = nombres.length ? fechaDeRespaldo(nombres[nombres.length - 1]!) : null;
       const veredicto = hayQueRespaldar(ultimo, new Date(), await getSetting("backup.hour"));
       if (!veredicto.debe) return;

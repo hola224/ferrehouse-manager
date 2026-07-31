@@ -215,13 +215,17 @@ export async function alertasVigentes(locationId: number, ahora = new Date()): P
  * abre: un respaldo que dejó de correr no se nota hasta el día que hace falta,
  * que es el único día en que ya no se puede hacer nada.
  *
- * Lee el disco (dos `readdir` y unos `stat`), no la base. Si la carpeta no
- * existe o el pendrive no está, eso ES la respuesta, no un error.
+ * Lee la carpeta LOCAL de respaldos, nunca la externa: `probarCopia: false`.
+ * Esto se calcula en cada carga del tablero, y sondear un pendrive
+ * desconectado o una carpeta de red caída desde la ruta de una petición puede
+ * costar segundos — segundos del servidor entero, porque una lectura de disco
+ * lenta se paga en el bucle de eventos y el mesón está vendiendo. El sondeo de
+ * verdad vive en `/api/backup`.
  */
 async function alertasDeRespaldo(ahora: Date): Promise<AlertaVista[]> {
   let e: Awaited<ReturnType<typeof estadoDeRespaldo>>;
   try {
-    e = await estadoDeRespaldo(ahora);
+    e = await estadoDeRespaldo(ahora, { probarCopia: false });
   } catch {
     // Un problema leyendo la carpeta no puede dejar sin alertas al panel entero.
     return [];

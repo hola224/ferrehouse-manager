@@ -25,7 +25,7 @@ import {
   calcularVenta,
   formatCLP,
   formatQty,
-  atajosDe,
+  atajosVisibles,
   normalizarTelefono,
   ErrorDeVenta,
   type VentaCalculada,
@@ -56,7 +56,7 @@ export function Venta() {
   const [seleccion, setSeleccion] = useState(0);
   const [texto, setTexto] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"nada" | "cobrar" | "cantidad" | "esperas">("nada");
+  const [panel, setPanel] = useState<"nada" | "cobrar" | "cantidad">("nada");
   const [ultimoCobro, setUltimoCobro] = useState<{ mensaje: string; aviso: string | null } | null>(null);
 
   const caja = useRef<HTMLInputElement>(null);
@@ -156,10 +156,15 @@ export function Venta() {
     } else if (e.key === "F2" && lineas.length > 0) {
       e.preventDefault();
       setPanel("cobrar");
-    } else if (e.key === "F8") {
-      e.preventDefault();
-      setPanel("esperas");
     }
+    /*
+     * F8 abría un panel «esperas» que NO SE RENDERIZA en ninguna parte, y como
+     * este manejador se corta cuando hay un panel abierto, el teclado quedaba
+     * muerto: ni las flechas, ni Supr, ni F2 para cobrar. En medio de una venta,
+     * con el cliente esperando, y sin nada en pantalla que explicara por qué.
+     * La venta en espera no tiene interfaz todavía (su tecla sigue reservada en
+     * `atajos.ts`, marcada `pendiente`), así que acá no hay nada que atender.
+     */
   }
 
   if (cajaAbierta === false) {
@@ -296,7 +301,7 @@ export function Venta() {
         </Boton>
 
         <div className="flex flex-col gap-1 text-sm text-ink-soft">
-          {atajosDe("venta")
+          {atajosVisibles("venta")
             .filter((a) => a.accion !== "Cobrar")
             .map((a) => (
               <span key={a.tecla}>
