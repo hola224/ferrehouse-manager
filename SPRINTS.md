@@ -357,10 +357,10 @@ el servidor pasa sus autochequeos contra la base restaurada.
 Windows. Es la única parte del sprint escrita a ciegas y está separada en su
 propia carpeta, con su README al lado.
 
-**7.5 a medias, por decisión.** La selección de estación al entrar ya existía
-desde el Sprint 2 y el acceso directo de los terminales está documentado; falta
-la pantalla de administración de estaciones, cuyo endpoint existe desde la 2.7.
-Es la pantalla de menor valor del sprint y arrastra la lista del brief §6.
+**7.5 completa (2026-07-31).** La selección de estación al entrar existía desde
+el Sprint 2 y el acceso directo de los terminales está documentado; la pantalla
+de administración de cajas se construyó el 2026-07-31, y con ella la instalación
+dejó de necesitar `curl` para activar la segunda caja.
 
 **7.6 necesita la tienda**, y ya no necesita nada más: las tres pantallas que la
 bloqueaban —devoluciones y anulaciones, descuento y venta en espera— se

@@ -430,3 +430,28 @@ describe("la etiqueta que va a la térmica", () => {
     expect(bytes.every((b) => b < 0x80)).toBe(true);
   });
 });
+
+/**
+ * Las ubicaciones (Sprint 7). Existen desde el día uno con una sola fila
+ * (decisión 12) y la interfaz las esconde, pero la pantalla de cajas necesita
+ * saber a cuál asociar cada terminal.
+ */
+describe("ubicaciones", () => {
+  const pedir = (t: string) => app.inject({ method: "GET", url: "/api/catalog/locations", headers: como(t) });
+
+  it("el administrador las ve, con la de por defecto primero", async () => {
+    const r = await pedir(tokenAdmin);
+    expect(r.statusCode).toBe(200);
+    const { ubicaciones } = JSON.parse(r.body);
+    expect(ubicaciones.length).toBeGreaterThan(0);
+    expect(ubicaciones[0].isDefault).toBe(true);
+  });
+
+  /**
+   * Es configuración de la instalación, no algo del mesón: el vendedor elige su
+   * caja al entrar y la caja ya trae su ubicación.
+   */
+  it("al vendedor no le llegan", async () => {
+    expect((await pedir(tokenVendedor)).statusCode).toBe(403);
+  });
+});

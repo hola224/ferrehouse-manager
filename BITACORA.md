@@ -1361,3 +1361,69 @@ que empezaba igual —«Devolver» del diálogo y «Devolver lo marcado» de la
 página— pegó en el botón equivocado, y un `blur()` mandó el foco fuera del
 contenedor que escucha las teclas. **Cuando la pantalla "no hace nada", lo
 primero que hay que descartar es el harness.**
+
+---
+
+## 2026-07-31 — El barrido inverso: qué endpoint quedó sin pantalla
+
+Cerrada la deuda conocida, la pregunta que quedaba era la contraria: **de las 64
+rutas del servidor, ¿cuáles no aparecen en ninguna pantalla?** Cuatro. Se
+construyeron tres y la cuarta se dejó afuera a propósito.
+
+**Reimprimir un ticket** era lo más cotidiano que faltaba —se atasca la
+impresora, el papel sale en blanco, el cliente pide copia— y vive en
+Devoluciones porque esa pantalla ya sabe buscar una venta por su número, que es
+exactamente lo que una reimpresión necesita. Al lado del botón dice **«sale
+marcado como copia · no abre el cajón»**: un vendedor que crea que reimprimir
+abre el cajón lo va a usar para abrir el cajón, y un cajón que se abre sin una
+venta detrás es lo que un arqueo no puede explicar.
+
+**Cajas y terminales** cierra la 7.5. Hasta ahora el `README` de instalación
+decía, con esas palabras, que activar la segunda caja se hacía con
+`POST /api/stations` — o sea que dependía de que alguien supiera escribir un
+`curl`. No tiene pestaña propia: se toca al instalar y casi nunca más, y una
+pestaña permanente para eso es ruido en una barra que el vendedor mira todo el
+día. Se llega desde Usuarios, que es la otra mitad de la misma pregunta: quién
+entra y desde dónde.
+
+**Reconciliar el libro** va en la vista de alertas, porque su resultado *es* una
+alerta. Es el único chequeo capaz de acusar una corrupción silenciosa: todo lo
+demás mira el saldo, así que un saldo mal escrito no da ningún síntoma — los
+números simplemente son otros.
+
+### La que no se construyó, y por qué
+
+`GET /api/cash/expected` entrega el monto esperado de una caja **abierta**, y
+todo el diseño del Sprint 2 es que el conteo sea a ciegas. Una pantalla de
+"cuánto debería haber" a mitad de turno invita exactamente la mirada por encima
+del hombro que el arqueo ciego evita. La diferencia se muestra al cerrar,
+después de comprometer el conteo, que es cuando sirve. Queda como omisión
+deliberada, no como pendiente.
+
+### Dos errores en documentación que yo mismo había escrito
+
+El `README` de instalación afirmaba que **el seed deja CAJA-2 inactiva**. No la
+deja: crea una sola caja. Venía de confundir el seed de producción con el de los
+tests, que sí crea dos.
+
+Y faltaba el paso que hace funcionar la impresora. El seed deja `CAJA-1` **sin
+impresora**, y una caja sin impresora vende igual pero no imprime nada ni abre
+el cajón: la venta se registra y la pantalla lo avisa, pero es un aviso que se
+aprende a ignorar el segundo día. El checklist ahora tiene su propia sección,
+con la prueba de que el cajón se abre —que es lo que distingue «el cable del
+cajón está malo» de «el sistema no manda el pulso»—.
+
+De paso, la etiqueta de la pantalla nueva decía «sin impresora · terminal de
+consulta», que afirma una intención que no consta: el modelo usa `null` para el
+terminal de consulta, pero una caja recién instalada también nace en `null`.
+Ahora dice el hecho: **no imprime ni abre el cajón**.
+
+### La misma falla, viva en la otra copia
+
+La lista de alertas de **Reportes** elegía la acción por «no tiene id», igual que
+hacía el Panel: las alertas de respaldo mostraban un «Ver espera» que no lleva a
+ninguna parte. El Panel se corrigió el mismo día y **la corrección no llegó
+acá**. Es la lección del Sprint 6 otra vez —lo que se arregla en una copia no
+alcanza a la otra—, y esta vez además faltaban las etiquetas: la pantalla
+mostraba `BACKUP_STALE` crudo, jerga de base de datos en la cara del
+administrador.

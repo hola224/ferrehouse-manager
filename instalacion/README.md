@@ -62,7 +62,27 @@ quedan afuera en el próximo reinicio.
 
 ---
 
-## 3. Comprobar que quedó bien
+## 3. La impresora de la caja — **si no, no sale ningún ticket**
+
+El seed deja `CAJA-1` **sin impresora**, y una caja sin impresora vende igual
+pero no imprime nada ni abre el cajón. La venta se registra y la pantalla lo
+avisa, pero es un aviso que se aprende a ignorar el segundo día.
+
+1. Comparte la térmica en Windows con un nombre corto y sin espacios (por
+   ejemplo `TERMICA`).
+2. En el sistema: **Usuarios → Cajas y terminales → Editar CAJA-1**.
+3. En «Impresora» escribe la ruta del recurso compartido, con la forma
+   `\\NOMBRE-DEL-PC\TERMICA`.
+4. Haz una venta de prueba de $100 en efectivo y comprueba dos cosas: que sale
+   el ticket **y que se abre el cajón**. El cajón cuelga de la impresora y se
+   abre con el mismo trabajo; si sale el papel pero no se abre, el problema es
+   el cable del cajón, no el sistema.
+5. Anula esa venta desde **Devoluciones** para no dejarla en el arqueo.
+
+Un terminal de consulta —uno que solo mira precios y stock— se deja **sin
+impresora** a propósito: es la forma de decir que no imprime.
+
+## 4. Comprobar que quedó bien
 
 ```
 curl http://localhost:3000/api/health
@@ -84,7 +104,7 @@ síntoma hasta que los números no cuadran, semanas después.
 
 ---
 
-## 4. Los terminales (tarea 7.5)
+## 5. Los terminales (tarea 7.5)
 
 En cada terminal, un acceso directo en el escritorio a Chrome:
 
@@ -99,14 +119,14 @@ pantalla gana el alto de la barra, que a 1366×768 se nota.
 entrada, junto al usuario, y define dos cosas: de qué ubicación sale el stock y
 a qué impresora van sus tickets. Si hay una sola, se elige sola y no aparece.
 
-**Las estaciones todavía no se administran desde la interfaz.** El seed deja
-`CAJA-1` activa y `CAJA-2` inactiva, lista para el día que se abra la segunda;
-activarla o crear una tercera se hace hoy por API (`POST /api/stations`, con
-token de administrador). La pantalla está pendiente.
+**Las cajas se administran en Usuarios → Cajas y terminales.** El seed deja una
+sola, `CAJA-1`; la segunda se agrega ahí cuando exista. El nombre va como
+`CAJA-2` —se dice en voz alta y sale impreso en el reporte de cierre— y se
+normaliza solo.
 
 ---
 
-## 5. El respaldo (tarea 7.2) — **esto es lo que hay que dejar andando**
+## 6. El respaldo (tarea 7.2) — **esto es lo que hay que dejar andando**
 
 El sistema respalda **solo, una vez al día**, a las 13:00 por defecto, y también
 apenas se enciende el PC si el último respaldo tiene más de 24 horas. No hay que
@@ -134,7 +154,7 @@ vencidos — un equipo apagado seis semanas vuelve y no se queda sin nada.
 
 ---
 
-## 6. Restaurar (tarea 7.3)
+## 7. Restaurar (tarea 7.3)
 
 Si se perdió el PC o la base quedó mal:
 
@@ -165,7 +185,7 @@ en `logs\`. Anota a mano en un cuaderno qué día se restauró y por qué.
 
 ---
 
-## 7. Mantención, en una línea cada una
+## 8. Mantención, en una línea cada una
 
 - **Actualizar el sistema**: `nssm stop`, `git pull`, `pnpm install`, `pnpm build`,
   `db:migrate`, `nssm start`. **Respalda antes** (`instalacion\Respaldar ahora.bat`).

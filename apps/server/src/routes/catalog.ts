@@ -115,6 +115,22 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
   // Categorías, marcas y proveedores (tarea 1.4)
   // ============================================================
 
+  /**
+   * Las ubicaciones. Solo lectura y solo el administrador: hoy hay una sola
+   * (decisión 12) y la interfaz la esconde hasta que exista la segunda bodega,
+   * pero la pantalla de cajas necesita saber a cuál asociar cada terminal.
+   *
+   * No hay alta ni edición: crear una segunda ubicación es una decisión de
+   * negocio que además obliga a revisar los reportes por ubicación, no algo
+   * que se hace desde un formulario un martes.
+   */
+  app.get("/api/catalog/locations", soloAdmin, async () => ({
+    ubicaciones: await db.location.findMany({
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+      select: { id: true, name: true, isDefault: true },
+    }),
+  }));
+
   app.get("/api/catalog/categories", cualquiera, async () => ({
     categorias: await db.category.findMany({ orderBy: { name: "asc" } }),
   }));

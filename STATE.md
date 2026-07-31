@@ -271,6 +271,20 @@ volver salvo recargar—, y se descubrió en carne propia. Para una tienda a pun
 de operar sola, ese modo de falla es peor que una pantalla que falta. Ahora la
 barra de arriba sobrevive y el vendedor se va a otra pantalla.
 
+**2026-07-31 — Y el barrido inverso: qué endpoint quedaba sin pantalla.** De 64
+rutas, cuatro no aparecían en ninguna. Se construyeron tres: **reimprimir un
+ticket** (lo más cotidiano que faltaba: se atasca la impresora, el cliente pide
+copia), **administrar cajas y terminales** —que cierra la 7.5 y saca el `curl`
+del manual de instalación— y **reconciliar el libro de stock**, que es el único
+chequeo capaz de acusar una corrupción silenciosa del saldo.
+
+La cuarta, `GET /api/cash/expected`, **se dejó sin pantalla a propósito**:
+entrega el monto esperado de una caja ABIERTA, y todo el diseño del Sprint 2 es
+que el conteo sea a ciegas. Una pantalla de "cuánto debería haber" a mitad de
+turno invita justo la mirada por encima del hombro que el arqueo ciego evita. La
+diferencia se muestra al cerrar, después de comprometer el conteo, que es cuando
+sirve.
+
 Con eso no queda deuda de interfaz que impida empezar a operar.
 
 **Regla que estrena esto:** una tecla se reserva en `atajos.ts` para que nadie la

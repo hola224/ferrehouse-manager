@@ -80,6 +80,7 @@ export function Devoluciones() {
   const [delDia, setDelDia] = useState<VentaDelDia[] | null>(null);
   const [cajaAbierta, setCajaAbierta] = useState<boolean | null>(null);
   const [verLista, setVerLista] = useState(true);
+  const [reimprimiendo, setReimprimiendo] = useState(false);
   const campo = useRef<HTMLInputElement>(null);
 
   useEffect(() => campo.current?.focus(), []);
@@ -108,6 +109,34 @@ export function Devoluciones() {
   useEffect(() => {
     void cargarDia();
   }, [cargarDia]);
+
+  /**
+   * Reimprimir el ticket (tarea 3.8).
+   *
+   * Es lo más cotidiano que había quedado sin pantalla: se atascó la impresora,
+   * el papel salió en blanco, el cliente quiere una copia. Va acá y no en otro
+   * lado porque esta pantalla ya sabe buscar una venta por su número, que es
+   * exactamente lo que una reimpresión necesita.
+   *
+   * **La copia sale marcada como copia y NO abre el cajón.** Lo segundo importa
+   * más de lo que parece: un vendedor que crea que reimprimir abre el cajón lo
+   * va a usar para abrir el cajón, y un cajón que se abre sin una venta detrás
+   * es justo lo que un arqueo no puede explicar.
+   */
+  async function reimprimir(id: number) {
+    setReimprimiendo(true);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>(`/sales/${id}/reprint`, { method: "POST", body: "{}" });
+      setHecho({ mensaje: r.mensaje, aviso: null });
+    } catch (e) {
+      // El caso más probable es una estación sin impresora —un terminal de
+      // consulta—, y el servidor lo dice con el nombre de la caja adentro.
+      setError(e instanceof ApiError ? e.message : "No se pudo reimprimir");
+    } finally {
+      setReimprimiendo(false);
+    }
+  }
 
   async function buscar(id: number) {
     setBuscando(true);
@@ -300,6 +329,15 @@ export function Devoluciones() {
             <span className="fh-num text-base font-semibold text-ink">{formatCLP(venta.venta.totalGross)}</span>
             {venta.anulada ? <Chip tono="error">anulada</Chip> : null}
             {venta.esReversa ? <Chip tono="warn">es una devolución</Chip> : null}
+            <span className="flex-1" />
+            <button
+              onClick={() => void reimprimir(venta.venta.id)}
+              disabled={reimprimiendo}
+              className="underline underline-offset-4 hover:text-ink disabled:opacity-40"
+            >
+              {reimprimiendo ? "Imprimiendo…" : "Reimprimir ticket"}
+            </button>
+            <span className="text-xs">sale marcado como copia · no abre el cajón</span>
           </div>
 
           {/*

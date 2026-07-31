@@ -15,6 +15,7 @@
  * no se edita desde ninguna parte.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Acciones, Boton, Campo, Chip, Modal, Selector } from "@/components/ui";
@@ -63,9 +64,20 @@ export function Usuarios() {
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-tight">Usuarios</h1>
-        <Boton variante="principal" onClick={() => setNuevo(true)}>
-          + Usuario nuevo
-        </Boton>
+        <div className="flex items-center gap-4">
+          {/*
+            La otra mitad de la misma pregunta: quién entra y desde dónde. La
+            pantalla de entrada pide las dos cosas, así que se administran una
+            al lado de la otra en vez de darle pestaña propia a algo que se
+            toca al instalar y casi nunca más.
+          */}
+          <Link to="/estaciones" className="text-sm underline underline-offset-4">
+            Cajas y terminales
+          </Link>
+          <Boton variante="principal" onClick={() => setNuevo(true)}>
+            + Usuario nuevo
+          </Boton>
+        </div>
       </div>
 
       {error ? (

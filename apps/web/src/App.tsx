@@ -12,6 +12,7 @@ import { Compras } from "@/pages/Compras";
 import { Usuarios } from "@/pages/Usuarios";
 import { WhatsApp } from "@/pages/WhatsApp";
 import { Devoluciones } from "@/pages/Devoluciones";
+import { Estaciones } from "@/pages/Estaciones";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -185,6 +186,19 @@ export function App() {
             element={
               <Privado soloAdmin>
                 <Compras />
+              </Privado>
+            }
+          />
+          {/*
+            Sin pestaña en el menú: se toca al instalar y casi nunca más, y una
+            pestaña permanente para eso es ruido en una barra que el vendedor
+            mira todo el día. Se llega desde Usuarios.
+          */}
+          <Route
+            path="/estaciones"
+            element={
+              <Privado soloAdmin>
+                <Estaciones />
               </Privado>
             }
           />

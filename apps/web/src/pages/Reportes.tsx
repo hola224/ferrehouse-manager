@@ -110,6 +110,10 @@ const TIPO_TEXTO: Record<string, string> = {
   STOCK_RECONCILE_DIFF: "Descuadre del libro",
   SUSPENDED_SALE_STALE: "Espera añeja",
   NO_ROTATION: "Sin rotación",
+  // Las del Sprint 7. Sin estas entradas la pantalla mostraba el nombre crudo
+  // del tipo, que es jerga de base de datos en la cara del administrador.
+  BACKUP_STALE: "Respaldo atrasado",
+  BACKUP_COPY: "Copia del respaldo",
 };
 
 /** "30 de julio de 2026". En pantalla nunca va una fecha en formato de cable. */
@@ -144,8 +148,38 @@ export function Reportes() {
   const [inventario, setInventario] = useState<Inventario | null>(null);
   const [alertas, setAlertas] = useState<{ alertas: Alerta[]; criticas: number } | null>(null);
   const [resolviendo, setResolviendo] = useState<number | null>(null);
+  const [reconciliando, setReconciliando] = useState(false);
+  const [reconciliacion, setReconciliacion] = useState<{ mensaje: string; divergencias: number } | null>(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Reconciliar el libro de stock (tarea 4.8).
+   *
+   * Compara el saldo guardado en `StockLevel` —que es CACHÉ— contra la suma del
+   * libro de movimientos, que es la verdad (decisión 4). Donde no cuadran,
+   * corrige el caché y deja una alerta crítica por cada producto.
+   *
+   * **Es el único chequeo que puede acusar una corrupción silenciosa.** Todo lo
+   * demás del sistema mira el saldo, así que un saldo mal escrito no da ningún
+   * síntoma: los números simplemente son otros. Correrlo de nuevo después de
+   * corregir devuelve cero, así que apretarlo dos veces no ensucia nada.
+   */
+  async function reconciliar() {
+    setReconciliando(true);
+    try {
+      const r = await api<{ mensaje: string; divergencias: number }>("/stock/reconcile", {
+        method: "POST",
+        body: "{}",
+      });
+      setReconciliacion(r);
+      await cargar();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo reconciliar");
+    } finally {
+      setReconciliando(false);
+    }
+  }
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -426,6 +460,32 @@ export function Reportes() {
       {/* ---------------- Panel de alertas (5.5 y 5.6) ---------------- */}
       {ver === "alertas" && alertas ? (
         <div className="grid gap-4">
+          {/*
+            La reconciliación vive acá y no en un menú de mantención escondido:
+            su resultado ES una alerta, y este es el lugar donde el
+            administrador viene a ver si algo anda mal.
+          */}
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--fh-radio)] border border-line bg-surface p-4 text-sm">
+            <span className="font-semibold uppercase tracking-wide text-ink-soft">Libro de stock</span>
+            <span className="flex-1 text-ink-soft">
+              Compara el saldo guardado contra la suma del libro de movimientos, que es la verdad. Si no cuadran,
+              corrige el saldo y deja una alerta por cada producto.
+            </span>
+            <Boton onClick={() => void reconciliar()} disabled={reconciliando}>
+              {reconciliando ? "Revisando…" : "Revisar el libro"}
+            </Boton>
+          </div>
+
+          {reconciliacion ? (
+            <p
+              className={`rounded-[var(--fh-radio)] border p-3 text-sm ${
+                reconciliacion.divergencias === 0 ? "border-ok/40 bg-ok/10" : "border-error/40 bg-error/10"
+              }`}
+            >
+              {reconciliacion.mensaje}
+            </p>
+          ) : null}
+
           {alertas.alertas.length === 0 ? (
             <Tarjeta titulo="Sin alertas">
               <p className="text-sm text-ink-soft">
@@ -456,11 +516,23 @@ export function Reportes() {
                     </Link>
                   ) : null}
                   <div className="w-28 shrink-0 text-right">
-                    {a.id === null ? (
+                    {/*
+                      La acción se elige por TIPO y no por «no tiene id». Esta
+                      pantalla tenía la misma falla que el panel: las alertas
+                      derivadas de respaldo mostraban un «Ver espera» que no
+                      lleva a ninguna parte. Se corrigió en el panel el mismo
+                      día y no llegó acá — es la lección del Sprint 6 otra vez:
+                      un arreglo aplicado a una copia no alcanza a la otra.
+                    */}
+                    {a.type.startsWith("BACKUP") ? (
+                      <Link to="/" className="text-sm underline underline-offset-4">
+                        Ver respaldo
+                      </Link>
+                    ) : a.type === "SUSPENDED_SALE_STALE" ? (
                       <Link to="/venta" className="text-sm underline underline-offset-4">
                         Ver espera
                       </Link>
-                    ) : (
+                    ) : a.id === null ? null : (
                       <button
                         onClick={async () => {
                           setResolviendo(a.id!);
