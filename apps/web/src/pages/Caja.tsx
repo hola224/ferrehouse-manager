@@ -241,14 +241,14 @@ function Turno({
           </div>
 
           <div className="flex shrink-0 gap-2">
-            <Boton onClick={() => setPanel("retiro")}>
-              Retiro <span className="fh-num opacity-70">F4</span>
+            <Boton onClick={() => setPanel("retiro")} tecla="F4">
+              Retiro
             </Boton>
-            <Boton onClick={() => setPanel("ingreso")}>
-              Ingreso <span className="fh-num opacity-70">F6</span>
+            <Boton onClick={() => setPanel("ingreso")} tecla="F6">
+              Ingreso
             </Boton>
-            <Boton variante="principal" onClick={() => setPanel("cierre")}>
-              Cerrar caja <span className="fh-num opacity-70">F2</span>
+            <Boton variante="principal" onClick={() => setPanel("cierre")} tecla="F2">
+              Cerrar caja
             </Boton>
           </div>
         </div>
@@ -476,8 +476,8 @@ function Cerrar({
             que anotas es el que contaste, no el que esperabas.
           </p>
           <div className="mt-6 flex gap-3">
-            <Boton variante="principal" disabled={contado === ""} onClick={() => setPaso(2)}>
-              Continuar <span className="fh-num opacity-70">F2</span>
+            <Boton variante="principal" disabled={contado === ""} onClick={() => setPaso(2)} tecla="F2">
+              Continuar
             </Boton>
             <Boton variante="fantasma" onClick={onCancelar}>
               Volver
@@ -497,11 +497,11 @@ function Cerrar({
             registrada. Si tienes dudas, vuelve y cuenta otra vez.
           </p>
           <div className="mt-6 flex gap-3">
-            <Boton variante="principal" disabled={enviando} onClick={verDiferencia}>
-              Ver diferencia <span className="fh-num opacity-70">F2</span>
+            <Boton variante="principal" disabled={enviando} onClick={verDiferencia} tecla="F2">
+              Ver diferencia
             </Boton>
-            <Boton variante="fantasma" onClick={() => setPaso(1)}>
-              Volver a contar <span className="fh-num opacity-70">F4</span>
+            <Boton variante="fantasma" onClick={() => setPaso(1)} tecla="F4">
+              Volver a contar
             </Boton>
           </div>
         </div>
@@ -560,8 +560,8 @@ function Cerrar({
                 La advertencia de "revisa bien" está en el paso 2, que es donde
                 todavía se podía volver atrás.
               */}
-              <Boton variante="principal" onClick={imprimirYSalir}>
-                Imprimir el respaldo y terminar <span className="fh-num opacity-70">F2</span>
+              <Boton variante="principal" onClick={imprimirYSalir} tecla="F2">
+                Imprimir el respaldo y terminar
               </Boton>
             </div>
             <p className="mt-2 max-w-lg text-xs text-ink-soft">

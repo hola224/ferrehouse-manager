@@ -563,7 +563,7 @@ function Formulario({
             <span className="mb-1 block text-sm font-medium text-ink-soft">Códigos de barra</span>
             <div className="flex flex-wrap items-center gap-2">
               {codigos.map((c) => (
-                <span key={c} className="fh-num inline-flex items-center gap-2 rounded-full border border-line px-3 py-1 text-sm">
+                <span key={c} className="fh-num inline-flex items-center gap-2 border border-line-field px-3 py-1 text-sm">
                   {c}
                   <button
                     aria-label={`Quitar ${c}`}

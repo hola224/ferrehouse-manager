@@ -22,7 +22,7 @@ import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAtajos } from "@/lib/atajos";
 import { copiarAlPortapapeles } from "@/lib/portapapeles";
-import { Boton, Campo, Chip } from "@/components/ui";
+import { Boton, Campo, Chip, Tecla } from "@/components/ui";
 import {
   calcularVenta,
   formatCLP,
@@ -429,15 +429,15 @@ export function Venta() {
           )}
         </div>
 
-        <div className="flex gap-5 text-sm text-ink-soft">
-          <span>
-            <span className="fh-num font-semibold text-ink">↑↓</span> moverse
+        <div className="flex items-center gap-5 text-[12.5px] text-ink-soft">
+          <span className="flex items-center gap-1.5">
+            <Tecla>↑↓</Tecla> moverse
           </span>
-          <span>
-            <span className="fh-num font-semibold text-ink">Enter</span> cantidad
+          <span className="flex items-center gap-1.5">
+            <Tecla>Enter</Tecla> cantidad
           </span>
-          <span>
-            <span className="fh-num font-semibold text-ink">Supr</span> quitar línea
+          <span className="flex items-center gap-1.5">
+            <Tecla>Supr</Tecla> quitar línea
           </span>
         </div>
       </div>
@@ -473,8 +473,8 @@ export function Venta() {
           </div>
         ) : null}
 
-        <Boton variante="principal" disabled={lineas.length === 0} onClick={() => setPanel("cobrar")}>
-          Cobrar <span className="fh-num opacity-70">F2</span>
+        <Boton variante="principal" disabled={lineas.length === 0} onClick={() => setPanel("cobrar")} tecla="F2">
+          Cobrar
         </Boton>
 
         {/*
@@ -647,8 +647,8 @@ function Cantidad({
         {linea.fraccionable ? "Acepta decimales con coma." : "Se vende por unidad: sin decimales."}
       </p>
       <div className="mt-5 flex gap-3">
-        <Boton variante="principal" disabled={!parsed} onClick={() => parsed && onAceptar(parsed)}>
-          Aceptar <span className="fh-num opacity-70">Enter</span>
+        <Boton variante="principal" disabled={!parsed} onClick={() => parsed && onAceptar(parsed)} tecla="Enter">
+          Aceptar
         </Boton>
         <Boton variante="fantasma" onClick={onCerrar}>
           Esc cancelar
@@ -1126,8 +1126,8 @@ function Cobrar({
       ) : null}
 
       <div className="mt-5 flex gap-3">
-        <Boton ref={botonCobrar} variante="principal" disabled={enviando || !previa.venta} onClick={cobrar}>
-          Cobrar e imprimir <span className="fh-num opacity-70">F2</span>
+        <Boton ref={botonCobrar} variante="principal" disabled={enviando || !previa.venta} onClick={cobrar} tecla="F2">
+          Cobrar e imprimir
         </Boton>
         <Boton variante="fantasma" onClick={onCerrar}>
           Esc volver
@@ -1295,8 +1295,8 @@ function Descuento({
             variante="principal"
             disabled={excede || (pide && pin.length < 4)}
             onClick={() => onAplicar(n, pide ? pin : null)}
-          >
-            Aplicar <span className="fh-num opacity-70">Enter</span>
+           tecla="Enter">
+            Aplicar
           </Boton>
         </div>
       </div>
@@ -1395,8 +1395,8 @@ function GuardarEspera({
           <Boton variante="secundaria" onClick={onCerrar}>
             Cancelar
           </Boton>
-          <Boton variante="principal" disabled={enviando || label.trim().length < 2} onClick={() => void guardar()}>
-            {enviando ? "Guardando…" : "Guardar"} <span className="fh-num opacity-70">Enter</span>
+          <Boton variante="principal" disabled={enviando || label.trim().length < 2} onClick={() => void guardar()} tecla="Enter">
+            {enviando ? "Guardando…" : "Guardar"}
           </Boton>
         </div>
       </div>

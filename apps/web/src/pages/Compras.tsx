@@ -117,8 +117,8 @@ export function Compras() {
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-black tracking-tight">Compras</h1>
-        <Boton variante="principal" onClick={() => setNueva(true)}>
-          + Digitar factura <span className="fh-num opacity-70">F2</span>
+        <Boton variante="principal" onClick={() => setNueva(true)} tecla="F2">
+          + Digitar factura
         </Boton>
       </div>
 

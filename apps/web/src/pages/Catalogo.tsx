@@ -248,8 +248,8 @@ export function Catalogo() {
           </p>
         </div>
         {esAdmin ? (
-          <Boton variante="principal" className="shrink-0" onClick={() => setFormulario(null)}>
-            + Producto nuevo <span className="fh-num opacity-70">F2</span>
+          <Boton variante="principal" className="shrink-0" onClick={() => setFormulario(null)} tecla="F2">
+            + Producto nuevo
           </Boton>
         ) : null}
       </div>
@@ -454,11 +454,11 @@ function Vacio({
       {esAdmin ? (
         <>
           <div className="mt-4 flex justify-center gap-3">
-            <Boton variante="principal" onClick={onImportar}>
-              Importar desde Excel <span className="fh-num opacity-70">F4</span>
+            <Boton variante="principal" onClick={onImportar} tecla="F4">
+              Importar desde Excel
             </Boton>
-            <Boton onClick={onCrear}>
-              Crear el primero <span className="fh-num opacity-70">F2</span>
+            <Boton onClick={onCrear} tecla="F2">
+              Crear el primero
             </Boton>
           </div>
           <p className="mt-3 text-sm text-ink-soft">
@@ -620,11 +620,11 @@ function Detalle({
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-3">
-            <Boton onClick={imprimir}>
-              Imprimir etiqueta <span className="fh-num opacity-70">F6</span>
+            <Boton onClick={imprimir} tecla="F6">
+              Imprimir etiqueta
             </Boton>
-            <Boton variante="principal" onClick={onEditar}>
-              Editar <span className="fh-num opacity-70">F8</span>
+            <Boton variante="principal" onClick={onEditar} tecla="F8">
+              Editar
             </Boton>
             {etiqueta ? <span className="text-sm text-ink-soft">{etiqueta}</span> : null}
             </div>
