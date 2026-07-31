@@ -272,6 +272,7 @@ function Formulario({
 
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmandoBaja, setConfirmandoBaja] = useState(false);
   const primerCampo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -366,6 +367,53 @@ function Formulario({
     } finally {
       setGuardando(false);
     }
+  }
+
+  /**
+   * Descontinuar. El servidor no borra la fila: le pone `deletedAt` y el
+   * producto desaparece de toda pantalla operativa. Su SKU no se reutiliza
+   * jamás — está impreso en la etiqueta pegada en la repisa, y reciclarlo haría
+   * que una etiqueta vieja escanee un producto distinto.
+   */
+  async function descontinuar() {
+    if (!producto) return;
+    setGuardando(true);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>(`/products/${producto.id}`, { method: "DELETE" });
+      onGuardado({ id: producto.id, sku: producto.sku, name: r.mensaje });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo descontinuar");
+      setConfirmandoBaja(false);
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  if (confirmandoBaja && producto) {
+    return (
+      <Modal titulo={`Descontinuar ${producto.name}`} onCerrar={() => setConfirmandoBaja(false)}>
+        <p className="text-[15px] leading-[1.55]">
+          Desaparece del catálogo, de la venta y del kardex. <strong>No se borra</strong>: sus ventas y sus
+          movimientos de stock lo siguen nombrando, porque esas tablas no se tocan.
+        </p>
+        <p className="mt-3 text-sm text-ink-soft">
+          Su SKU <span className="fh-num font-mono">{producto.sku}</span> no se vuelve a usar nunca, ni para otro
+          producto: está impreso en la etiqueta de la repisa.
+        </p>
+        <p className="mt-3 text-sm text-ink-soft">
+          Si lo que quieres es solo dejar de venderlo por un tiempo —se acabó la temporada, no llega del proveedor—,
+          vuelve y desmarca «Se vende»: eso lo saca del POS y lo deja en el catálogo.
+        </p>
+        {error ? <p className="mt-3 border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p> : null}
+        <Acciones>
+          <Boton onClick={() => setConfirmandoBaja(false)}>Volver</Boton>
+          <Boton variante="principal" onClick={() => void descontinuar()} disabled={guardando}>
+            {guardando ? "Descontinuando…" : "Descontinuar"}
+          </Boton>
+        </Acciones>
+      </Modal>
+    );
   }
 
   return (
@@ -606,6 +654,27 @@ function Formulario({
           ) : null}
 
           <Acciones>
+            {/*
+              Descontinuar existe en el servidor desde el Sprint 1 y ninguna
+              pantalla lo ofrecía: la única forma de sacar un producto del
+              catálogo era desactivarlo, que solo lo saca del POS.
+
+              Va a la IZQUIERDA y separado del resto con `mr-auto`: es
+              destructivo, y una acción destructiva pegada a «Guardar cambios»
+              se aprieta sola. No hay borrado de verdad —el producto está
+              referenciado por ventas y por el libro de stock, y esas tablas no
+              se tocan— así que la palabra tampoco es «Eliminar».
+            */}
+            {producto ? (
+              <Boton
+                variante="fantasma"
+                className="mr-auto"
+                onClick={() => setConfirmandoBaja(true)}
+                disabled={guardando}
+              >
+                Descontinuar
+              </Boton>
+            ) : null}
             <Boton onClick={onCerrar}>Cancelar</Boton>
             <Boton variante="principal" onClick={guardar} disabled={guardando}>
               {guardando ? "Guardando…" : producto ? "Guardar cambios" : "Crear producto"}

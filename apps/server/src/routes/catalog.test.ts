@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import type { FastifyInstance } from "fastify";
+import ExcelJS from "exceljs";
 import { buildApp } from "../app.js";
 import { db } from "../db.js";
 import { findForbiddenFields, SKU_COUNTER } from "@ferrehouse/shared";
@@ -453,5 +454,53 @@ describe("ubicaciones", () => {
    */
   it("al vendedor no le llegan", async () => {
     expect((await pedir(tokenVendedor)).statusCode).toBe(403);
+  });
+});
+
+/**
+ * El catálogo en Excel. Lo pidió Cristian el 2026-07-31.
+ *
+ * La prueba que de verdad importa acá es la del rol: la planilla lleva costo y
+ * margen, y ese es exactamente el dato que el vendedor no puede recibir. Un
+ * archivo adjunto se lleva a la casa; una columna en pantalla, no.
+ */
+describe("exportar el catálogo", () => {
+  const pedir = (t: string) => app.inject({ method: "GET", url: "/api/products/export.xlsx", headers: como(t) });
+
+  it("al vendedor no le llega: la planilla trae costo y margen", async () => {
+    expect((await pedir(tokenVendedor)).statusCode).toBe(403);
+  });
+
+  it("el administrador recibe un .xlsx de verdad, con nombre de archivo fechado", async () => {
+    const r = await pedir(tokenAdmin);
+    expect(r.statusCode).toBe(200);
+    expect(r.headers["content-type"]).toContain("spreadsheetml");
+    expect(r.headers["content-disposition"]).toMatch(/attachment; filename="catalogo-ferrehouse-\d{4}-\d{2}-\d{2}\.xlsx"/);
+
+    // La firma de un ZIP: un .xlsx es un ZIP, y esto distingue un archivo real
+    // de un JSON de error servido con el content-type equivocado.
+    const bytes = r.rawPayload;
+    expect(bytes.subarray(0, 2).toString("ascii")).toBe("PK");
+    expect(bytes.length).toBeGreaterThan(1000);
+  });
+
+  /**
+   * El guardián del error caro: este archivo NO es la plantilla de importación.
+   * El importador solo crea —reserva SKU nuevos y llama a `create`, no existe
+   * ningún camino que actualice— así que subir esto duplicaría la ferretería
+   * entera. Si algún día alguien alinea las columnas con las de la plantilla
+   * "para que se pueda reimportar", este test tiene que hacerlo pensar.
+   */
+  it("no tiene la forma de la plantilla de importación", async () => {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load((await pedir(tokenAdmin)).rawPayload as unknown as ArrayBuffer);
+    const hoja = wb.getWorksheet("Catálogo");
+    expect(hoja, "la hoja se llama Catálogo, no Productos como la plantilla").toBeDefined();
+
+    const encabezados = (hoja!.getRow(1).values as unknown[]).filter(Boolean).map(String);
+    // La plantilla NO tiene SKU —los genera el servidor— y esta sí.
+    expect(encabezados[0]).toBe("SKU");
+    expect(encabezados).toContain("Margen %");
+    expect(hoja!.getRow(1).getCell(1).note, "la advertencia va en el archivo, no solo en el código").toBeDefined();
   });
 });

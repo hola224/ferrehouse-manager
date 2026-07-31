@@ -16,8 +16,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { Acciones, Boton, Campo, Modal, Tarjeta } from "@/components/ui";
+import { Acciones, Boton, Campo, Chip, Modal, Tarjeta } from "@/components/ui";
+import { formatCLP, formatHora } from "@ferrehouse/shared";
 
 type Alerta = {
   id: number | null;
@@ -58,6 +58,16 @@ type Panel = {
  * habla cuando falla se parece demasiado a uno que no existe: la única forma de
  * confiar en él es verlo decir "hoy" todos los días.
  */
+/** Lo que trae `/sales` para el panel: las de hoy, más nuevas primero. */
+type VentaDelDia = {
+  id: number;
+  createdAt: string;
+  totalGross: number;
+  user: { name: string };
+  etiquetaTexto: string;
+  etiquetaTono: "ok" | "warn" | "error" | "neutral";
+};
+
 type Respaldo = {
   antiguedad: string;
   cantidad: number;
@@ -65,21 +75,6 @@ type Respaldo = {
   copia: { configurada: boolean; carpeta: string | null; alDia: boolean; problema: string | null };
   ultimo: { archivo: string; bytes: number } | null;
 };
-
-/**
- * "Jueves 30 de julio": la fecha completa, que es la que uno dice en voz alta.
- *
- * `Intl` devuelve "jueves, 30 de julio" y en español esa coma no va — se la
- * saca. Es el mismo criterio que el resto de la aplicación: en pantalla nunca
- * aparece una fecha en formato de cable (2026-07-30).
- */
-function fechaLarga(iso: string): string {
-  const [a, m, d] = iso.split("-").map(Number);
-  const texto = new Intl.DateTimeFormat("es-CL", { weekday: "long", day: "numeric", month: "long" })
-    .format(new Date(a!, m! - 1, d!))
-    .replace(",", "");
-  return texto.charAt(0).toUpperCase() + texto.slice(1);
-}
 
 /**
  * Un número grande y su explicación debajo. La cifra en `fh-num` —tabular— y
@@ -97,19 +92,18 @@ function Numerote({ valor, tono, children }: { valor: string; tono?: "ok" | "err
   return (
     <div>
       <div
-        className={`fh-num font-black leading-none ${valor.length > 9 ? "text-[2rem]" : "text-[2.5rem]"} ${
-          tono === "error" ? "text-error" : tono === "ok" ? "text-ok" : ""
-        }`}
+        className={`fh-num font-black leading-none tracking-[-0.03em] ${
+          valor.length > 9 ? "text-[34px]" : "text-[40px]"
+        } ${tono === "error" ? "text-accent-ink" : tono === "ok" ? "text-ok-ink" : ""}`}
       >
         {valor}
       </div>
-      {children ? <div className="mt-2 text-sm text-ink-soft">{children}</div> : null}
+      {children ? <div className="mt-2 text-[12.5px] text-ink-soft">{children}</div> : null}
     </div>
   );
 }
 
 export function Dashboard() {
-  const { usuario } = useAuth();
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resolviendo, setResolviendo] = useState<number | null>(null);
@@ -117,6 +111,7 @@ export function Dashboard() {
   const [respaldando, setRespaldando] = useState(false);
   const [ultimoAviso, setUltimoAviso] = useState<string | null>(null);
   const [configurando, setConfigurando] = useState(false);
+  const [ventas, setVentas] = useState<VentaDelDia[] | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -133,6 +128,15 @@ export function Dashboard() {
       setRespaldo(await api<Respaldo>("/backup"));
     } catch {
       setRespaldo(null);
+    }
+    /*
+     * Las últimas ventas van en su propia consulta y en su propio `try` por lo
+     * mismo: son contexto, no el dato por el que se abre el panel.
+     */
+    try {
+      setVentas((await api<{ ventas: VentaDelDia[] }>("/sales")).ventas);
+    } catch {
+      setVentas([]);
     }
   }, []);
 
@@ -174,16 +178,15 @@ export function Dashboard() {
 
   return (
     <div className="grid gap-6">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-black tracking-tight">{fechaLarga(dia.fecha)}</h1>
-        <span className="text-sm text-ink-soft">
-          {usuario?.name} · {panel.estacion}
-        </span>
-      </div>
+      {/*
+        Sin encabezado propio: la barra del `AdminShell` ya trae el título y la
+        fecha. Repetirlos acá empujaba los cuatro números hacia abajo, que es
+        justo lo que esta pantalla no puede permitirse — se mira de reojo.
+      */}
 
       {/* Los cuatro. En 1366×768 caben en una fila; más abajo se apilan. */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Tarjeta titulo="Venta del día">
+      <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+        <Tarjeta titulo="Venta del día" borde="ink">
           <Numerote valor={dia.totalTexto}>
             {dia.documentos === 0 ? (
               "Todavía no se vende nada hoy"
@@ -207,7 +210,7 @@ export function Dashboard() {
           </Numerote>
         </Tarjeta>
 
-        <Tarjeta titulo="Margen del día">
+        <Tarjeta titulo="Margen del día" borde="ink">
           {/*
             El margen negativo se pinta en rojo y no solo con el signo: es el
             número que hace levantar el teléfono al proveedor.
@@ -217,10 +220,10 @@ export function Dashboard() {
           </Numerote>
         </Tarjeta>
 
-        <Tarjeta titulo="Caja">
+        <Tarjeta titulo="Caja" borde={caja.abierta ? "ok" : "ink"}>
           {caja.abierta ? (
             <Numerote valor={caja.saldoTexto ?? "—"}>
-              <span className="text-ok">Abierta</span> desde las {caja.desde}
+              <span className="text-ok-ink">Abierta</span> desde las {caja.desde}
             </Numerote>
           ) : (
             <Numerote valor="Cerrada">
@@ -231,7 +234,7 @@ export function Dashboard() {
           )}
         </Tarjeta>
 
-        <Tarjeta titulo="Alertas">
+        <Tarjeta titulo="Alertas" borde={alertas.total > 0 ? "accent" : "ink"}>
           <Numerote valor={String(alertas.total)} tono={alertas.criticas > 0 ? "error" : alertas.total === 0 ? "ok" : undefined}>
             {alertas.total === 0
               ? "Nada que mirar hoy"
@@ -243,19 +246,41 @@ export function Dashboard() {
       </div>
 
       {alertas.total > 0 ? (
-        <section>
-          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-soft">Qué hay que mirar hoy</h2>
-          <ul className="divide-y divide-line rounded-[var(--fh-radio)] border border-line bg-surface">
+        <section className="border border-line bg-surface">
+          <div className="flex items-center justify-between border-b-2 border-ink px-[18px] py-[11px]">
+            <h2 className="text-xs font-extrabold uppercase tracking-[0.14em]">Qué hay que mirar hoy</h2>
+            {/*
+              Solo las TRES más graves, y el resto detrás de este enlace. No es
+              una omisión: el panel es de cuatro números, y una lista larga acá
+              lo convierte en bandeja de entrada — se deja de mirar entera.
+            */}
+            <Link to="/alertas" className="text-[12.5px] underline underline-offset-4">
+              {alertas.total === 1 ? "Ver la alerta" : `Ver las ${alertas.total} alertas`}
+            </Link>
+          </div>
+          <ul>
             {alertas.primeras.map((a) => (
-              <li key={a.id ?? `${a.type}-${a.ref?.id}`} className="flex items-center gap-3 px-4 py-3">
-                {/* Color Y forma: hay daltonismo en el mesón (UI-BRIEF §2.3). */}
+              <li
+                key={a.id ?? `${a.type}-${a.ref?.id}`}
+                className="flex items-center gap-4 border-b border-line-soft px-[18px] py-3 last:border-b-0"
+              >
+                {/*
+                  La PALABRA del nivel, no un punto de color: hay daltonismo en
+                  el mesón, y «CRÍTICA» se lee también en la fotocopia del
+                  arqueo. Ancho fijo para poder barrer la columna sin leerla.
+                */}
                 <span
-                  aria-hidden
-                  className={`w-3 shrink-0 text-center ${a.severity === "CRITICAL" ? "text-error" : "text-warn"}`}
+                  className={`w-[78px] shrink-0 border px-2 py-0.5 text-center text-[10px] font-extrabold uppercase tracking-[0.1em] ${
+                    a.severity === "CRITICAL"
+                      ? "border-accent bg-accent-tint text-accent-ink"
+                      : a.severity === "WARNING"
+                        ? "border-warn bg-warn/10 text-warn-ink"
+                        : "border-line-field bg-bg text-ink-soft"
+                  }`}
                 >
-                  {a.severity === "CRITICAL" ? "●" : "▲"}
+                  {a.severity === "CRITICAL" ? "Crítica" : a.severity === "WARNING" ? "Aviso" : "Info"}
                 </span>
-                <span className="flex-1 text-sm">{a.message}</span>
+                <span className="flex-1 text-[14.5px]">{a.message}</span>
                 {a.ref?.tipo === "PRODUCTO" ? (
                   <Link
                     to={`/kardex?producto=${a.ref.id}`}
@@ -269,7 +294,7 @@ export function Dashboard() {
                   peso: en una lista, una acción que cambia de tamaño y de
                   posición fila por fila obliga a leerla en vez de barrerla.
                 */}
-                <div className="w-28 shrink-0 text-right">
+                <div className="w-28 shrink-0">
                   {/*
                     La acción se elige por TIPO y no por «no tiene id».
                     Las derivadas ya son dos clases distintas —la espera añeja
@@ -286,7 +311,7 @@ export function Dashboard() {
                      */
                     <button
                       onClick={() => setConfigurando(true)}
-                      className="text-sm underline underline-offset-4 hover:text-ink"
+                      className="h-[34px] w-full border border-line-field text-sm hover:bg-bg"
                     >
                       Configurar
                     </button>
@@ -294,7 +319,7 @@ export function Dashboard() {
                     <button
                       onClick={() => void respaldarAhora()}
                       disabled={respaldando}
-                      className="text-sm underline underline-offset-4 hover:text-ink disabled:opacity-40"
+                      className="h-[34px] w-full border border-line-field text-sm hover:bg-bg disabled:opacity-40"
                     >
                       {respaldando ? "…" : "Respaldar"}
                     </button>
@@ -304,14 +329,17 @@ export function Dashboard() {
                      * se resuelve cobrando la espera o descartándola. Un botón
                      * que no cambia nada durable es peor que no tener botón.
                      */
-                    <Link to="/venta" className="text-sm underline underline-offset-4">
+                    <Link
+                      to="/venta"
+                      className="flex h-[34px] w-full items-center justify-center border border-line-field text-sm hover:bg-bg"
+                    >
                       Ver espera
                     </Link>
                   ) : (
                     <button
                       onClick={() => resolver(a.id!)}
                       disabled={resolviendo === a.id}
-                      className="text-sm underline underline-offset-4 hover:text-ink disabled:opacity-40"
+                      className="h-[34px] w-full border border-line-field text-sm hover:bg-bg disabled:opacity-40"
                     >
                       {resolviendo === a.id ? "…" : "Resolver"}
                     </button>
@@ -320,74 +348,89 @@ export function Dashboard() {
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-ink-soft">
-            {alertas.total > alertas.primeras.length
-              ? `Se muestran las ${alertas.primeras.length} más graves de ${alertas.total}. `
-              : ""}
-            {/* El destino cambió: las alertas dejaron de ser una pestaña de
-                Reportes y tienen pantalla propia (ADR 007). El enlace dice
-                CUÁNTAS son, que es lo que decide si vale la pena entrar. */}
-            <Link to="/alertas" className="underline underline-offset-4">
-              {alertas.total === 1 ? "Ver la alerta" : `Ver las ${alertas.total} alertas`}
-            </Link>
-          </p>
+          {alertas.total > alertas.primeras.length ? (
+            <p className="border-t border-line-soft px-[18px] py-2 text-[12.5px] text-ink-soft">
+              Se muestran las {alertas.primeras.length} más graves de {alertas.total}.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
-      <section className="flex flex-wrap items-center gap-4 border-t border-line pt-4 text-sm">
-        <span className="font-semibold uppercase tracking-wide text-ink-soft">Reportes</span>
-        <Link to="/reportes" className="underline underline-offset-4">
-          Ventas del día
-        </Link>
-        <Link to="/reportes?ver=margenes" className="underline underline-offset-4">
-          Márgenes
-        </Link>
-        <Link to="/reportes?ver=inventario" className="underline underline-offset-4">
-          Inventario valorizado
-        </Link>
-        {error ? <span className="text-error">{error}</span> : null}
-      </section>
+      {/* Dos columnas: lo que pasó hoy, y si está respaldado. */}
+      <div className="grid gap-3.5 lg:grid-cols-[1.2fr_1fr]">
+        <Tarjeta titulo="Últimas ventas">
+          {ventas === null ? (
+            <p className="text-sm text-ink-soft">Cargando…</p>
+          ) : ventas.length === 0 ? (
+            <p className="text-sm text-ink-soft">Todavía no se vende nada hoy.</p>
+          ) : (
+            <ul className="-mx-[18px] -my-4">
+              {ventas.slice(0, 5).map((v) => (
+                <li key={v.id}>
+                  <Link
+                    to={`/devoluciones?venta=${v.id}`}
+                    className="flex items-center gap-3 border-b border-line-soft px-[18px] py-2 text-sm last:border-b-0 hover:bg-bg"
+                  >
+                    <span className="fh-num w-12 font-mono text-[12.5px] text-mono-ink">#{v.id}</span>
+                    <span className="fh-num w-12 font-mono text-[12.5px] text-mono-ink">{formatHora(v.createdAt)}</span>
+                    <span className="min-w-0 flex-1 truncate text-ink-soft">{v.user.name}</span>
+                    <Chip tono={v.etiquetaTono}>{v.etiquetaTexto}</Chip>
+                    <span className="fh-num w-24 text-right font-semibold">{formatCLP(v.totalGross)}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Tarjeta>
 
-      <section className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-4 text-sm">
-        <span className="font-semibold uppercase tracking-wide text-ink-soft">Respaldo</span>
-        {respaldo === null ? (
-          <span className="text-ink-soft">No se pudo leer la carpeta de respaldos.</span>
-        ) : (
-          <>
-            <span>
-              Último: <span className="fh-num">{respaldo.antiguedad}</span>
-            </span>
-            <span className="text-ink-soft">
-              {respaldo.cantidad} {respaldo.cantidad === 1 ? "guardado" : "guardados"}
-            </span>
-            {/*
-              Sin copia afuera el respaldo protege del «borré algo sin querer»
-              pero no del incendio ni del robo, que son los casos por los que
-              uno respalda. Se dice acá aunque además sea una alerta: en el
-              lugar donde uno mira el respaldo tiene que estar la verdad
-              completa.
-            */}
-            <span className={respaldo.copia.alDia ? "text-ok" : "text-warn"}>
-              {respaldo.copia.alDia
-                ? "copia externa al día"
-                : respaldo.copia.configurada
-                  ? "copia externa atrasada"
-                  : "solo en este PC"}
-            </span>
-            <button
-              onClick={() => void respaldarAhora()}
-              disabled={respaldando}
-              className="underline underline-offset-4 hover:text-ink disabled:opacity-40"
-            >
-              {respaldando ? "Respaldando…" : "Respaldar ahora"}
-            </button>
-            <button onClick={() => setConfigurando(true)} className="underline underline-offset-4 hover:text-ink">
-              {respaldo.copia.configurada ? "Cambiar dónde se copia" : "Configurar la copia"}
-            </button>
-            {ultimoAviso ? <span className="text-ink-soft">{ultimoAviso}</span> : null}
-          </>
-        )}
-      </section>
+        <Tarjeta titulo="Respaldo">
+          {respaldo === null ? (
+            <p className="text-sm text-ink-soft">No se pudo leer la carpeta de respaldos.</p>
+          ) : (
+            <>
+              <div className="fh-num text-[34px] font-black leading-none tracking-[-0.02em]">{respaldo.antiguedad}</div>
+              <div className="mt-1 text-[12.5px] text-ink-soft">
+                {respaldo.cantidad} {respaldo.cantidad === 1 ? "guardado" : "guardados"}
+              </div>
+              {/*
+                Sin copia afuera el respaldo protege del «borré algo sin querer»
+                pero no del incendio ni del robo, que son los casos por los que
+                uno respalda. Se dice acá aunque además sea una alerta: en el
+                lugar donde uno mira el respaldo tiene que estar la verdad
+                completa. Color Y palabra.
+              */}
+              <div className="mt-3">
+                <Chip tono={respaldo.copia.alDia ? "ok" : respaldo.copia.configurada ? "warn" : "error"}>
+                  {respaldo.copia.alDia
+                    ? "copia externa al día"
+                    : respaldo.copia.configurada
+                      ? "copia externa atrasada"
+                      : "solo en este PC"}
+                </Chip>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {/*
+                  «Configurar» va en rojo cuando NO hay copia externa: es la
+                  acción que cierra la alerta, y respaldar otra vez solo deja
+                  otro archivo en el mismo PC que se puede perder.
+                */}
+                <Boton
+                  variante={respaldo.copia.configurada ? "secundaria" : "principal"}
+                  onClick={() => setConfigurando(true)}
+                >
+                  {respaldo.copia.configurada ? "Cambiar dónde se copia" : "Configurar la copia"}
+                </Boton>
+                <Boton onClick={() => void respaldarAhora()} disabled={respaldando}>
+                  {respaldando ? "Respaldando…" : "Respaldar ahora"}
+                </Boton>
+              </div>
+              {ultimoAviso ? <p className="mt-3 text-[12.5px] text-ink-soft">{ultimoAviso}</p> : null}
+            </>
+          )}
+        </Tarjeta>
+      </div>
+
+      {error ? <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p> : null}
 
       {configurando ? (
         <CopiaExterna

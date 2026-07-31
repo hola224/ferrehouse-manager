@@ -214,18 +214,27 @@ export function Reportes() {
 
   return (
     <div className="grid gap-4">
-      <h1 className="text-2xl font-black tracking-tight">Reportes</h1>
-
+      {/* El título lo pone la barra del `AdminShell` desde el paso 4. */}
       <div className="flex flex-wrap items-end gap-4">
+        {/*
+          La pestaña activa se marca con TINTA, no con el acento. Antes usaba el
+          botón principal y quedaba roja: en esta dirección el rojo pleno
+          significa «aprieta acá» y aparece UNA vez por pantalla — con cuatro
+          pestañas rojas el rojo deja de señalar nada.
+        */}
         <nav className="flex gap-2">
           {PESTANAS.map((p) => (
-            <Boton
+            <button
               key={p.clave}
-              variante={p.clave === ver ? "principal" : "secundaria"}
               onClick={() => setParams(p.clave === "ventas" ? {} : { ver: p.clave })}
+              className={`flex h-[38px] items-center border px-4 text-sm font-semibold ${
+                p.clave === ver
+                  ? "border-ink bg-ink text-surface"
+                  : "border-line-field bg-surface text-ink hover:bg-bg"
+              }`}
             >
               {p.texto}
-            </Boton>
+            </button>
           ))}
         </nav>
         <div className={`flex items-end gap-2 ${ver === "cajas" ? "hidden" : ""}`}>
@@ -239,6 +248,16 @@ export function Reportes() {
             onChange={(e) => setHasta(e.target.value)}
           />
         </div>
+        {/*
+          Imprimir usa el diálogo del navegador y no un PDF armado en el
+          servidor: la tienda no tiene internet, el reporte ya está en pantalla
+          con los números que se quieren, y el contador pide papel, no un
+          archivo. Exportar a Excel todavía no está — necesita su propio
+          endpoint, como el del catálogo.
+        */}
+        <Boton className="ml-auto" onClick={() => window.print()}>
+          Imprimir
+        </Boton>
       </div>
 
       {error ? <p className="text-error">{error}</p> : null}
@@ -247,26 +266,32 @@ export function Reportes() {
       {/* ---------------- Ventas (5.1) y folios (5.4) ---------------- */}
       {ver === "ventas" && ventas ? (
         <div className="grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Tarjeta titulo="Total">
-              <div className="fh-num text-3xl font-black">{ventas.totalTexto}</div>
+          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+            <Tarjeta titulo="Total bruto" borde="ink">
+              <div className="fh-num text-[32px] font-black leading-none tracking-[-0.02em]">{ventas.totalTexto}</div>
               <div className="mt-1 text-sm text-ink-soft">
                 {ventas.documentos} documentos
                 {ventas.devoluciones > 0 ? ` · ${ventas.devoluciones} devolución(es)` : ""}
                 {ventas.anulaciones > 0 ? ` · ${ventas.anulaciones} anulación(es)` : ""}
               </div>
             </Tarjeta>
-            <Tarjeta titulo="Neto e IVA">
-              <div className="fh-num text-xl font-bold">{formatCLP(ventas.neto)}</div>
+            <Tarjeta titulo="Neto e IVA" borde="ink">
+              <div className="fh-num text-[32px] font-black leading-none tracking-[-0.02em]">
+                {formatCLP(ventas.neto)}
+              </div>
               <div className="text-sm text-ink-soft">+ {formatCLP(ventas.iva)} de IVA</div>
             </Tarjeta>
-            <Tarjeta titulo="Margen">
-              <div className={`fh-num text-xl font-bold ${ventas.margen < 0 ? "text-error" : ""}`}>
+            <Tarjeta titulo="Margen" borde="ink">
+              <div
+                className={`fh-num text-[32px] font-black leading-none tracking-[-0.02em] ${
+                  ventas.margen < 0 ? "text-accent-ink" : ""
+                }`}
+              >
                 {formatCLP(ventas.margen)}
               </div>
               <div className="text-sm text-ink-soft">{pct(ventas.margenPct)} del neto</div>
             </Tarjeta>
-            <Tarjeta titulo="Ajustes">
+            <Tarjeta titulo="Ajustes" borde="ink">
               <div className="text-sm">
                 Descuentos <span className="fh-num">{formatCLP(ventas.descuentos)}</span>
               </div>
@@ -317,13 +342,13 @@ export function Reportes() {
               <p className="text-sm text-ink-soft">Ninguna venta del rango lleva documento tributario.</p>
             ) : (
               <table className="w-full text-sm">
-                <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+                <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
                   <tr>
-                    <th className="pb-2">Serie</th>
-                    <th className="pb-2">Desde</th>
-                    <th className="pb-2">Hasta</th>
-                    <th className="pb-2">Huecos</th>
-                    <th className="pb-2">Repetidos</th>
+                    <th className="py-[9px] font-extrabold">Serie</th>
+                    <th className="py-[9px] font-extrabold">Desde</th>
+                    <th className="py-[9px] font-extrabold">Hasta</th>
+                    <th className="py-[9px] font-extrabold">Huecos</th>
+                    <th className="py-[9px] font-extrabold">Repetidos</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -368,19 +393,19 @@ export function Reportes() {
           </div>
 
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+            <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
               <tr className="border-b border-line">
-                <th className="pb-2">{por === "producto" ? "Producto" : "Categoría"}</th>
-                <th className="pb-2">Cantidad</th>
-                <th className="pb-2 text-right">Venta neta</th>
-                <th className="pb-2 text-right">Costo</th>
-                <th className="pb-2 text-right">Margen</th>
-                <th className="pb-2 text-right">%</th>
+                <th className="py-[9px] font-extrabold">{por === "producto" ? "Producto" : "Categoría"}</th>
+                <th className="py-[9px] font-extrabold">Cantidad</th>
+                <th className="py-[9px] text-right font-extrabold">Venta neta</th>
+                <th className="py-[9px] text-right font-extrabold">Costo</th>
+                <th className="py-[9px] text-right font-extrabold">Margen</th>
+                <th className="py-[9px] text-right font-extrabold">%</th>
               </tr>
             </thead>
             <tbody>
               {margenes.filas.map((f) => (
-                <tr key={`${f.id}-${f.etiqueta}`} className="border-b border-line/60">
+                <tr key={`${f.id}-${f.etiqueta}`} className="border-b border-line-soft">
                   <td className="py-2">
                     <div className="font-medium">{f.etiqueta}</div>
                     {f.detalle ? <div className="fh-num text-xs text-ink-soft">{f.detalle}</div> : null}
@@ -430,18 +455,18 @@ export function Reportes() {
           </div>
 
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+            <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
               <tr className="border-b border-line">
-                <th className="pb-2">Producto</th>
-                <th className="pb-2">Categoría</th>
-                <th className="pb-2 text-right">Cantidad</th>
-                <th className="pb-2 text-right">Costo unitario</th>
-                <th className="pb-2 text-right">Valor neto</th>
+                <th className="py-[9px] font-extrabold">Producto</th>
+                <th className="py-[9px] font-extrabold">Categoría</th>
+                <th className="py-[9px] text-right font-extrabold">Cantidad</th>
+                <th className="py-[9px] text-right font-extrabold">Costo unitario</th>
+                <th className="py-[9px] text-right font-extrabold">Valor neto</th>
               </tr>
             </thead>
             <tbody>
               {inventario.filas.map((f) => (
-                <tr key={f.productId} className="border-b border-line/60">
+                <tr key={f.productId} className="border-b border-line-soft">
                   <td className="py-2">
                     <div className="font-medium">{f.name}</div>
                     <div className="fh-num text-xs text-ink-soft">{f.sku}</div>
@@ -500,7 +525,7 @@ export function Reportes() {
                 </thead>
                 <tbody>
                   {sesiones.map((s) => (
-                    <tr key={s.id} className="border-b border-line/60 last:border-0 align-top">
+                    <tr key={s.id} className="border-b border-line-soft last:border-0 align-top">
                       <td className="px-3 py-2 whitespace-nowrap">{fechaYHora(s.openedAt)}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         {s.closedAt ? (

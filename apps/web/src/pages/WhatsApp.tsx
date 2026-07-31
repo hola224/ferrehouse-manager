@@ -104,8 +104,9 @@ export function WhatsApp() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-black tracking-tight">WhatsApp</h1>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {/* El título lo pone la barra del `AdminShell`: repetirlo acá era
+            dos veces la misma palabra a 40px de distancia. */}
         <div className="flex gap-2">
           <Boton onClick={() => void accion("/whatsapp/pasada")}>Enviar los pendientes ahora</Boton>
           <Boton variante="secundaria" onClick={() => setEditando(true)}>
@@ -118,7 +119,7 @@ export function WhatsApp() {
         <div className="rounded-[var(--fh-radio)] border border-line bg-surface p-3 text-sm">{aviso}</div>
       ) : null}
       {error ? (
-        <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
+        <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">
           {error}
         </div>
       ) : null}
@@ -226,7 +227,7 @@ export function WhatsApp() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+              <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
                 <tr>
                   <th className="px-3 py-2">Cliente</th>
                   <th className="px-3 py-2">Mensaje</th>
@@ -276,7 +277,7 @@ export function WhatsApp() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+              <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
                 <tr>
                   <th className="px-3 py-2">Nombre</th>
                   <th className="px-3 py-2">Teléfono</th>
@@ -439,7 +440,7 @@ function EditarPlantilla({
 
         {ejemplo ? <p className="text-sm">Así queda: {ejemplo}</p> : null}
         {error ? (
-          <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
+          <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">
             {error}
           </div>
         ) : null}
@@ -508,7 +509,7 @@ function DarDeBaja({
           />
         </label>
         {error ? (
-          <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
+          <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">
             {error}
           </div>
         ) : null}

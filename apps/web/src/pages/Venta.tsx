@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Barcode } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useAtajos } from "@/lib/atajos";
 import { copiarAlPortapapeles } from "@/lib/portapapeles";
@@ -90,6 +91,15 @@ export function Venta() {
   const [espera, setEspera] = useState<{ id: number; label: string } | null>(null);
   const [ultimoCobro, setUltimoCobro] = useState<{ mensaje: string; aviso: string | null } | null>(null);
   /**
+   * Las ventas en espera, para mostrarlas en el panel derecho.
+   *
+   * Antes solo existían detrás de F8, y una venta esperando que no se ve es
+   * una venta que se olvida: el cliente vuelve por su saco de cemento y el
+   * vendedor de turno no sabe que hay algo guardado a su nombre. Ahora si hay
+   * alguna, se ve; si no hay ninguna, el bloque no aparece.
+   */
+  const [esperas, setEsperas] = useState<EsperaFila[]>([]);
+  /**
    * Las sugerencias que se van mostrando mientras el vendedor escribe.
    * `sugerido` es cuál está marcada; **-1 es «ninguna»**, y eso importa: con
    * -1, Enter vuelve a buscar en el servidor en vez de agregar la primera de
@@ -126,6 +136,24 @@ export function Venta() {
   useEffect(() => {
     if (panel === "nada") volverAlFoco();
   }, [panel, volverAlFoco]);
+
+  /**
+   * Las esperas se releen cada vez que se cierra un panel: guardar una, cobrar
+   * una o recuperar una cambia la lista, y las tres cosas pasan detrás de un
+   * diálogo. Volver al mesón con la lista vieja sería peor que no mostrarla.
+   */
+  const cargarEsperas = useCallback(async () => {
+    try {
+      setEsperas((await api<{ esperas: EsperaFila[] }>("/suspended")).esperas);
+    } catch {
+      // Una lista de esperas que no carga no puede impedir vender.
+      setEsperas([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (panel === "nada") void cargarEsperas();
+  }, [panel, cargarEsperas]);
 
   /** Los totales, con la misma función que va a usar el servidor al cobrar. */
   const total: VentaCalculada | null = useMemo(() => {
@@ -261,9 +289,15 @@ export function Venta() {
    * el aire: el foco se iba al `body` y la pantalla seguía prometiendo
    * «F2 Cobrar» sin hacer nada. Medido, no supuesto — ver lib/atajos.ts.
    *
-   * `Delete` va en la misma tabla pero el hook lo trata distinto: mientras el
-   * foco está en un campo de texto es del campo. Antes no lo era, y borrar un
-   * carácter mal escrito en el buscador borraba una LÍNEA DE LA VENTA.
+   * `Delete` y las flechas van en la misma tabla pero el hook las trata
+   * distinto: mientras el foco está en un campo de texto son del campo. Antes
+   * no lo eran, y borrar un carácter mal escrito en el buscador borraba una
+   * LÍNEA DE LA VENTA.
+   *
+   * Por eso estas tres entradas cubren solo el caso en que el foco NO está en
+   * la caja de escaneo —después de un clic en una línea, o en el `body`—. El
+   * caso que de verdad ocurre, con el foco en la caja y la caja vacía, se
+   * resuelve en el `onKeyDown` de la caja: ahí está el razonamiento.
    */
   useAtajos(
     {
@@ -292,52 +326,110 @@ export function Venta() {
     );
   }
 
+  const unidades = lineas.reduce((s, l) => s + l.qtyMilli, 0);
+
   return (
-    <div className="flex gap-4">
+    /*
+      `-m-4` cancela el padding del cascarón: el panel del total tiene que
+      llegar hasta el borde derecho de la pantalla, con su regla de 2px, y una
+      franja de fondo entre el panel y el borde lo convierte en una tarjeta
+      flotante. La columna izquierda pone su propio padding.
+
+      El alto va atado a ESE MISMO padding —`100%` de la caja de contenido más
+      los 2rem que acabo de cancelar— y no al alto de la barra del cascarón.
+      Decía `calc(100vh-3.5rem)`, o sea los 56px de `PosShell` escritos a mano
+      en otro archivo: cambiar esa barra habría descuadrado esta pantalla sin
+      que nada fallara.
+    */
+    <div className="-m-4 flex h-[calc(100%+2rem)]">
       {/* ---------- Izquierda: la lista ---------- */}
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4 pr-0">
         <div className="relative">
+          <div className="flex h-16 items-center gap-3 border-2 border-ink bg-surface px-4">
+            <Barcode size={22} strokeWidth={2} strokeLinecap="square" className="shrink-0 text-ink" />
           <input
             ref={caja}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
               /*
-                Las flechas y Enter se manejan ACÁ y no en el atajo global: con
-                el foco en un campo de texto, `useAtajos` deja las teclas de
-                edición a quien está escribiendo. Es la misma regla que impide
-                que Delete borre una línea de la venta mientras se teclea.
+                Las flechas, Delete y Enter se manejan ACÁ y no en el atajo
+                global: con el foco en un campo de texto, `useAtajos` deja las
+                teclas de edición a quien está escribiendo. Esa regla existe
+                porque costó un dato —borrar un carácter mal escrito borraba una
+                LÍNEA DE LA VENTA— y no se toca.
+
+                Lo que sí se puede decidir acá es qué pasa con la caja VACÍA. El
+                foco vuelve siempre a esta caja, así que "vacía" es el estado en
+                el que el vendedor pasa la mayor parte del turno, y en ese estado
+                las teclas de edición no tienen nada que editar: son de la lista.
+                Sin esto, «↑↓ moverse» y «Supr quitar línea» estaban escritas en
+                la barra de ayuda y solo funcionaban después de tocar la línea
+                con el mouse — inalcanzables en un POS que se opera con teclado.
+
+                `texto === ""` y no `.trim()`: si hay un espacio escrito, el
+                campo tiene contenido y Delete vuelve a ser suyo. Un carácter
+                invisible no puede ser la diferencia entre mover el cursor y
+                borrarle una línea a la venta.
               */
+              const vacia = texto === "";
               if (e.key === "ArrowDown" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerido((i) => Math.min(i + 1, sugerencias.length - 1));
               } else if (e.key === "ArrowUp" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerido((i) => Math.max(i - 1, 0));
+              } else if (vacia && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                e.preventDefault();
+                const paso = e.key === "ArrowDown" ? 1 : -1;
+                setSeleccion((s) => Math.max(0, Math.min(s + paso, lineas.length - 1)));
+              } else if (vacia && e.key === "Delete" && lineas[seleccion]) {
+                e.preventDefault();
+                quitar(seleccion);
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 const elegido = sugerido >= 0 ? sugerencias[sugerido] : undefined;
                 if (elegido) agregarProducto(elegido);
-                else void buscarYAgregar(texto);
+                else if (texto.trim() !== "") void buscarYAgregar(texto);
+                /*
+                  Con la caja VACÍA, Enter abre la cantidad de la línea elegida.
+                  La barra de ayuda decía «Enter cantidad» desde el Sprint 3 y
+                  era mentira: el diálogo solo se abría con DOBLE CLIC, y como
+                  el foco vuelve siempre a esta caja, en un POS que se opera con
+                  teclado la cantidad era inalcanzable sin mouse. Vender dos
+                  sacos de cemento obligaba a escanear dos veces.
+
+                  No hay colisión posible: con la caja vacía no hay nada que
+                  buscar, así que Enter no tenía ningún otro trabajo que hacer.
+                */
+                else if (lineas[seleccion]) setPanel("cantidad");
               } else if (e.key === "Escape" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerencias([]);
                 setSugerido(-1);
               }
             }}
-            placeholder="Escanea o escribe"
+            placeholder="Escanea el código, o escribe el nombre"
             autoComplete="off"
             role="combobox"
             aria-expanded={sugerencias.length > 0}
             aria-controls="sugerencias"
-            className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-4 text-lg"
+            className="min-w-0 flex-1 bg-transparent text-[19px] font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink-soft/70"
           />
+            {/*
+              No es decoración: es la promesa que hace que el vendedor no
+              persiga el cursor por la pantalla. Está escrita porque se cumple.
+            */}
+            <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.06em] text-mono-ink">
+              El foco vuelve solo acá
+            </span>
+          </div>
 
           {sugerencias.length > 0 ? (
             <ul
               id="sugerencias"
               role="listbox"
-              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface shadow-lg"
+              className="absolute left-0 right-0 top-full z-20 max-h-80 overflow-y-auto border-2 border-t-0 border-ink bg-surface shadow-flotante"
             >
               {sugerencias.map((p, i) => (
                 <li key={p.id}>
@@ -347,56 +439,51 @@ export function Venta() {
                     aria-selected={i === sugerido}
                     onMouseEnter={() => setSugerido(i)}
                     onClick={() => agregarProducto(p)}
-                    className={`flex w-full items-baseline gap-3 px-3 py-2 text-left ${i === sugerido ? "bg-bg" : ""}`}
+                    className={`flex w-full items-center gap-3 px-4 py-2 text-left ${i === sugerido ? "bg-bg" : ""}`}
                   >
-                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    <span className="fh-num w-[78px] shrink-0 font-mono text-[11.5px] text-mono-ink">{p.sku}</span>
+                    <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{p.name}</span>
                     {/*
                       El saldo va en la sugerencia porque es la pregunta que
                       sigue: el cliente pide algo y lo primero es si hay. Verlo
                       acá evita ir al catálogo y volver con el cliente esperando.
                     */}
-                    <span className="fh-num shrink-0 text-xs text-ink-soft">{saldoDe(p)}</span>
-                    <span className="fh-num shrink-0 text-sm font-semibold">{formatCLP(p.priceGross)}</span>
+                    <span className="fh-num shrink-0 font-mono text-xs text-ink-soft">{saldoDe(p)}</span>
+                    <span className="fh-num w-[92px] shrink-0 text-right text-[15px] font-extrabold">
+                      {formatCLP(p.priceGross)}
+                    </span>
                   </button>
                 </li>
               ))}
-              <li className="border-t border-line px-3 py-1.5 text-xs text-ink-soft">
-                ↑↓ para elegir · Enter para agregar · Esc para cerrar
+              <li className="border-t border-line-soft bg-bg px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em] text-mono-ink">
+                ↑↓ elegir · Enter agregar · Esc cerrar
               </li>
             </ul>
           ) : null}
         </div>
 
-        {error ? (
-          <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
-            {error}
-          </div>
-        ) : null}
+        {error ? <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</div> : null}
         {ultimoCobro ? (
-          <div className="rounded-[var(--fh-radio)] border border-ok/30 bg-ok/10 p-3 text-sm text-ok">
-            {ultimoCobro.mensaje}
-          </div>
+          <div className="border border-ok bg-ok/[0.08] p-3 text-sm text-ok-ink">{ultimoCobro.mensaje}</div>
         ) : null}
         {/* Si prometí un ticket y no salió, hay que decirlo en el momento. */}
         {ultimoCobro?.aviso ? (
-          <div className="rounded-[var(--fh-radio)] border border-warn/30 bg-warn/10 p-3 text-sm text-warn">
-            {ultimoCobro.aviso}
-          </div>
+          <div className="border border-warn bg-warn/10 p-3 text-sm text-warn-ink">{ultimoCobro.aviso}</div>
         ) : null}
 
-        <div className="min-h-[24rem] overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-surface">
+        <div className="min-h-0 flex-1 overflow-y-auto border border-line bg-surface">
           {lineas.length === 0 ? (
             <p className="p-8 text-center text-ink-soft">
               Escanea el primer producto, o escribe su nombre y aprieta Enter.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
-                  <th className="px-3 py-2 text-left font-semibold">Producto</th>
-                  <th className="px-3 py-2 text-right font-semibold">Cant.</th>
-                  <th className="px-3 py-2 text-right font-semibold">P. unit.</th>
-                  <th className="px-3 py-2 text-right font-semibold">Total</th>
+            <table className="w-full">
+              <thead className="sticky top-0 z-10 bg-surface">
+                <tr className="border-b-2 border-ink text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
+                  <th className="px-[14px] py-[9px] text-left font-extrabold">Producto</th>
+                  <th className="w-[130px] px-[14px] py-[9px] text-right font-extrabold">Cantidad</th>
+                  <th className="w-[118px] px-[14px] py-[9px] text-right font-extrabold">P. unit.</th>
+                  <th className="w-[130px] px-[14px] py-[9px] text-right font-extrabold">Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -405,22 +492,28 @@ export function Venta() {
                     key={l.producto.id}
                     onClick={() => setSeleccion(i)}
                     onDoubleClick={() => setPanel("cantidad")}
+                    /* La fila elegida se marca con tinte Y con la barra roja de
+                       la izquierda. Solo con el tinte, a 1,5 m del mesón y con
+                       la pantalla algo sucia, no se distingue de la de al lado. */
                     className={
-                      "cursor-default border-b border-line/60 last:border-0 " + (i === seleccion ? "bg-bg" : "")
+                      "cursor-default border-b border-line-soft last:border-0 " +
+                      (i === seleccion ? "bg-accent-tint shadow-[inset_4px_0_0_rgb(var(--fh-accent))]" : "")
                     }
                   >
-                    <td className="px-3 py-2">
-                      {i === seleccion ? <span className="mr-1 text-ink-soft">▸</span> : null}
-                      {l.producto.name}
+                    <td className="px-[14px] py-[11px]">
+                      <div className="text-base font-semibold">{l.producto.name}</div>
+                      <div className="fh-num font-mono text-[11px] text-mono-ink">
+                        {l.producto.sku} · {l.producto.saleUnit.symbol}
+                      </div>
                     </td>
-                    <td className="fh-num px-3 py-2 text-right">
+                    <td className="fh-num px-[14px] py-[11px] text-right text-[17px] font-bold">
                       {formatQty(l.qtyMilli, l.fraccionable)} {l.producto.saleUnit.symbol}
                     </td>
-                    <td className="fh-num px-3 py-2 text-right text-ink-soft">{formatCLP(l.producto.priceGross)}</td>
-                    <td className="fh-num px-3 py-2 text-right font-semibold">
-                      {formatCLP(
-                        Math.round((l.producto.priceGross * l.qtyMilli) / 1000) - l.discountAmount,
-                      )}
+                    <td className="fh-num px-[14px] py-[11px] text-right text-[15px] text-ink-soft">
+                      {formatCLP(l.producto.priceGross)}
+                    </td>
+                    <td className="fh-num px-[14px] py-[11px] text-right text-[17px] font-extrabold">
+                      {formatCLP(Math.round((l.producto.priceGross * l.qtyMilli) / 1000) - l.discountAmount)}
                     </td>
                   </tr>
                 ))}
@@ -429,75 +522,134 @@ export function Venta() {
           )}
         </div>
 
-        <div className="flex items-center gap-5 text-[12.5px] text-ink-soft">
-          <span className="flex items-center gap-1.5">
+        {/*
+          La barra de ayuda. Va acá abajo, a la vista, y no en un menú: las
+          teclas que no están escritas en la pantalla no las usa nadie.
+        */}
+        <div className="flex h-[42px] shrink-0 items-center gap-4 text-[12.5px] text-ink-soft">
+          {/*
+            Las teclas F salen de `@ferrehouse/shared`, no de una lista escrita
+            acá: son las mismas que registra `useAtajos` más arriba, y tenerlas
+            en dos lados es la forma garantizada de que la pantalla anuncie una
+            tecla que ya no hace nada.
+
+            Se APAGAN cuando no pueden actuar. Con la venta vacía, F4 y F6 se
+            imprimían igual de negras que las que sí funcionan: el vendedor
+            aprieta, no pasa nada, y a partir de ahí no le cree a ninguna.
+          */}
+          {atajosVisibles("venta").map((a) => {
+            const vivo = a.tecla === "F8" || lineas.length > 0;
+            return (
+              <span key={a.tecla} className={`flex items-center gap-1.5 ${vivo ? "" : "opacity-40"}`}>
+                <Tecla>{a.etiqueta}</Tecla> {a.accion.toLowerCase()}
+              </span>
+            );
+          })}
+          {/* Estas dos no son atajos de pantalla sino de la tabla, y por eso no
+              están en la tabla compartida: dependen de que haya una fila. */}
+          <span className={`flex items-center gap-1.5 ${lineas.length > 0 ? "" : "opacity-40"}`}>
             <Tecla>↑↓</Tecla> moverse
           </span>
-          <span className="flex items-center gap-1.5">
-            <Tecla>Enter</Tecla> cantidad
-          </span>
-          <span className="flex items-center gap-1.5">
+          <span className={`flex items-center gap-1.5 ${lineas.length > 0 ? "" : "opacity-40"}`}>
             <Tecla>Supr</Tecla> quitar línea
           </span>
         </div>
       </div>
 
       {/* ---------- Derecha: el total y el cobro ---------- */}
-      <aside className="flex w-80 shrink-0 flex-col gap-3 rounded-[var(--fh-radio)] border border-line bg-surface p-4">
-        <div className="text-center">
-          <div className="text-xs uppercase tracking-wide text-ink-soft">Total</div>
-          {/* 48px: se lee a 1,5 m del mesón (brief §2.3). */}
-          <div className="fh-num text-[3rem] font-black leading-none tracking-tight">
+      <aside className="flex w-[372px] shrink-0 flex-col border-l-2 border-ink bg-surface">
+        <div className="p-5">
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-ink-soft">Total a pagar</div>
+          {/* 66px: se lee a 1,5 m del mesón, que es donde está el cliente. */}
+          <div className="fh-num text-[66px] font-black leading-none tracking-[-0.035em]">
             {formatCLP(total?.totalGross ?? 0)}
           </div>
-        </div>
-
-        <dl className="border-t border-line pt-3 text-sm">
-          <Fila etiqueta="Subtotal" valor={formatCLP(total?.subtotalGross ?? 0)} />
-          {/* El descuento se ve SIEMPRE que exista, no solo al cobrar: es la
-              diferencia entre el precio de la repisa y lo que se está cobrando,
-              y esa diferencia hay que poder explicársela al cliente. */}
-          {descuento > 0 ? <Fila etiqueta="Descuento" valor={formatCLP(-descuento)} /> : null}
-          {total && total.roundingAmount !== 0 ? (
-            <Fila etiqueta="Redondeo" valor={formatCLP(total.roundingAmount)} />
-          ) : null}
-          {/* El desglose se muestra siempre, no solo al cobrar: es lo que se
-              consulta cuando el cliente pide factura. */}
-          <Fila etiqueta="Neto" valor={formatCLP(total?.netAmount ?? 0)} suave />
-          <Fila etiqueta={`IVA ${config?.taxRatePercent ?? 19}%`} valor={formatCLP(total?.taxAmount ?? 0)} suave />
-        </dl>
-
-        {espera ? (
-          <div className="rounded-[var(--fh-radio)] border border-line bg-bg px-3 py-2 text-sm">
-            Cobrando la espera <strong>«{espera.label}»</strong>
+          <div className="mt-1.5 text-[12.5px] text-ink-soft">
+            {lineas.length === 0
+              ? "Sin líneas todavía"
+              : `${lineas.length} ${lineas.length === 1 ? "línea" : "líneas"} · ${formatQty(unidades, true)} unidades`}
           </div>
-        ) : null}
 
-        <Boton variante="principal" disabled={lineas.length === 0} onClick={() => setPanel("cobrar")} tecla="F2">
-          Cobrar
-        </Boton>
+          <dl className="mt-4 border-t border-line pt-3 text-sm">
+            <Fila etiqueta="Subtotal" valor={formatCLP(total?.subtotalGross ?? 0)} />
+            {/* El descuento se ve SIEMPRE que exista, no solo al cobrar: es la
+                diferencia entre el precio de la repisa y lo que se está cobrando,
+                y esa diferencia hay que poder explicársela al cliente. */}
+            {descuento > 0 ? <Fila etiqueta="Descuento" valor={formatCLP(-descuento)} /> : null}
+            {total && total.roundingAmount !== 0 ? (
+              <Fila
+                etiqueta={`Redondeo a $${config?.multiploRedondeo ?? 10}`}
+                valor={formatCLP(total.roundingAmount)}
+              />
+            ) : null}
+            {/* El desglose se muestra siempre, no solo al cobrar: es lo que se
+                consulta cuando el cliente pide factura. */}
+            <Fila etiqueta="Neto" valor={formatCLP(total?.netAmount ?? 0)} suave />
+            <Fila etiqueta={`IVA ${config?.taxRatePercent ?? 19}%`} valor={formatCLP(total?.taxAmount ?? 0)} suave />
+          </dl>
+
+          {espera ? (
+            <div className="mt-3 border border-line bg-bg px-3 py-2 text-sm">
+              Cobrando la espera <strong>«{espera.label}»</strong>
+            </div>
+          ) : null}
+
+          <Boton
+            variante="principal"
+            disabled={lineas.length === 0}
+            onClick={() => setPanel("cobrar")}
+            tecla="F2"
+            className="mt-4 h-[78px] w-full text-2xl font-black"
+          >
+            Cobrar
+          </Boton>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Boton
+              disabled={lineas.length === 0}
+              onClick={() => setPanel("descuento")}
+              tecla="F4"
+              className="h-12 w-full"
+            >
+              Descuento
+            </Boton>
+            <Boton disabled={lineas.length === 0} onClick={() => setPanel("guardar")} tecla="F6" className="h-12 w-full">
+              Espera
+            </Boton>
+          </div>
+        </div>
 
         {/*
-          La leyenda se APAGA cuando la tecla no puede hacer nada ahora mismo.
-          Con la venta vacía, F4 y F6 no tienen sobre qué actuar y se
-          imprimían igual de negras que las que sí funcionan: el vendedor
-          aprieta, no pasa nada, y a partir de ahí no le cree a ninguna. Es el
-          mismo error que las teclas anunciadas sin construir, con otra cara.
+          Las esperas dejan de vivir escondidas detrás de F8. Si hay una venta
+          guardada, se ve desde el mesón — y si no hay ninguna, este bloque no
+          existe en vez de ocupar espacio diciendo «no hay nada».
         */}
-        <div className="flex flex-col gap-1 text-sm text-ink-soft">
-          {atajosVisibles("venta")
-            .filter((a) => a.accion !== "Cobrar")
-            .map((a) => {
-              const disponible = a.tecla === "F8" || lineas.length > 0;
-              return (
-                <span key={a.tecla} className={disponible ? "" : "opacity-40"}>
-                  <span className={`fh-num font-semibold ${disponible ? "text-ink" : ""}`}>{a.etiqueta}</span>{" "}
-                  {a.accion.toLowerCase()}
-                  {disponible ? "" : " — con la venta vacía, no"}
-                </span>
-              );
-            })}
-        </div>
+        {esperas.length > 0 ? (
+          <div className="mt-auto border-t-2 border-ink bg-bg">
+            <div className="flex items-baseline justify-between px-5 py-2.5">
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-ink-soft">
+                Ventas en espera
+              </span>
+              <Tecla>F8</Tecla>
+            </div>
+            <ul className="max-h-56 overflow-y-auto border-t border-line">
+              {esperas.map((e) => (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    onClick={() => setPanel("esperas")}
+                    className="flex w-full items-center gap-3 border-b border-line-soft px-5 py-2 text-left last:border-0 hover:bg-surface"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">{e.label}</span>
+                    <span className="fh-num shrink-0 font-mono text-[11px] text-mono-ink">
+                      {e.lineas} {e.lineas === 1 ? "línea" : "líneas"} · {formatHora(e.touchedAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </aside>
 
       {panel === "cantidad" && lineas[seleccion] ? (
@@ -876,11 +1028,13 @@ function Cobrar({
   const vuelto = previa.venta?.changeAmount ?? 0;
 
   return (
-    <Dialogo onCerrar={onCerrar} ancho="max-w-2xl">
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-bold">A cobrar</h2>
-        <div className="flex items-baseline gap-3">
-          <span className="fh-num text-3xl font-black">{formatCLP(previa.venta?.totalGross ?? total.totalGross)}</span>
+    <Dialogo
+      onCerrar={onCerrar}
+      ancho="max-w-[980px]"
+      titulo="A cobrar"
+      cifra={
+        <span className="flex items-baseline gap-3">
+          {formatCLP(previa.venta?.totalGross ?? total.totalGross)}
           {/*
             Copiar el monto de TARJETA —el exacto— porque es el que hay que
             teclear en la máquina del banco, que es el paso lento de una venta
@@ -889,12 +1043,13 @@ function Cobrar({
           <button
             type="button"
             onClick={() => void copiarTotal()}
-            className="text-xs text-ink-soft underline underline-offset-4"
+            className="text-xs font-normal text-shell-muted underline underline-offset-4 hover:text-surface"
           >
             {copiado ? "copiado ✓" : "copiar"}
           </button>
-        </div>
-      </div>
+        </span>
+      }
+    >
 
       {/*
         Los dos caminos de siempre, sin teclear un peso. El monto de cada botón
@@ -948,9 +1103,31 @@ function Cobrar({
               onChange={(e) => setEfectivo(soloDigitos(e.target.value))}
               inputMode="numeric"
               placeholder="$0"
-              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+              className="fh-num h-[70px] w-full border-2 border-ink bg-bg px-4 font-mono text-4xl font-extrabold"
             />
             <span className="mt-1 block text-xs text-ink-soft">Lo que puso el cliente sobre el mesón.</span>
+            {/*
+              Los cuatro billetes que el cliente pone sobre el mesón el 90% de
+              las veces. SUMAN en vez de reemplazar: si paga con dos de veinte,
+              se aprieta dos veces — que es lo que hace la mano, no calcular
+              cuarenta y teclearlo.
+            */}
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {[10_000, 20_000, 50_000, 100_000].map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setEfectivo(String((Number(efectivo) || 0) + b));
+                    campo.current?.focus();
+                  }}
+                  className="fh-num h-11 border border-line-key bg-surface font-mono text-sm font-semibold hover:bg-bg"
+                >
+                  {new Intl.NumberFormat("es-CL").format(b)}
+                </button>
+              ))}
+            </div>
           </label>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-ink-soft">Débito o crédito</span>
@@ -959,7 +1136,9 @@ function Cobrar({
               onChange={(e) => setDebito(soloDigitos(e.target.value))}
               inputMode="numeric"
               placeholder="$0"
-              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+              className={`fh-num h-[70px] w-full border bg-bg px-4 font-mono text-4xl font-extrabold ${
+                nDebito === 0 ? "border-line-field text-mono-ink" : "border-ink"
+              }`}
             />
             {/*
               El Nº de comprobante NO es el folio: el folio es el número del
@@ -1155,12 +1334,14 @@ function Dialogo({
   onCerrar,
   ancho = "max-w-lg",
   titulo,
+  cifra,
 }: {
   children: React.ReactNode;
   onCerrar: () => void;
   ancho?: string;
-  /** Opcional: los dos diálogos viejos pintan su propia cabecera, con el total al lado. */
   titulo?: string;
+  /** El número que se mira mientras se teclea: va en la barra negra, a la derecha. */
+  cifra?: React.ReactNode;
 }) {
   useEffect(() => {
     const alTeclado = (e: KeyboardEvent) => {
@@ -1188,10 +1369,20 @@ function Dialogo({
       aria-modal="true"
     >
       <div
-        className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface p-6`}
+        className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto border-2 border-ink bg-surface`}
       >
-        {titulo ? <h2 className="mb-4 text-lg font-bold">{titulo}</h2> : null}
-        {children}
+        {/*
+          La barra negra con el título a la izquierda y la cifra a la derecha.
+          El total va ACÁ y no en el cuerpo porque es el dato que se mira
+          mientras se teclea el efectivo, y en el cuerpo se lo comen los campos.
+        */}
+        {titulo ? (
+          <header className="flex items-center justify-between gap-4 bg-ink px-5 py-3 text-surface">
+            <h2 className="text-xl font-black">{titulo}</h2>
+            {cifra ? <div className="fh-num text-[38px] font-black leading-none">{cifra}</div> : null}
+          </header>
+        ) : null}
+        <div className="p-6">{children}</div>
       </div>
     </div>
   );
