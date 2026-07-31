@@ -1317,10 +1317,17 @@ dos veces la misma espera y comprueba que la segunda no deja **nada** escrito.
    `?.` en la pantalla, que habría escondido el síntoma dejando la línea sin
    unidad.
 
-El cuarto deja algo anotado que no se arregló: **no hay error boundary**. Un
-error de render en la pantalla de venta deja la aplicación en blanco, sin
-navegación y sin forma de volver salvo recargar. En un POS eso es peor de lo que
-suena, porque pasa con la venta a medio armar. No está en ningún sprint.
+El cuarto destapó algo más grande, y se arregló: **no había barrera de errores**.
+Un error de render dejaba la aplicación EN BLANCO —sin navegación, sin mensaje,
+sin forma de volver salvo recargar— y pasaba con la venta a medio armar, o sea
+con el cliente al frente. Para una tienda a punto de operar sola eso es peor que
+una pantalla que falta.
+
+La barrera va **dentro** del layout, no envolviéndolo: si una pantalla se cae,
+la barra de arriba sigue ahí y con ella la forma de irse a otra parte. Se
+remonta al cambiar de ruta, porque si no, irse a otra pantalla dejaría la
+barrera puesta y ninguna cargaría. Probado provocando un error de verdad: la
+navegación sobrevive, y al irse a Venta la pantalla carga normal.
 
 ### Sobre el harness, otra vez
 
@@ -1329,4 +1336,28 @@ campo de búsqueda antes de mandar F4, y el manejador de teclas cuelga del
 contenedor —con el foco en `body` el evento no entra—; y el servidor se reinició
 a mitad de una corrida, la aplicación cerró sesión y todo lo que siguió midió la
 pantalla de entrada. Vale anotarlo: **cuando la pantalla "no hace nada", lo
+primero que hay que descartar es el harness.**
+
+### Lo que se verificó después, y no estaba
+
+Tres caminos que la primera pasada no tocó:
+
+- **Actualizar una espera** (el PATCH). La prueba había apretado F6 solo con la
+  pantalla vacía, así que ejercitó el POST y nunca el otro lado. Es el caso del
+  cliente que vuelve, cambia de opinión y se va de nuevo — y hacerlo mal dejaría
+  dos «Don Luis», que es justo lo que ese camino existe para evitar. Verificado:
+  queda uno, con tres líneas.
+- **Devoluciones como vendedor**, que es el camino del mesón casi siempre y el
+  que tiene un campo obligatorio más. Verificado: no le llega el listado del
+  día, el diálogo pide el PIN, el botón no se habilita sin él, y con un PIN malo
+  el diálogo queda abierto con el error en rojo y la venta intacta.
+- **El vendedor devolviendo CON el PIN correcto**, que no tenía test: estaba
+  probado que sin PIN se rechaza, pero no que con él pasa. Ahora se comprueba
+  además que la bitácora separa las dos preguntas —quién la digitó y quién la
+  autorizó—, que se responden distinto.
+
+Y otra vez el harness dio dos falsos negativos, los dos míos: un clic por texto
+que empezaba igual —«Devolver» del diálogo y «Devolver lo marcado» de la
+página— pegó en el botón equivocado, y un `blur()` mandó el foco fuera del
+contenedor que escucha las teclas. **Cuando la pantalla "no hace nada", lo
 primero que hay que descartar es el harness.**

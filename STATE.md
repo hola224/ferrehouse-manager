@@ -263,8 +263,15 @@ presente.**
 **2026-07-31 — Las tres pantallas que bloqueaban la marcha blanca, construidas.**
 Devoluciones y anulaciones (Sprint 4), descuento sobre el total (F4) y venta en
 espera (F6/F8), las tres sobre endpoints que ya existían y estaban probados.
-**513 tests en verde.** Con esto no queda ninguna deuda de interfaz que impida
-empezar a operar.
+**516 tests en verde.**
+
+Y una que no era pantalla: **la barrera de errores de render**. Hasta ese día un
+error al pintar dejaba la aplicación EN BLANCO —sin navegación y sin forma de
+volver salvo recargar—, y se descubrió en carne propia. Para una tienda a punto
+de operar sola, ese modo de falla es peor que una pantalla que falta. Ahora la
+barra de arriba sobrevive y el vendedor se va a otra pantalla.
+
+Con eso no queda deuda de interfaz que impida empezar a operar.
 
 **Regla que estrena esto:** una tecla se reserva en `atajos.ts` para que nadie la
 reasigne, pero **no se imprime en pantalla hasta que su acción exista**

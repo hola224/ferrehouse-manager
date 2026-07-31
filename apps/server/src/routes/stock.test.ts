@@ -663,3 +663,59 @@ describe("demo de cierre del Sprint 4", () => {
     expect(suma._sum.qtyBaseMilli).toBe(100_000);
   });
 });
+
+/**
+ * El camino real del mesón: el vendedor digita la devolución y el administrador
+ * que está al lado pone su PIN.
+ *
+ * Estaba probado que SIN PIN se rechaza, pero no que con el PIN correcto pasa —
+ * que es el que se usa todos los días y el que la pantalla de devoluciones
+ * ejercita. Con su propia venta, para no meterse en la secuencia del bloque de
+ * arriba, que va encadenada a propósito.
+ */
+describe("una devolución digitada por el vendedor", () => {
+  it("pasa con el PIN del administrador, y la bitácora separa quién la digitó de quién la autorizó", async () => {
+    const venta = cuerpo(
+      await post(
+        "/api/sales",
+        { items: [{ productId: pPerno, qtyMilli: 4_000 }], payments: [{ method: "CASH", receivedAmount: 2_000 }] },
+        tokenVendedor,
+      ),
+    ).venta;
+
+    const r = await post(
+      `/api/sales/${venta.id}/return`,
+      { reason: "Le sobró uno", items: [{ itemId: venta.items[0].id, qtyMilli: 1_000 }], adminPin: PIN_ADMIN },
+      tokenVendedor,
+    );
+    expect(r.statusCode).toBe(201);
+
+    const admin = await db.user.findFirstOrThrow({ where: { role: "ADMIN", active: true } });
+    const vendedor = await db.user.findFirstOrThrow({ where: { role: "SELLER", active: true } });
+    const registro = await db.auditLog.findFirstOrThrow({
+      where: { action: "SALE_RETURNED", entityId: String(cuerpo(r).venta.id) },
+    });
+    // La firma es del que autorizó; el que la digitó va en el detalle. Son dos
+    // preguntas distintas y la bitácora responde las dos.
+    expect(registro.userId).toBe(admin.id);
+    expect(JSON.parse(registro.payload ?? "{}").digitadaPor).toBe(vendedor.id);
+  });
+
+  it("no pasa con el PIN equivocado", async () => {
+    const venta = cuerpo(
+      await post(
+        "/api/sales",
+        { items: [{ productId: pPerno, qtyMilli: 2_000 }], payments: [{ method: "CASH", receivedAmount: 1_000 }] },
+        tokenVendedor,
+      ),
+    ).venta;
+
+    const r = await post(
+      `/api/sales/${venta.id}/return`,
+      { reason: "Le sobró uno", items: [{ itemId: venta.items[0].id, qtyMilli: 1_000 }], adminPin: "000000" },
+      tokenVendedor,
+    );
+    expect(r.statusCode).toBe(400);
+    expect(cuerpo(r).error).toMatch(/PIN de administrador no es correcto/);
+  });
+});

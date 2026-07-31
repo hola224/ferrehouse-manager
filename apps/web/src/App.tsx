@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate, Link, NavLink } from "react-router-dom";
+import { Component, type ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate, Link, NavLink, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
@@ -73,9 +74,71 @@ function Layout({ children }: { children: React.ReactNode }) {
           </Boton>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl p-6">{children}</main>
+      {/*
+        La barrera va DENTRO del layout, no afuera: si una pantalla se cae, la
+        barra de arriba sigue ahí y con ella la forma de irse a otra parte. Una
+        barrera que envuelve todo deja la aplicación en blanco, que es
+        exactamente lo que hay que evitar.
+      */}
+      <main className="mx-auto max-w-6xl p-6">
+        <ConBarrera>{children}</ConBarrera>
+      </main>
     </div>
   );
+}
+
+/**
+ * Barrera de errores de render.
+ *
+ * **Existe porque el modo de falla sin ella es el peor posible en un mesón.**
+ * Se descubrió el 2026-07-31 con un defecto propio: al recuperar una venta en
+ * espera, una línea sin `saleUnit` tumbaba la tabla, y React desmontaba el
+ * árbol entero. Lo que quedaba era una pantalla EN BLANCO —sin navegación, sin
+ * mensaje, sin forma de volver salvo recargar— y pasaba con la venta a medio
+ * armar, o sea con el cliente al frente.
+ *
+ * No arregla el error: lo contiene. La barra de navegación sobrevive, el
+ * vendedor se va a otra pantalla y sigue trabajando, y el detalle técnico queda
+ * en la consola para quien lo pueda leer. La pantalla dice qué hacer, no qué
+ * pasó (principio 5 del brief).
+ *
+ * Se remonta al cambiar de ruta (la `key` con el pathname), porque si no, irse
+ * a otra pantalla dejaría la barrera puesta y ninguna cargaría.
+ */
+class Barrera extends Component<{ children: ReactNode }, { cayo: boolean }> {
+  override state = { cayo: false };
+
+  static getDerivedStateFromError() {
+    return { cayo: true };
+  }
+
+  override componentDidCatch(error: Error, info: { componentStack?: string | null }) {
+    console.error("[pantalla] se cayó:", error, info.componentStack);
+  }
+
+  override render() {
+    if (!this.state.cayo) return this.props.children;
+    return (
+      <div className="rounded-[var(--fh-radio)] border border-error/40 bg-error/10 p-8 text-center">
+        <p className="text-lg font-semibold">Esta pantalla se cayó.</p>
+        <p className="mt-2 text-ink-soft">
+          Lo que estabas haciendo acá se perdió, pero nada de lo ya cobrado se pierde nunca. Anda a otra pantalla desde
+          el menú de arriba y vuelve a entrar.
+        </p>
+        <button
+          onClick={() => this.setState({ cayo: false })}
+          className="mt-4 underline underline-offset-4 hover:text-ink"
+        >
+          Intentar de nuevo
+        </button>
+      </div>
+    );
+  }
+}
+
+function ConBarrera({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <Barrera key={pathname}>{children}</Barrera>;
 }
 
 /** Guard por rol: el vendedor no ve las pantallas de admin (USR-03). */
