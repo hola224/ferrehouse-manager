@@ -63,8 +63,9 @@ export function Usuarios() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black tracking-tight">Usuarios</h1>
+      <div className="flex items-center justify-end">
+        {/* El título lo pone la barra del `AdminShell`: repetirlo acá era
+            dos veces la misma palabra a 40px de distancia. */}
         <div className="flex items-center gap-4">
           {/*
             La otra mitad de la misma pregunta: quién entra y desde dónde. La
@@ -82,7 +83,7 @@ export function Usuarios() {
       </div>
 
       {error ? (
-        <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+        <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
       ) : null}
       {aviso ? (
         <div className="flex items-center justify-between rounded-[var(--fh-radio)] border border-ok/30 bg-ok/10 p-3 text-sm text-ok">
@@ -97,17 +98,17 @@ export function Usuarios() {
         <p className="text-ink-soft">Cargando…</p>
       ) : (
         <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+          <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
             <tr className="border-b border-line">
-              <th className="pb-2">Nombre</th>
-              <th className="pb-2">Rol</th>
-              <th className="pb-2">Estado</th>
-              <th className="pb-2 text-right">Acciones</th>
+              <th className="py-[9px] font-extrabold">Nombre</th>
+              <th className="py-[9px] font-extrabold">Rol</th>
+              <th className="py-[9px] font-extrabold">Estado</th>
+              <th className="py-[9px] text-right font-extrabold">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {visibles.map((u) => (
-              <tr key={u.id} className="border-b border-line/60">
+              <tr key={u.id} className="border-b border-line-soft">
                 <td className="py-3 font-medium">
                   {u.name}
                   {u.id === yo?.sub ? <span className="ml-2 text-xs text-ink-soft">— eres tú</span> : null}
@@ -263,7 +264,7 @@ function UsuarioNuevo({ onCerrar, onCreado }: { onCerrar: () => void; onCreado: 
         </Selector>
         <CamposDePin pin={pin} repetir={repetir} setPin={setPin} setRepetir={setRepetir} />
         {error ? (
-          <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+          <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
         ) : null}
         <Acciones>
           <Boton onClick={onCerrar}>Cancelar</Boton>
@@ -311,7 +312,7 @@ function CambiarPin({ usuario, onCerrar, onListo }: { usuario: Usuario; onCerrar
       <div className="mt-4 grid gap-3">
         <CamposDePin pin={pin} repetir={repetir} setPin={setPin} setRepetir={setRepetir} primero={primero} />
         {error ? (
-          <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+          <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
         ) : null}
         <Acciones>
           <Boton onClick={onCerrar}>Cancelar</Boton>
@@ -404,7 +405,7 @@ function EditarUsuario({
           </p>
         ) : null}
         {error ? (
-          <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+          <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
         ) : null}
         <Acciones>
           <Boton onClick={onCerrar}>Cancelar</Boton>

@@ -115,15 +115,16 @@ export function Compras() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-black tracking-tight">Compras</h1>
+      <div className="flex items-center justify-end">
+        {/* El título lo pone la barra del `AdminShell`: repetirlo acá era
+            dos veces la misma palabra a 40px de distancia. */}
         <Boton variante="principal" onClick={() => setNueva(true)} tecla="F2">
           + Digitar factura
         </Boton>
       </div>
 
       {error ? (
-        <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+        <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
       ) : null}
 
       {resultado ? (
@@ -134,7 +135,7 @@ export function Compras() {
           </p>
           <ul className="mt-2 grid gap-1 text-sm">
             {resultado.costos.map((t) => (
-              <li key={t} className="border-b border-line/60 py-1 last:border-0">
+              <li key={t} className="border-b border-line-soft py-1 last:border-0">
                 {t}
               </li>
             ))}
@@ -157,19 +158,19 @@ export function Compras() {
         </div>
       ) : (
         <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+          <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
             <tr className="border-b border-line">
-              <th className="px-3 pb-2">Recibida</th>
-              <th className="px-3 pb-2">Proveedor</th>
-              <th className="px-3 pb-2">Documento</th>
-              <th className="px-3 pb-2 text-right">Líneas</th>
-              <th className="px-3 pb-2 text-right">Total neto</th>
-              <th className="px-3 pb-2">Digitó</th>
+              <th className="px-3 py-[9px] font-extrabold">Recibida</th>
+              <th className="px-3 py-[9px] font-extrabold">Proveedor</th>
+              <th className="px-3 py-[9px] font-extrabold">Documento</th>
+              <th className="px-3 py-[9px] text-right font-extrabold">Líneas</th>
+              <th className="px-3 py-[9px] text-right font-extrabold">Total neto</th>
+              <th className="px-3 py-[9px] font-extrabold">Digitó</th>
             </tr>
           </thead>
           <tbody>
             {compras.map((c) => (
-              <tr key={c.id} className="border-b border-line/60">
+              <tr key={c.id} className="border-b border-line-soft">
                 <td className="fh-num px-3 py-2">{new Date(c.receivedAt).toLocaleDateString("es-CL")}</td>
                 <td className="px-3 py-2 font-medium">{c.supplier.name}</td>
                 <td className="fh-num px-3 py-2 text-ink-soft">{c.documentNumber ?? "—"}</td>
@@ -181,6 +182,17 @@ export function Compras() {
           </tbody>
         </table>
       )}
+
+      {/*
+        Va al pie y no en un tooltip: es lo que hay que saber ANTES de digitar,
+        y explica por qué el formulario no tiene botón de editar. Que una compra
+        no se pueda deshacer no es una limitación que se disculpa — es lo que
+        hace que el costo promedio signifique algo.
+      */}
+      <p className="text-[13px] text-ink-soft">
+        Digitar una factura escribe el movimiento de entrada en el kardex y recalcula el costo promedio. No se puede
+        editar después: se corrige con un ajuste, que también queda registrado.
+      </p>
 
       {nueva ? (
         <FacturaNueva
@@ -372,14 +384,14 @@ function FacturaNueva({
 
         {lineas.length > 0 ? (
           <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-ink-soft">
+            <thead className="border-b-2 border-ink text-left text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
               <tr className="border-b border-line">
-                <th className="pb-2">Producto</th>
-                <th className="pb-2">Unidad</th>
-                <th className="pb-2">Cantidad</th>
-                <th className="pb-2">Costo neto c/u</th>
-                <th className="pb-2 text-right">Neto</th>
-                <th className="pb-2"></th>
+                <th className="py-[9px] font-extrabold">Producto</th>
+                <th className="py-[9px] font-extrabold">Unidad</th>
+                <th className="py-[9px] font-extrabold">Cantidad</th>
+                <th className="py-[9px] font-extrabold">Costo neto c/u</th>
+                <th className="py-[9px] text-right font-extrabold">Neto</th>
+                <th className="py-[9px] font-extrabold"></th>
               </tr>
             </thead>
             <tbody>
@@ -389,7 +401,7 @@ function FacturaNueva({
                 // se vende en metros no es un error de tecleo, es imposible.
                 const compatibles = unidades.filter((u) => u.groupId === l.producto.saleUnit.groupId);
                 return (
-                  <tr key={l.producto.id} className="border-b border-line/60">
+                  <tr key={l.producto.id} className="border-b border-line-soft">
                     <td className="py-2">
                       <div className="font-medium">{l.producto.name}</div>
                       <div className="fh-num text-xs text-ink-soft">{l.producto.sku}</div>
@@ -443,7 +455,7 @@ function FacturaNueva({
         )}
 
         {error ? (
-          <p className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</p>
+          <p className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</p>
         ) : null}
 
         <div className="sticky bottom-0 -mx-6 mt-4 flex items-center justify-between border-t border-line bg-surface px-6 py-4">
