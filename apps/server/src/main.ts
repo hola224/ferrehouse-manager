@@ -1,6 +1,7 @@
 import { buildApp } from "./app.js";
 import { assertConnectionLimit, enableWAL, db } from "./db.js";
 import { assertStartupChecks } from "./startup-checks.js";
+import { iniciarWorker } from "./whatsapp/cola.js";
 
 async function main() {
   // El orden importa: si falta connection_limit no tiene sentido seguir, y si
@@ -11,6 +12,14 @@ async function main() {
 
   await assertStartupChecks();
   console.log("autochequeos: ok");
+
+  /**
+   * El worker de WhatsApp arranca acá y NO en `buildApp`: los tests construyen
+   * la app decenas de veces, y un temporizador vivo por cada una las haría
+   * pisarse entre ellas. Mientras no haya un número vinculado, cada pasada ve
+   * "DESCONECTADA" y se va sin tocar nada.
+   */
+  iniciarWorker();
 
   const app = await buildApp();
   const port = Number(process.env.PORT ?? 3000);

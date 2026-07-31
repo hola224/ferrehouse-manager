@@ -19,6 +19,7 @@ import { registerStockRoutes } from "./routes/stock.js";
 import { registerReturnRoutes } from "./routes/returns.js";
 import { registerReportRoutes } from "./routes/reports.js";
 import { registerAlertRoutes } from "./routes/alerts.js";
+import { registerWhatsAppRoutes } from "./routes/whatsapp.js";
 import { alertasVigentes } from "./alerts.js";
 import { diaLocal, hoyTexto, resumenDeVentas } from "./reports.js";
 import { stripForRole, formatCLP, formatHora, type Role } from "@ferrehouse/shared";
@@ -204,6 +205,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
   await registerReturnRoutes(app);
   await registerReportRoutes(app);
   await registerAlertRoutes(app);
+  await registerWhatsAppRoutes(app);
 
   return app;
 }

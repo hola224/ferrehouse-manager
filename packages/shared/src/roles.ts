@@ -22,6 +22,13 @@ export const FORBIDDEN_FOR_SELLER = [
   "unitCostNet",
   "margin",
   "marginPercent",
+  /**
+   * El QR de vinculación de WhatsApp (6.2). No es un costo, pero es lo mismo:
+   * **una credencial de sesión**. Quien lo escanea queda con la sesión de la
+   * ferretería en su teléfono. Las rutas del panel ya son de ADMIN; esto es la
+   * segunda cerradura, por si algún día el QR se cuela en otra respuesta.
+   */
+  "qr",
 ] as const;
 
 const FORBIDDEN_SET: ReadonlySet<string> = new Set(FORBIDDEN_FOR_SELLER);

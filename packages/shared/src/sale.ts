@@ -71,6 +71,23 @@ export const saleInputSchema = z.object({
   discountAmount: z.number().int().min(0).default(0),
   payments: z.array(paymentInputSchema).min(1, "Falta indicar cómo se paga"),
   customerId: z.number().int().positive().nullable().optional(),
+  /**
+   * El cliente capturado en el mesón (6.1 / WA-01). El teléfono viaja **como
+   * lo escribieron**: normalizarlo es del servidor, porque es lo que decide si
+   * dos ventas son del mismo cliente y eso no puede depender de la pantalla.
+   *
+   * `consentimiento` no tiene default: un checkbox que se omite tiene que
+   * llegar como `false` explícito, no faltar. Si faltara y el servidor
+   * asumiera algo, el consentimiento sería una suposición.
+   */
+  cliente: z
+    .object({
+      nombre: z.string().trim().max(80).nullable().optional(),
+      telefono: z.string().trim().min(1, "Falta el teléfono del cliente"),
+      consentimiento: z.boolean(),
+    })
+    .nullable()
+    .optional(),
   /** La doble digitación con el POS tributario (POS-07). */
   fiscalDocType: z.enum(FISCAL_DOC_TYPES).nullable().optional(),
   fiscalFolio: z.string().trim().max(30).nullable().optional(),

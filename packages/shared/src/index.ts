@@ -11,3 +11,5 @@ export * from "./sale.js";
 export * from "./stock.js";
 export * from "./returns.js";
 export * from "./reports.js";
+export * from "./phone.js";
+export * from "./whatsapp.js";

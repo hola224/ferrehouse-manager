@@ -45,6 +45,8 @@ import {
   SALE_STATUS_TONE,
 } from "@ferrehouse/shared";
 import { registrarMovimiento } from "../stock-ledger.js";
+import { capturarCliente } from "../customers.js";
+import { encolarMensajeDeVenta } from "../whatsapp/cola.js";
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
   const e = new Error(mensaje) as Error & { statusCode: number };
@@ -238,6 +240,26 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
     const tienda = (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse";
     const estacion = await db.station.findUniqueOrThrow({ where: { id: req.user.stationId } });
 
+    /**
+     * 6.1 — El cliente, ANTES de la transacción y sin poder tumbarla.
+     *
+     * Un teléfono mal digitado **no bloquea la venta** (invariante del Sprint
+     * 6): se registra sin cliente y se avisa. Con el cliente al frente y la
+     * plata en la mano, rebotar la venta entera por un dígito de más sería el
+     * peor intercambio posible.
+     */
+    let customerId: number | null = datos.customerId ?? null;
+    let avisoCliente: string | null = null;
+    if (datos.cliente) {
+      const r = await capturarCliente(datos.cliente);
+      if (r.ok) {
+        customerId = r.customerId;
+        avisoCliente = r.aviso;
+      } else {
+        avisoCliente = `${r.error} La venta se registró sin cliente, así que no le va a llegar el WhatsApp.`;
+      }
+    }
+
     // --- Escritura: TODO junto o nada ---
     const creada = await db.$transaction(async (tx) => {
       const sale = await tx.sale.create({
@@ -245,7 +267,7 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
           cashSessionId: sesion.id,
           locationId: req.user.locationId,
           userId: req.user.sub,
-          customerId: datos.customerId ?? null,
+          customerId,
           fiscalDocType: datos.fiscalDocType ?? null,
           fiscalFolio: datos.fiscalFolio ?? null,
           taxRatePercent,
@@ -388,11 +410,32 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
+    /**
+     * 6.3 — el WhatsApp se AGENDA. No se manda acá.
+     *
+     * Fuera de la transacción y detrás de un `catch` que se traga todo. Son dos
+     * redes distintas para el mismo riesgo, y las dos hacen falta:
+     * `WhatsAppJob.saleId` es único, así que un insert dentro de la transacción
+     * haría rollback de una venta ya cobrada; y una excepción acá arriba
+     * devolvería 500 sobre una venta que SÍ quedó escrita — el vendedor leería
+     * "error", volvería a cobrar, y la tienda cobraría dos veces.
+     */
+    let whatsapp: { encolado: boolean; motivo?: string } = { encolado: false, motivo: "SIN_CLIENTE" };
+    try {
+      const r = await encolarMensajeDeVenta(creada.id);
+      whatsapp = r.encolado ? { encolado: true } : { encolado: false, motivo: r.motivo };
+    } catch (e) {
+      console.error(`[whatsapp] falló al agendar el mensaje de la venta ${creada.id}:`, e);
+      whatsapp = { encolado: false, motivo: "ERROR" };
+    }
+
     return reply.code(201).send({
       venta: completa,
       cambio: venta.changeAmount,
       impresion,
       avisoImpresion,
+      avisoCliente,
+      whatsapp,
       mensaje:
         venta.changeAmount > 0
           ? `Cobrado ${formatCLP(venta.totalGross)}. Vuelto: ${formatCLP(venta.changeAmount)}.`
