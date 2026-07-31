@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { Acciones, Boton, Campo, Chip, Modal, Selector } from "@/components/ui";
+import { ProbadorDeTeclas } from "@/components/ProbadorDeTeclas";
 import { formatHora } from "@ferrehouse/shared";
 
 type Estacion = {
@@ -186,6 +187,13 @@ export function Estaciones() {
           }}
         />
       ) : null}
+      {/*
+        Va acá y no en una pantalla nueva: esta es la pantalla de instalación
+        —se toca al instalar y casi nunca más— y comprobar los atajos es
+        exactamente una tarea de instalación, una por terminal.
+      */}
+      <ProbadorDeTeclas />
+
     </div>
   );
 }
