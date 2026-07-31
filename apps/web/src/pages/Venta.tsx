@@ -362,7 +362,19 @@ export function Venta() {
                 e.preventDefault();
                 const elegido = sugerido >= 0 ? sugerencias[sugerido] : undefined;
                 if (elegido) agregarProducto(elegido);
-                else void buscarYAgregar(texto);
+                else if (texto.trim() !== "") void buscarYAgregar(texto);
+                /*
+                  Con la caja VACÍA, Enter abre la cantidad de la línea elegida.
+                  La barra de ayuda decía «Enter cantidad» desde el Sprint 3 y
+                  era mentira: el diálogo solo se abría con DOBLE CLIC, y como
+                  el foco vuelve siempre a esta caja, en un POS que se opera con
+                  teclado la cantidad era inalcanzable sin mouse. Vender dos
+                  sacos de cemento obligaba a escanear dos veces.
+
+                  No hay colisión posible: con la caja vacía no hay nada que
+                  buscar, así que Enter no tenía ningún otro trabajo que hacer.
+                */
+                else if (lineas[seleccion]) setPanel("cantidad");
               } else if (e.key === "Escape" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerencias([]);

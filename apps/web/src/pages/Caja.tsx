@@ -19,7 +19,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { Boton, Chip } from "@/components/ui";
+import { Boton, Chip, Tecla } from "@/components/ui";
+import { useCascaron } from "@/components/cascarones";
+import { useAtajos } from "@/lib/atajos";
 import { formatCLP, formatHora, atajosDe, CASH_MOVEMENT_TEXT, type CashMovementType } from "@ferrehouse/shared";
 
 type Movimiento = {
@@ -57,6 +59,7 @@ function conPuntos(v: string): string {
 
 export function Caja() {
   const { usuario } = useAuth();
+  const enPos = useCascaron() === "pos";
   const [actual, setActual] = useState<Actual | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
@@ -92,14 +95,24 @@ export function Caja() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-black tracking-tight">Caja</h1>
+      {/*
+        El título va solo en el mesón: en el backoffice lo pone la barra del
+        cascarón, y repetirlo debajo es ruido en la pantalla más densa que
+        tiene el administrador.
+      */}
+      {enPos ? (
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="text-[28px] font-black tracking-[-0.02em]">Caja</h1>
+          {actual.abierta ? (
+            <span className="font-mono text-[11.5px] uppercase tracking-[0.06em] text-mono-ink">
+              Turno abierto {formatHora(actual.sesion.openedAt)} · {usuario?.name}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
-      {error ? (
-        <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</div>
-      ) : null}
-      {aviso ? (
-        <div className="rounded-[var(--fh-radio)] border border-ok/30 bg-ok/10 p-3 text-sm text-ok">{aviso}</div>
-      ) : null}
+      {error ? <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</div> : null}
+      {aviso ? <div className="border border-ok bg-ok/[0.08] p-3 text-sm text-ok-ink">{aviso}</div> : null}
 
       {!actual.abierta ? (
         <Apertura
@@ -214,32 +227,20 @@ function Turno({
   const desde = formatHora(actual.sesion.openedAt);
   const atajos = atajosDe("caja");
 
+  const ventas = actual.movimientos.filter((m) => m.type === "SALE").length;
+  const suma = (t: CashMovementType) =>
+    actual.movimientos.filter((m) => m.type === t).reduce((s, m) => s + (m.amount ?? 0), 0);
+  const retiros = suma("WITHDRAWAL");
+  const ingresos = suma("DEPOSIT");
+
   return (
     <>
-      <div className="rounded-[var(--fh-radio)] border border-line bg-surface p-6">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <Chip tono="ok">abierta</Chip>
-            <span className="ml-2 text-sm text-ink-soft">desde las {desde}</span>
-
-            {/*
-              El saldo llega solo si el servidor decidió que corresponde. Para
-              un vendedor es `null` —el arqueo es a ciegas— y entonces no hay
-              hueco que rellenar: se dice por qué.
-            */}
-            {actual.saldo !== null ? (
-              <div className="mt-4">
-                <div className="fh-num text-5xl font-black tracking-tight">{formatCLP(actual.saldo)}</div>
-                <div className="text-sm text-ink-soft">debería haber en el cajón</div>
-              </div>
-            ) : (
-              <div className="mt-4 max-w-md text-sm text-ink-soft">
-                El sistema no muestra cuánto debería haber: al cerrar, cuentas primero y la diferencia aparece
-                después. Así el conteo mide de verdad.
-              </div>
-            )}
-          </div>
-
+      <div className="border border-line bg-surface">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-ink px-[18px] py-[11px]">
+          <Chip tono="ok">abierta</Chip>
+          <span className="flex-1 text-sm text-ink-soft">
+            desde las {desde} · {ventas === 0 ? "sin ventas todavía" : `${ventas} ${ventas === 1 ? "venta" : "ventas"} en el turno`}
+          </span>
           <div className="flex shrink-0 gap-2">
             <Boton onClick={() => setPanel("retiro")} tecla="F4">
               Retiro
@@ -252,6 +253,40 @@ function Turno({
             </Boton>
           </div>
         </div>
+
+        <div className="flex flex-wrap items-start justify-between gap-8 px-[18px] py-5">
+          {/*
+            El saldo esperado llega solo si el servidor decidió que corresponde.
+            Para un vendedor es `null` —el arqueo es a ciegas— y entonces no hay
+            hueco que rellenar: se dice por qué.
+          */}
+          {actual.saldo !== null ? (
+            <div className="max-w-[420px]">
+              <div className="fh-num text-5xl font-black tracking-[-0.03em]">{formatCLP(actual.saldo)}</div>
+              <div className="text-sm text-ink-soft">debería haber en el cajón</div>
+            </div>
+          ) : (
+            <p className="max-w-[420px] text-sm leading-[1.55] text-ink-soft">
+              El sistema no muestra cuánto debería haber: al cerrar, cuentas primero y la diferencia aparece después.
+              Así el conteo mide de verdad.
+            </p>
+          )}
+
+          {/*
+            Tres cifras, no cuatro. «Fondo inicial» solo aparece para quien ya
+            puede ver el esperado: al vendedor el servidor no le manda la
+            apertura a propósito, porque apertura + movimientos ES el esperado,
+            y mostrarla convertiría el conteo ciego en un conteo con la
+            respuesta al lado.
+          */}
+          <div className="flex gap-8">
+            {actual.sesion.openingAmount !== undefined ? (
+              <Cifra etiqueta="Fondo inicial" valor={formatCLP(actual.sesion.openingAmount)} />
+            ) : null}
+            <Cifra etiqueta="Retiros" valor={formatCLP(retiros)} tono={retiros > 0 ? "accent" : undefined} />
+            <Cifra etiqueta="Ingresos" valor={formatCLP(ingresos)} tono={ingresos > 0 ? "ok" : undefined} />
+          </div>
+        </div>
       </div>
 
       {panel === "retiro" || panel === "ingreso" ? (
@@ -260,14 +295,30 @@ function Turno({
 
       <Libro movimientos={actual.movimientos} esAdmin={esAdmin} />
 
-      <div className="flex gap-5 text-sm text-ink-soft">
+      <div className="flex h-[42px] items-center gap-4 text-[12.5px] text-ink-soft">
         {atajos.map((a) => (
-          <span key={a.tecla}>
-            <span className="fh-num font-semibold text-ink">{a.etiqueta}</span> {a.accion.toLowerCase()}
+          <span key={a.tecla} className="flex items-center gap-1.5">
+            <Tecla>{a.etiqueta}</Tecla> {a.accion.toLowerCase()}
           </span>
         ))}
       </div>
     </>
+  );
+}
+
+/** Una cifra del turno: etiqueta chica arriba, número grande abajo. */
+function Cifra({ etiqueta, valor, tono }: { etiqueta: string; valor: string; tono?: "accent" | "ok" }) {
+  return (
+    <div>
+      <div className="text-[10.5px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">{etiqueta}</div>
+      <div
+        className={`fh-num mt-1 text-[30px] font-black leading-none tracking-[-0.02em] ${
+          tono === "accent" ? "text-accent-ink" : tono === "ok" ? "text-ok-ink" : ""
+        }`}
+      >
+        {valor}
+      </div>
+    </div>
   );
 }
 
@@ -352,31 +403,47 @@ function Movimiento({
 function Libro({ movimientos, esAdmin }: { movimientos: Movimiento[]; esAdmin: boolean }) {
   if (movimientos.length === 0) return null;
   return (
-    <div className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-surface">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto border border-line bg-surface">
+      <table className="w-full">
         <thead>
-          <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
-            <th className="px-3 py-2 text-left font-semibold">Hora</th>
-            <th className="px-3 py-2 text-left font-semibold">Movimiento</th>
-            <th className="px-3 py-2 text-left font-semibold">Motivo</th>
-            <th className="px-3 py-2 text-left font-semibold">Quién</th>
-            <th className="px-3 py-2 text-right font-semibold">Monto</th>
+          <tr className="border-b-2 border-ink text-[10.5px] uppercase tracking-[0.11em] text-ink-soft">
+            <th className="px-[14px] py-[9px] text-left font-extrabold">Hora</th>
+            <th className="px-[14px] py-[9px] text-left font-extrabold">Movimiento</th>
+            <th className="px-[14px] py-[9px] text-left font-extrabold">Motivo</th>
+            <th className="px-[14px] py-[9px] text-left font-extrabold">Quién</th>
+            <th className="px-[14px] py-[9px] text-right font-extrabold">Monto</th>
             {/* La columna de saldo solo existe si el servidor manda el dato. */}
-            {esAdmin ? <th className="px-3 py-2 text-right font-semibold">Saldo</th> : null}
+            {esAdmin ? <th className="px-[14px] py-[9px] text-right font-extrabold">Saldo</th> : null}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="text-sm">
           {movimientos.map((m) => (
-            <tr key={m.id} className="border-b border-line/60 last:border-0">
-              <td className="fh-num px-3 py-2 text-ink-soft">{formatHora(m.createdAt)}</td>
-              <td className="px-3 py-2">{CASH_MOVEMENT_TEXT[m.type] ?? m.type}</td>
-              <td className="px-3 py-2 text-ink-soft">{m.description ?? "—"}</td>
-              <td className="px-3 py-2 text-ink-soft">{m.user.name}</td>
-              <td className="fh-num px-3 py-2 text-right font-semibold">
-                {m.amount === undefined ? <span className="text-xs font-normal text-ink-soft">oculto</span> : formatCLP(m.amount)}
+            <tr key={m.id} className="border-b border-line-soft last:border-0">
+              <td className="fh-num px-[14px] py-[10px] font-mono text-[12.5px] text-mono-ink">
+                {formatHora(m.createdAt)}
+              </td>
+              <td className="px-[14px] py-[10px] font-semibold">{CASH_MOVEMENT_TEXT[m.type] ?? m.type}</td>
+              <td className="px-[14px] py-[10px] text-ink-soft">{m.description ?? "—"}</td>
+              <td className="px-[14px] py-[10px] text-ink-soft">{m.user.name}</td>
+              {/*
+                La plata que SALE del cajón se lee distinto de la que entra. No
+                basta el signo menos: en una columna de quince filas el guion se
+                pierde, y confundir un retiro con un ingreso al revisar un
+                descuadre es exactamente el error que este libro evita.
+              */}
+              <td
+                className={`fh-num px-[14px] py-[10px] text-right font-semibold ${
+                  m.amount === undefined ? "" : m.amount < 0 ? "text-accent-ink" : "text-ok-ink"
+                }`}
+              >
+                {m.amount === undefined ? (
+                  <span className="text-xs font-normal text-ink-soft">oculto</span>
+                ) : (
+                  formatCLP(m.amount)
+                )}
               </td>
               {esAdmin ? (
-                <td className="fh-num px-3 py-2 text-right text-ink-soft">
+                <td className="fh-num px-[14px] py-[10px] text-right text-ink-soft">
                   {m.balanceAfter === undefined ? "—" : formatCLP(m.balanceAfter)}
                 </td>
               ) : null}
@@ -445,21 +512,83 @@ function Cerrar({
     onCerrada(mensaje);
   }
 
+  /**
+   * Las teclas del cierre.
+   *
+   * Los botones decían «F2» y «F4» desde el Sprint 2 y no las escuchaba nadie:
+   * el listener de la pantalla de Caja se apaga en cuanto se entra al cierre
+   * (`if (panel !== "nada") return`), y este componente no registraba ninguno.
+   * O sea que el paso más delicado del día —el único con un punto de no
+   * retorno— anunciaba dos atajos muertos. Se aprieta F2, no pasa nada, y a
+   * partir de ahí el vendedor deja de creerle a la pantalla.
+   */
+  useAtajos(
+    {
+      F2:
+        paso === 1
+          ? contado !== ""
+            ? () => setPaso(2)
+            : undefined
+          : paso === 2
+            ? enviando
+              ? undefined
+              : () => void verDiferencia()
+            : cierre
+              ? () => void imprimirYSalir()
+              : undefined,
+      F4: paso === 2 ? () => setPaso(1) : undefined,
+    },
+    true,
+  );
+
+  /** El teclado en pantalla del conteo. Mismo motivo que en el login: guantes. */
+  function tecla(t: string) {
+    if (t === "C") setContado("");
+    else if (t === "←") setContado((c) => c.slice(0, -1));
+    else setContado((c) => (c.length >= 9 ? c : soloDigitos(c + t)));
+    campo.current?.focus();
+  }
+
   return (
-    <div className="rounded-[var(--fh-radio)] border border-line bg-surface">
-      <div className="flex items-center justify-between border-b border-line px-6 py-3">
-        <h2 className="text-lg font-bold">Cerrar caja</h2>
-        <span className="text-sm text-ink-soft">
-          paso {paso} de 3 {["○", "○", "○"].map((_, i) => (i < paso ? "●" : "○")).join(" ")}
-        </span>
+    <div className="border border-line bg-surface">
+      {/* El stepper: tres celdas iguales. Dice en cuál vas y cuántas faltan. */}
+      <div className="grid grid-cols-3 border-b-2 border-ink">
+        {[
+          { n: 1, titulo: "Cuenta", bajada: "La plata del cajón" },
+          { n: 2, titulo: "Confirma", bajada: "Antes de comprometerlo" },
+          { n: 3, titulo: "Diferencia", bajada: "Lo que sobró o faltó" },
+        ].map((s) => (
+          <div
+            key={s.n}
+            className={`flex items-center gap-3 border-r border-line-soft px-[18px] py-3 last:border-r-0 ${
+              paso === s.n ? "bg-accent-tint" : ""
+            }`}
+          >
+            <span
+              className={`fh-num grid h-[30px] w-[30px] shrink-0 place-items-center font-mono text-sm font-semibold ${
+                paso === s.n
+                  ? "bg-accent text-surface"
+                  : paso > s.n
+                    ? "bg-ink text-surface"
+                    : "bg-line-soft text-ink-soft"
+              }`}
+            >
+              {s.n}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-extrabold">{s.titulo}</span>
+              <span className="block text-xs text-ink-soft">{s.bajada}</span>
+            </span>
+          </div>
+        ))}
       </div>
 
-      {error ? <div className="mx-6 mt-4 rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">{error}</div> : null}
+      {error ? <div className="mx-6 mt-4 border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</div> : null}
 
       {/* --- Paso 1: contar. El sistema no muestra NADA todavía. --- */}
       {paso === 1 ? (
         <div className="p-6">
-          <p className="mb-1 font-medium">Cuenta toda la plata del cajón y escribe el total.</p>
+          <p className="text-xl font-extrabold">Cuenta toda la plata del cajón y escribe el total.</p>
           <input
             ref={campo}
             value={conPuntos(contado)}
@@ -469,14 +598,33 @@ function Cerrar({
             }}
             inputMode="numeric"
             placeholder="$0"
-            className="fh-num mt-2 min-h-touch w-80 rounded-[var(--fh-radio)] border border-line bg-bg px-4 text-4xl font-black"
+            className="fh-num mt-4 h-24 w-[420px] max-w-full border-2 border-ink bg-bg px-4 font-mono text-[52px] font-semibold"
           />
-          <p className="mt-2 text-sm text-ink-soft">
-            Sin puntos. El sistema no te muestra cuánto debería haber hasta que escribas tu conteo: así el número
-            que anotas es el que contaste, no el que esperabas.
+          <div className="mt-3 grid w-[420px] max-w-full grid-cols-3 gap-1.5">
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "←"].map((t) => (
+              <button
+                key={t}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => tecla(t)}
+                className="h-14 border border-line-key bg-surface font-mono text-xl font-semibold hover:bg-bg"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 max-w-[560px] text-sm leading-[1.55] text-ink-soft">
+            Sin puntos. El sistema no te muestra cuánto debería haber hasta que escribas tu conteo: así el número que
+            anotas es el que contaste, no el que esperabas.
           </p>
           <div className="mt-6 flex gap-3">
-            <Boton variante="principal" disabled={contado === ""} onClick={() => setPaso(2)} tecla="F2">
+            <Boton
+              variante="principal"
+              disabled={contado === ""}
+              onClick={() => setPaso(2)}
+              tecla="F2"
+              className="h-[62px] px-6 text-lg"
+            >
               Continuar
             </Boton>
             <Boton variante="fantasma" onClick={onCancelar}>
@@ -489,18 +637,28 @@ function Cerrar({
       {/* --- Paso 2: confirmar antes de comprometerlo --- */}
       {paso === 2 ? (
         <div className="p-6">
-          <div className="text-sm text-ink-soft">Contaste</div>
-          <div className="fh-num text-5xl font-black tracking-tight">{formatCLP(Number(contado || 0))}</div>
-          <p className="mt-4 max-w-lg text-sm text-ink-soft">
-            ¿Está bien contado? <strong className="font-semibold text-ink">Este es el punto de no retorno</strong>:
-            al continuar se cierra la caja, se compara con lo que el sistema esperaba y la diferencia queda
-            registrada. Si tienes dudas, vuelve y cuenta otra vez.
-          </p>
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-ink-soft">Contaste</div>
+          <div className="fh-num text-[76px] font-black leading-none tracking-[-0.035em]">
+            {formatCLP(Number(contado || 0))}
+          </div>
+          <div className="mt-6 max-w-[560px] border-l-4 border-accent bg-accent-tint px-4 py-3">
+            <p className="font-bold">Este es el punto de no retorno.</p>
+            <p className="mt-1 text-sm leading-[1.55]">
+              Al continuar se cierra la caja, se compara con lo que el sistema esperaba y la diferencia queda
+              registrada. Si tienes dudas, vuelve y cuenta otra vez.
+            </p>
+          </div>
           <div className="mt-6 flex gap-3">
-            <Boton variante="principal" disabled={enviando} onClick={verDiferencia} tecla="F2">
+            <Boton
+              variante="principal"
+              disabled={enviando}
+              onClick={verDiferencia}
+              tecla="F2"
+              className="h-[62px] px-6 text-lg"
+            >
               Ver diferencia
             </Boton>
-            <Boton variante="fantasma" onClick={() => setPaso(1)} tecla="F4">
+            <Boton onClick={() => setPaso(1)} tecla="F4" className="h-[62px] px-6">
               Volver a contar
             </Boton>
           </div>
@@ -518,7 +676,7 @@ function Cerrar({
           {cierre.estado.franja ? <div className="fh-franja h-3" aria-hidden /> : null}
 
           <div className="p-6">
-            <dl className="max-w-lg">
+            <dl className="max-w-[560px]">
               <div className="flex justify-between py-1">
                 <dt className="text-ink-soft">Debería haber</dt>
                 <dd className="fh-num font-semibold">{formatCLP(cierre.esperado)}</dd>
@@ -527,27 +685,37 @@ function Cerrar({
                 <dt className="text-ink-soft">Contaste</dt>
                 <dd className="fh-num font-semibold">{formatCLP(cierre.contado)}</dd>
               </div>
-              <div className="mt-2 flex items-center justify-between border-t border-line pt-3">
-                <dt className="font-bold uppercase tracking-wide">Diferencia</dt>
-                <dd className="fh-num text-4xl font-black">{formatCLP(cierre.diferencia)}</dd>
+              <div className="mt-3 flex items-center justify-between border-t-2 border-ink pt-3">
+                <dt className="text-[11px] font-extrabold uppercase tracking-[0.14em]">Diferencia</dt>
+                <dd
+                  className={`fh-num text-[52px] font-black leading-none tracking-[-0.03em] ${
+                    cierre.estado.tono === "ok"
+                      ? "text-ok-ink"
+                      : cierre.estado.tono === "warn"
+                        ? "text-warn-ink"
+                        : "text-accent-ink"
+                  }`}
+                >
+                  {formatCLP(cierre.diferencia)}
+                </dd>
               </div>
             </dl>
 
             {/* Color Y palabra, siempre. En el papel del arqueo no hay color. */}
-            <div className="mt-3">
+            <div className="mt-4">
               <Chip tono={cierre.estado.tono}>{cierre.estado.palabra}</Chip>
             </div>
-            <p className="mt-3 max-w-lg text-sm">{cierre.estado.mensaje}</p>
+            <p className="mt-3 max-w-[560px] text-[15px] leading-[1.55]">{cierre.estado.mensaje}</p>
 
-            <label className="mt-5 block max-w-lg">
-              <span className="mb-1 block text-sm font-medium text-ink-soft">
+            <label className="mt-5 block max-w-[560px]">
+              <span className="mb-1.5 block text-[11px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">
                 Nota {cierre.estado.tono === "error" ? "" : "(opcional)"}
               </span>
               <input
                 value={nota}
                 onChange={(e) => setNota(e.target.value)}
                 placeholder="Qué pasó, si lo sabes"
-                className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+                className="min-h-touch w-full border border-line-field bg-surface px-3.5"
               />
             </label>
 

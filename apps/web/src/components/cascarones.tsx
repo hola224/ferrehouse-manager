@@ -13,7 +13,7 @@
  * El administrador cruza de un lado al otro con «Ir a vender» y con la celda
  * ADMIN del riel: es la misma persona, no dos cuentas.
  */
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { NavLink, Link, useLocation } from "react-router-dom";
 import {
   Banknote,
@@ -68,6 +68,21 @@ export function leerModo(): Modo {
 
 function fijarModo(m: Modo) {
   localStorage.setItem(CLAVE_MODO, m);
+}
+
+/**
+ * En qué cascarón está dibujada la pantalla.
+ *
+ * Catálogo y Caja se dibujan en los dos, y no son la misma pantalla en cada
+ * uno: en el mesón, Caja se titula a sí misma porque el riel no tiene barra de
+ * título; en el backoffice, el título ya lo pone el cascarón y repetirlo es
+ * ruido. Preguntarlo acá evita que cada pantalla recalcule por su cuenta la
+ * regla de `cascaronDe` en `App.tsx` y que las dos se desincronicen.
+ */
+const CascaronCtx = createContext<Modo>("admin");
+
+export function useCascaron(): Modo {
+  return useContext(CascaronCtx);
 }
 
 // ---------------------------------------------------------------- datos vivos
@@ -263,6 +278,7 @@ export function PosShell({ children }: { children: ReactNode }) {
   const estacion = useNombreDeEstacion(usuario?.stationId);
 
   return (
+    <CascaronCtx.Provider value="pos">
     <div className="flex h-screen flex-col overflow-hidden">
       <header className="flex h-14 shrink-0 items-center bg-ink text-surface">
         <div className="grid h-14 w-14 shrink-0 place-items-center bg-accent">
@@ -327,6 +343,7 @@ export function PosShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </CascaronCtx.Provider>
   );
 }
 
@@ -402,6 +419,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   }).format(new Date());
 
   return (
+    <CascaronCtx.Provider value="admin">
     <div className="flex h-screen overflow-hidden">
       <aside className="flex w-[236px] shrink-0 flex-col bg-ink text-shell-text">
         <div className="flex h-[72px] shrink-0 items-center gap-3 bg-accent px-4 text-surface">
@@ -500,5 +518,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </main>
       </div>
     </div>
+    </CascaronCtx.Provider>
   );
 }
