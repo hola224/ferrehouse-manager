@@ -11,12 +11,12 @@
  * de hoy— y una nota al pie cuesta una línea y evita una decisión equivocada.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { Boton, Campo, Chip, Tarjeta } from "@/components/ui";
 import { formatCLP, formatCostoMilli, formatHora } from "@ferrehouse/shared";
 
-type Ver = "ventas" | "margenes" | "inventario" | "cajas" | "alertas";
+type Ver = "ventas" | "margenes" | "inventario" | "cajas";
 
 type Ventas = {
   desde: string;
@@ -112,30 +112,7 @@ const PESTANAS: Array<{ clave: Ver; texto: string }> = [
   { clave: "margenes", texto: "Márgenes" },
   { clave: "inventario", texto: "Inventario valorizado" },
   { clave: "cajas", texto: "Cajas" },
-  { clave: "alertas", texto: "Alertas" },
 ];
-
-type Alerta = {
-  id: number | null;
-  type: string;
-  severity: "CRITICAL" | "WARNING" | "INFO";
-  message: string;
-  createdAt: string;
-  ref: { tipo: "PRODUCTO" | "ESPERA"; id: number; texto: string } | null;
-};
-
-const TIPO_TEXTO: Record<string, string> = {
-  LOW_STOCK: "Stock bajo",
-  OUT_OF_STOCK: "Quiebre",
-  CASH_DIFFERENCE: "Diferencia de caja",
-  STOCK_RECONCILE_DIFF: "Descuadre del libro",
-  SUSPENDED_SALE_STALE: "Espera añeja",
-  NO_ROTATION: "Sin rotación",
-  // Las del Sprint 7. Sin estas entradas la pantalla mostraba el nombre crudo
-  // del tipo, que es jerga de base de datos en la cara del administrador.
-  BACKUP_STALE: "Respaldo atrasado",
-  BACKUP_COPY: "Copia del respaldo",
-};
 
 /** "30 de julio de 2026". En pantalla nunca va una fecha en formato de cable. */
 function fechaTexto(iso: string): string {
@@ -180,10 +157,6 @@ export function Reportes() {
   const [ventas, setVentas] = useState<Ventas | null>(null);
   const [margenes, setMargenes] = useState<Margenes | null>(null);
   const [inventario, setInventario] = useState<Inventario | null>(null);
-  const [alertas, setAlertas] = useState<{ alertas: Alerta[]; criticas: number } | null>(null);
-  const [resolviendo, setResolviendo] = useState<number | null>(null);
-  const [reconciliando, setReconciliando] = useState(false);
-  const [reconciliacion, setReconciliacion] = useState<{ mensaje: string; divergencias: number } | null>(null);
   const [cargando, setCargando] = useState(false);
   const [sesiones, setSesiones] = useState<Sesion[] | null>(null);
   const [avisoCaja, setAvisoCaja] = useState<string | null>(null);
@@ -217,22 +190,6 @@ export function Reportes() {
     }
   }
 
-  async function reconciliar() {
-    setReconciliando(true);
-    try {
-      const r = await api<{ mensaje: string; divergencias: number }>("/stock/reconcile", {
-        method: "POST",
-        body: "{}",
-      });
-      setReconciliacion(r);
-      await cargar();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "No se pudo reconciliar");
-    } finally {
-      setReconciliando(false);
-    }
-  }
-
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
@@ -243,8 +200,7 @@ export function Reportes() {
       else if (ver === "inventario") setInventario(await api<Inventario>(`/reports/inventory?fecha=${hasta}`));
       // Sin rango de fechas: el historial de cajas se mira hacia atrás desde
       // hoy, y quien lo abre busca «el cierre del martes», no un período.
-      else if (ver === "cajas") setSesiones((await api<{ sesiones: Sesion[] }>("/cash/sessions?limit=60")).sesiones);
-      else setAlertas(await api<{ alertas: Alerta[]; criticas: number }>("/alerts"));
+      else setSesiones((await api<{ sesiones: Sesion[] }>("/cash/sessions?limit=60")).sesiones);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cargar el reporte");
     } finally {
@@ -272,7 +228,7 @@ export function Reportes() {
             </Boton>
           ))}
         </nav>
-        <div className={`flex items-end gap-2 ${ver === "alertas" || ver === "cajas" ? "hidden" : ""}`}>
+        <div className={`flex items-end gap-2 ${ver === "cajas" ? "hidden" : ""}`}>
           {ver !== "inventario" ? (
             <Campo etiqueta="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
           ) : null}
@@ -609,112 +565,6 @@ export function Reportes() {
         </div>
       ) : null}
 
-      {/* ---------------- Panel de alertas (5.5 y 5.6) ---------------- */}
-      {ver === "alertas" && alertas ? (
-        <div className="grid gap-4">
-          {/*
-            La reconciliación vive acá y no en un menú de mantención escondido:
-            su resultado ES una alerta, y este es el lugar donde el
-            administrador viene a ver si algo anda mal.
-          */}
-          <div className="flex flex-wrap items-center gap-3 rounded-[var(--fh-radio)] border border-line bg-surface p-4 text-sm">
-            <span className="font-semibold uppercase tracking-wide text-ink-soft">Libro de stock</span>
-            <span className="flex-1 text-ink-soft">
-              Compara el saldo guardado contra la suma del libro de movimientos, que es la verdad. Si no cuadran,
-              corrige el saldo y deja una alerta por cada producto.
-            </span>
-            <Boton onClick={() => void reconciliar()} disabled={reconciliando}>
-              {reconciliando ? "Revisando…" : "Revisar el libro"}
-            </Boton>
-          </div>
-
-          {reconciliacion ? (
-            <p
-              className={`rounded-[var(--fh-radio)] border p-3 text-sm ${
-                reconciliacion.divergencias === 0 ? "border-ok/40 bg-ok/10" : "border-error/40 bg-error/10"
-              }`}
-            >
-              {reconciliacion.mensaje}
-            </p>
-          ) : null}
-
-          {alertas.alertas.length === 0 ? (
-            <Tarjeta titulo="Sin alertas">
-              <p className="text-sm text-ink-soft">
-                Nada bajo el mínimo, nada agotado y ninguna venta en espera olvidada. El panel vacío es la buena
-                noticia.
-              </p>
-            </Tarjeta>
-          ) : (
-            <ul className="divide-y divide-line rounded-[var(--fh-radio)] border border-line bg-surface">
-              {alertas.alertas.map((a) => (
-                <li key={a.id ?? `${a.type}-${a.ref?.id}`} className="flex items-center gap-3 px-4 py-3">
-                  <span
-                  aria-hidden
-                  className={`w-3 shrink-0 text-center ${a.severity === "CRITICAL" ? "text-error" : "text-warn"}`}
-                >
-                    {a.severity === "CRITICAL" ? "●" : "▲"}
-                  </span>
-                  <span className="w-40 shrink-0 text-xs font-semibold uppercase tracking-wide text-ink-soft">
-                    {TIPO_TEXTO[a.type] ?? a.type}
-                  </span>
-                  <span className="flex-1 text-sm">{a.message}</span>
-                  {a.ref?.tipo === "PRODUCTO" ? (
-                    <Link
-                      to={`/kardex?producto=${a.ref.id}`}
-                      className="fh-num text-xs text-ink-soft underline underline-offset-4"
-                    >
-                      {a.ref.texto}
-                    </Link>
-                  ) : null}
-                  <div className="w-28 shrink-0 text-right">
-                    {/*
-                      La acción se elige por TIPO y no por «no tiene id». Esta
-                      pantalla tenía la misma falla que el panel: las alertas
-                      derivadas de respaldo mostraban un «Ver espera» que no
-                      lleva a ninguna parte. Se corrigió en el panel el mismo
-                      día y no llegó acá — es la lección del Sprint 6 otra vez:
-                      un arreglo aplicado a una copia no alcanza a la otra.
-                    */}
-                    {a.type.startsWith("BACKUP") ? (
-                      <Link to="/" className="text-sm underline underline-offset-4">
-                        Ver respaldo
-                      </Link>
-                    ) : a.type === "SUSPENDED_SALE_STALE" ? (
-                      <Link to="/venta" className="text-sm underline underline-offset-4">
-                        Ver espera
-                      </Link>
-                    ) : a.id === null ? null : (
-                      <button
-                        onClick={async () => {
-                          setResolviendo(a.id!);
-                          try {
-                            await api(`/alerts/${a.id}/resolve`, { method: "POST", body: "{}" });
-                            await cargar();
-                          } catch (e) {
-                            setError(e instanceof ApiError ? e.message : "No se pudo resolver la alerta");
-                          } finally {
-                            setResolviendo(null);
-                          }
-                        }}
-                        disabled={resolviendo === a.id}
-                        className="text-sm underline underline-offset-4 hover:text-ink disabled:opacity-40"
-                      >
-                        {resolviendo === a.id ? "…" : "Resolver"}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          <Nota>
-            Las de stock se cierran solas cuando el producto vuelve a estar sobre su mínimo: no hay que acordarse de
-            limpiarlas. Resolverlas a mano sirve para callarlas hasta el próximo movimiento de ese producto — «ya lo
-            pedí». La de venta en espera no se resuelve marcándola: se resuelve cobrando la espera o descartándola.
-          </Nota>
-        </div>
-      ) : null}
     </div>
   );
 }

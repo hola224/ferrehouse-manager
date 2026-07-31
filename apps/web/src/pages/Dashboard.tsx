@@ -324,8 +324,11 @@ export function Dashboard() {
             {alertas.total > alertas.primeras.length
               ? `Se muestran las ${alertas.primeras.length} más graves de ${alertas.total}. `
               : ""}
-            <Link to="/reportes?ver=alertas" className="underline underline-offset-4">
-              Ver el panel completo
+            {/* El destino cambió: las alertas dejaron de ser una pestaña de
+                Reportes y tienen pantalla propia (ADR 007). El enlace dice
+                CUÁNTAS son, que es lo que decide si vale la pena entrar. */}
+            <Link to="/alertas" className="underline underline-offset-4">
+              {alertas.total === 1 ? "Ver la alerta" : `Ver las ${alertas.total} alertas`}
             </Link>
           </p>
         </section>
