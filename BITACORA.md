@@ -404,3 +404,59 @@ definida y eso no bastaba: estaba definida, y aun así no pintaba.
 Al vendedor se le imprimía "F6 imprimir etiqueta", pero el servidor exige
 administrador para encolar una etiqueta. Un atajo que responde "no autorizado"
 es peor que ninguno. Al vendedor le quedan ↑↓ y Enter.
+
+---
+
+## 2026-07-30 — Sprint 2: caja, capa de servidor
+
+Las 7 tareas de servidor entregadas. **218 tests en verde**, 45 nuevos. La
+pantalla de cierre (2.8) es clave y espera el ok al wireframe.
+
+El repositorio quedó publicado: `hola224/ferrehouse-manager`, privado, con
+`main` y `sprint-1-catalogo`. Ninguna de las quince claves SSH de la máquina
+servía —todas son de despliegue, atadas a un repositorio ya existente—, así que
+se generó una propia siguiendo la misma convención.
+
+### Lo que se decidió construyendo
+
+1. **La apertura duplicada la rechaza la base de datos, y el servidor solo
+   traduce el error a castellano.** No hay chequeo previo, y es deliberado: con
+   dos terminales, entre el SELECT y el INSERT cabe una segunda apertura. El
+   `@unique` sobre `openStationId` no tiene esa ventana. El código atrapa el
+   P2002 y responde nombrando a quién dejó la caja abierta.
+
+2. **El signo lo pone el servidor.** El cliente manda tipo y monto positivo. Si
+   pudiera mandar `-5000` en un ingreso, un error de tipeo se convertiría en un
+   retiro sin motivo registrado, que es exactamente lo que la tarea 2.3 quiere
+   impedir.
+
+3. **No se puede retirar más de lo que hay.** No es una preferencia: con saldo
+   esperado negativo, la diferencia del arqueo pasa a compararse contra un
+   número imposible y deja de medir nada.
+
+4. **El movimiento de cierre lleva la diferencia como monto**, de modo que el
+   saldo final del libro sea lo que hay de verdad en el cajón. Si cuadra, el
+   monto es cero. Un auditor quiere ver la realidad, no lo que el sistema creía.
+
+5. **Gana el error de fondo, no el primero que encuentra la validación.** Un
+   test lo destapó: con la caja cerrada y el motivo en blanco, la respuesta era
+   "escribe el motivo". El vendedor lo escribiría y recién entonces se enteraría
+   de que la caja estaba cerrada. Ahora la sesión se comprueba antes de validar
+   el cuerpo.
+
+6. **Que sobre plata descuadra igual que si faltara.** Sobrar significa que algo
+   no se registró —una venta cobrada y no ingresada, un vuelto mal dado— y es
+   tan sintomático como que falte. El umbral se compara en valor absoluto, y el
+   mensaje nombra la causa probable.
+
+7. **El papel y la pantalla dicen lo mismo**, porque los dos llaman a
+   `estadoArqueo` de `shared`. En papel térmico no hay color, así que la palabra
+   no es un complemento del color: es la única señal que queda.
+
+### Pendiente para Cristian
+
+- **Aprobar el wireframe del cierre de caja (2.8).** Trae una pregunta que no me
+  corresponde decidir: el brief dice mostrar el monto esperado antes de contar,
+  pero en manejo de efectivo lo habitual es el **conteo ciego**, porque ver el
+  número esperado ancla y la tentación de teclearlo es real. Con una persona por
+  turno el riesgo es bajo; si no dice nada, queda el orden del brief.

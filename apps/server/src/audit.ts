@@ -28,7 +28,10 @@ export type AuditAction =
   | "DISCOUNT_OVERRIDE"
   | "STOCK_OVERRIDE"
   | "CASH_MOVEMENT"
-  | "CASH_SESSION_CLOSED";
+  | "CASH_SESSION_OPENED"
+  | "CASH_SESSION_CLOSED"
+  | "STATION_CREATED"
+  | "STATION_UPDATED";
 
 export async function audit(
   entrada: {

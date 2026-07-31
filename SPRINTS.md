@@ -127,25 +127,54 @@ en el Sprint 3 con el ticket, y el lector es físico.
 
 ---
 
-## Sprint 2 — Caja (Semana 3)
+## Sprint 2 — Caja (Semana 3) 🟡 servidor entregado el 2026-07-30
+
+> Las 7 tareas de servidor están hechas y probadas. **La 2.8 espera el ok al
+> wireframe** ([`.agents/WIREFRAMES/2.8-cierre-de-caja.md`](.agents/WIREFRAMES/2.8-cierre-de-caja.md)),
+> que además trae una pregunta: si el vendedor debe ver el monto esperado antes
+> de contar, o si conviene el conteo ciego.
 
 **Objetivo:** el ciclo de la plata completo, sin ventas todavía. Apertura → movimientos → cierre con arqueo.
 
 | # | Tarea | Referencia |
 |---|---|---|
-| 2.1 | Apertura de sesión de caja. **Una sola sesión abierta por estación la impone la BD** (`openStationId @unique`), no un chequeo previo | POS-01, ADR-004 |
-| 2.2 | `CashMovement` con `balanceBefore`/`balanceAfter` en cada operación | 2.3 de USE-CASES |
-| 2.3 | Retiros e ingresos de efectivo con motivo y registro de auditoría | POS-13 |
-| 2.4 | Cierre: el sistema calcula lo esperado, el vendedor cuenta, la diferencia queda registrada. **Cerrar pone `openStationId = NULL` y `closedAt` en la misma sentencia** | POS-12 |
-| 2.5 | Reporte de cierre imprimible (cola `PrintJob` hacia `Station.printerTarget`, puede salir a archivo si la impresora no está integrada) | — |
-| 2.6 | Alerta si la diferencia supera `alert.cashDiffLimit` | ALE-03 |
-| 2.7 | CRUD mínimo de estaciones (admin): nombre, ubicación, destino de impresión | ADR-004 |
-| 2.8 | **Pantalla clave del sprint: cierre de caja en 3 pasos.** El sistema muestra lo esperado → el vendedor cuenta e ingresa → la diferencia aparece con color **y palabra**. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
+| 2.1 ✅ | Apertura de sesión de caja. **Una sola sesión abierta por estación la impone la BD** (`openStationId @unique`), no un chequeo previo | POS-01, ADR-004 |
+| 2.2 ✅ | `CashMovement` con `balanceBefore`/`balanceAfter` en cada operación | 2.3 de USE-CASES |
+| 2.3 ✅ | Retiros e ingresos de efectivo con motivo y registro de auditoría | POS-13 |
+| 2.4 ✅ | Cierre: el sistema calcula lo esperado, el vendedor cuenta, la diferencia queda registrada. **Cerrar pone `openStationId = NULL` y `closedAt` en la misma sentencia** | POS-12 |
+| 2.5 ✅ | Reporte de cierre imprimible (cola `PrintJob` hacia `Station.printerTarget`, puede salir a archivo si la impresora no está integrada) | — |
+| 2.6 ✅ | Alerta si la diferencia supera `alert.cashDiffLimit` | ALE-03 |
+| 2.7 ✅ | CRUD mínimo de estaciones (admin): nombre, ubicación, destino de impresión | ADR-004 |
+| 2.8 ⏸ | **Pantalla clave del sprint: cierre de caja en 3 pasos.** El sistema muestra lo esperado → el vendedor cuenta e ingresa → la diferencia aparece con color **y palabra**. La franja diagonal amarillo/negro se reserva para el banner de caja descuadrada. Wireframe aprobado antes de codear | UI-BRIEF §5.2 |
 
 **Invariantes que estrena este sprint:**
 - `closedAt IS NULL ⟺ openStationId IS NOT NULL` — **lo impone la base** vía los `CHECK` de la tarea 0.2, no el código. Es la única señal de abierta/cerrada: no hay campo `status`.
 
 **Demo de cierre:** turno completo simulado: abrir con $50.000, retirar $10.000 para el flete, cerrar contando — la diferencia aparece sola. Intentar abrir una segunda caja en la misma estación y ver que el sistema la rechaza.
+
+**Cómo va:** 7 de 8 tareas. **218 tests en verde en el repo**, 45 de ellos
+nuevos. La demo de cierre está escrita como test de punta a punta —abrir con
+$50.000, rechazo de la segunda apertura, retiro de $10.000 por el flete, contar
+$39.500 y ver aparecer la diferencia—, así que no depende de que alguien se
+acuerde de correrla a mano.
+
+**Decisiones que se tomaron construyendo:**
+- **La apertura duplicada la rechaza la base, y el servidor solo traduce el
+  error.** No hay chequeo previo, a propósito: entre el SELECT y el INSERT cabe
+  una segunda apertura desde el otro terminal. El mensaje nombra a quién la
+  abrió.
+- **El signo de un movimiento lo pone el servidor, no el cliente.** Si el
+  cliente pudiera mandar `-5000` en un ingreso, un tipeo en la pantalla se
+  convertiría en un retiro sin motivo registrado.
+- **No se puede retirar más de lo que hay.** Un saldo esperado negativo hace que
+  la diferencia del arqueo deje de significar algo.
+- **El movimiento de cierre lleva la diferencia como monto**, para que el libro
+  termine en lo que hay de verdad en el cajón y no en lo que el sistema creía.
+- **Gana el error de fondo.** Con la caja cerrada y el motivo en blanco, el
+  mensaje dice que la caja está cerrada — no "escribe el motivo", que haría
+  escribirlo para recién entonces enterarse.
+- **Que sobre plata descuadra igual que si faltara**: significa que algo no se
+  registró. El umbral se compara en valor absoluto.
 
 ---
 

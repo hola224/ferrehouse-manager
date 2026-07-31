@@ -6,3 +6,4 @@ export * from "./sku.js";
 export * from "./catalog.js";
 export * from "./code128.js";
 export * from "./atajos.js";
+export * from "./cash.js";

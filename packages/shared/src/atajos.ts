@@ -34,6 +34,11 @@ export const ATAJOS: readonly Atajo[] = [
   { tecla: "F6", etiqueta: "F6", accion: "Imprimir etiqueta", donde: "catalogo" },
   { tecla: "F8", etiqueta: "F8", accion: "Editar", donde: "catalogo" },
 
+  // Caja (Sprint 2)
+  { tecla: "F2", etiqueta: "F2", accion: "Cerrar caja", donde: "caja" },
+  { tecla: "F4", etiqueta: "F4", accion: "Retiro", donde: "caja" },
+  { tecla: "F6", etiqueta: "F6", accion: "Ingreso", donde: "caja" },
+
   // Venta (Sprint 3). Se listan desde ya para que nadie reasigne una tecla
   // creyendo que está libre.
   { tecla: "F2", etiqueta: "F2", accion: "Cobrar", donde: "venta" },

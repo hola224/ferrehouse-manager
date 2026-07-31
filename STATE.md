@@ -80,9 +80,13 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
 idempotente, auth por PIN con roles, fundación visual y CI. 61 tests en verde.
 Detalle en [`BITACORA.md`](BITACORA.md).
 
-**Sprint actual: 1 — Catálogo.** Capa de servidor entregada el 2026-07-30 (8 de
-9 tareas, 150 tests en verde). **La interfaz está detenida esperando el ok al
-wireframe de la pantalla de búsqueda/catálogo**, que es una de las cinco clave.
+**Sprint 1 — Catálogo: servidor y pantalla clave entregados el 2026-07-30.**
+Quedan sin interfaz, con sus endpoints listos y probados: alta de producto,
+importación y usuarios.
+
+**Sprint actual: 2 — Caja.** Las 7 tareas de servidor entregadas el 2026-07-30
+(218 tests en verde). **La pantalla de cierre espera el ok al wireframe**
+([`.agents/WIREFRAMES/2.8-cierre-de-caja.md`](.agents/WIREFRAMES/2.8-cierre-de-caja.md)).
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.
