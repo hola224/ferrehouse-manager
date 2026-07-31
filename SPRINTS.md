@@ -325,7 +325,7 @@ servidor. Cuatro defectos corregidos que los tests no veían — están en
 
 ---
 
-## Sprint 7 — Instalación y marcha blanca (Semana 8)
+## Sprint 7 — Instalación y marcha blanca (Semana 8) 🟡 lo que se puede hacer sin la tienda, 2026-07-31
 
 **Objetivo:** que sobreviva en la tienda sin nadie técnico al lado.
 
@@ -338,6 +338,34 @@ servidor. Cuatro defectos corregidos que los tests no veían — están en
 | 7.5 | Terminales secundarios: acceso por navegador, acceso directo en escritorio, **selección de estación** | ADR-004 |
 | 7.6 | Marcha blanca: 3-5 días operando en paralelo al método actual, con lista de fricciones | — |
 | 7.7 | Capacitación al vendedor: guía de 1 página con los 5 flujos del día | — |
+
+**Cómo va (2026-07-31):** 7.1, 7.2, 7.3, 7.4 y 7.7 entregadas. **503 tests en
+verde** (200 en `shared`, 296 en `server`, 7 en `web`), 47 nuevos.
+
+El respaldo corre solo —una vez al día y también al encender si el último tiene
+más de 24 horas—, se verifica apenas se produce, se copia a una carpeta externa
+configurable desde el panel y rota a 30 días guardando siempre los 7 más nuevos.
+La restauración es un programa aparte que se niega a correr con el servidor
+arriba.
+
+**La 7.3 se probó de verdad**, que es lo que ella misma exige: el test borra la
+base —el archivo, su `-wal` y su `-shm`— y la recupera del respaldo, comprobando
+que están los datos de antes y no los de después, que el modo WAL vuelve y que
+el servidor pasa sus autochequeos contra la base restaurada.
+
+**Lo que NO se probó:** los `.bat` de `instalacion/`, porque no hay una máquina
+Windows. Es la única parte del sprint escrita a ciegas y está separada en su
+propia carpeta, con su README al lado.
+
+**7.5 a medias, por decisión.** La selección de estación al entrar ya existía
+desde el Sprint 2 y el acceso directo de los terminales está documentado; falta
+la pantalla de administración de estaciones, cuyo endpoint existe desde la 2.7.
+Es la pantalla de menor valor del sprint y arrastra la lista del brief §6.
+
+**7.6 necesita la tienda.** Y antes necesita otra cosa: **no hay pantalla de
+devoluciones ni de anulaciones**. El endpoint existe y está probado desde el
+Sprint 4, pero una ferretería tiene una devolución en la primera semana, así que
+la marcha blanca no puede empezar sin esa pantalla.
 
 **Cierre del proyecto v1:** una semana de operación real sin intervención técnica.
 
@@ -354,7 +382,7 @@ servidor. Cuatro defectos corregidos que los tests no veían — están en
 | 4 | 5 | Kardex confiable + compras + devoluciones parciales |
 | 5 | 6 | Reportes + alertas |
 | 6 | 7 | WhatsApp post-venta 🟡 (falta vincular el número) |
-| 7 | 8 | Instalado y en marcha blanca |
+| 7 | 8 | Instalado y en marcha blanca 🟡 (respaldo probado; falta la tienda) |
 
 **Total: 8 semanas** hasta marcha blanca. Es un plan de mejor caso: lo realista es que S3 y S4 se coman una semana extra entre los dos, porque ahí viven el hardware y los casos de uso imprevistos. Presupuestar 9-10 semanas de calendario.
 

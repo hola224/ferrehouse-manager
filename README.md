@@ -50,3 +50,14 @@ pnpm dev                              # servidor en :3000, web en :5173
 | `pnpm check:tokens` | Falla si hay un color fuera de `tokens.css` |
 | `pnpm test` | Tests de todos los paquetes |
 | `pnpm db:seed` | Siembra idempotente |
+| `pnpm --filter @ferrehouse/server db:backup` | Respalda ahora (se puede con la tienda vendiendo) |
+| `pnpm --filter @ferrehouse/server db:restore --lista` | Ver los respaldos; `--ultimo` restaura el más reciente |
+
+**Instalar en la tienda:** [`instalacion/README.md`](instalacion/README.md) —
+servicio de Windows, red, respaldo y restauración. La guía de una página para el
+vendedor está en [`instalacion/GUIA-VENDEDOR.md`](instalacion/GUIA-VENDEDOR.md).
+
+**El respaldo no es copiar `ferrehouse.db`.** La base corre en modo WAL: lo
+recién escrito vive en el `-wal` hasta el checkpoint, y copiar solo el `.db` se
+lleva una base vieja y consistente, que abre sin errores y sin las últimas
+ventas. Se usa `VACUUM INTO`, y hay un test que hace la comparación.

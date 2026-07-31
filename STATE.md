@@ -146,6 +146,24 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
     gastar uno por pasada dejaría todo en FALLIDO tras dos horas sin internet y
     nada saldría al volver la conexión.
 
+30. **El respaldo se toma con `VACUUM INTO`, se verifica antes de darlo por
+    bueno, y lo que lo convierte en respaldo es la copia afuera.** Copiar
+    `ferrehouse.db` se lleva una base **vieja y consistente** —lo recién escrito
+    está en el `-wal`, medido: 340 KB de base contra 2,4 MB de WAL—, que es la
+    peor combinación porque abre sin un solo error y le faltan las últimas
+    ventas. Cada respaldo se abre y se le corre `integrity_check` apenas se
+    produce: uno corrupto que se queda hace que la rotación lo cuente como bueno
+    y el panel diga "respaldado hoy". Y un archivo en el mismo disco no protege
+    del caso declarado —se perdió el PC—, solo del "borré algo sin querer".
+31. **Restaurar es un programa aparte, nunca un botón del servidor**, y sigue
+    tres reglas: se verifica el respaldo **antes** de tocar la base viva, la base
+    que había **se aparta con fecha en vez de borrarse**, y se apartan también su
+    `-wal` y su `-shm` —SQLite le aplicaría un WAL viejo encima a la base
+    restaurada y quedaría abriendo bien con datos mezclados de dos bases
+    distintas—. Además `VACUUM INTO` produce un archivo que **no está en WAL**:
+    el modo es por archivo, así que el arranque lo vuelve a activar y hay un test
+    que lo comprueba.
+
 **Precisión de la decisión 17 (Sprint 5):** al vendedor tampoco le viaja **la
 venta del día**, no solo el margen. El arqueo es a ciegas y casi toda la venta
 es efectivo, así que decirle cuánto se vendió es decirle cuánto debería tener el
@@ -209,15 +227,28 @@ por API. **394 tests en verde.**
 **2026-07-31 — Sprint 6 (WhatsApp), todo menos el transporte.** Entregadas 6.1,
 6.3, 6.4, 6.5 y 6.6; de la 6.2, todo salvo el adaptador. **456 tests en verde.**
 
-**Sprint actual: sigue el 6, y no se puede cerrar sin alguien presente.** Falta
-un número dedicado, `pnpm add whatsapp-web.js`, escribir el adaptador contra
-`apps/server/src/whatsapp/transporte.ts` y **escanear el QR con ese teléfono**.
-Hasta entonces el sistema se comporta como corresponde: dice "Sin vincular",
-guarda los clientes, acumula la cola sin perder nada y respeta las bajas.
+**2026-07-31 — Sprint 7 (instalación), lo que se puede hacer sin la tienda.**
+Entregadas 7.1, 7.2, 7.3, 7.4 y 7.7. **503 tests en verde.** El respaldo diario
+con verificación, copia externa configurable y rotación con piso; la
+restauración probada borrando la base de verdad; los scripts de NSSM, el
+checklist de instalación y la guía de una página para el vendedor.
 
-Si se prefiere avanzar sin esperar a nadie, el **Sprint 7** (servicio Windows,
-respaldo automático y restauración probada) se puede hacer entero solo, y la
-7.3 —"si no se prueba, no existe"— se puede probar de verdad.
+**Sprint actual: quedan abiertos el 6 y el 7, y los dos necesitan a alguien
+presente.**
+
+- **Sprint 6** — falta un número dedicado, `pnpm add whatsapp-web.js`, el
+  adaptador contra `apps/server/src/whatsapp/transporte.ts` y **escanear el QR
+  con ese teléfono**. Hasta entonces el sistema se comporta como corresponde:
+  dice "Sin vincular", guarda los clientes, acumula la cola sin perder nada y
+  respeta las bajas.
+- **Sprint 7** — falta correr los `.bat` en un Windows de verdad (no hay máquina
+  acá: es lo único del sprint escrito a ciegas), la pantalla de estaciones y la
+  marcha blanca.
+
+**Antes de la marcha blanca hay que construir la pantalla de devoluciones y
+anulaciones.** El endpoint existe y está probado desde el Sprint 4, pero no hay
+interfaz, y una ferretería tiene una devolución en la primera semana. Es lo
+único del backlog que bloquea la 7.6, y se puede hacer sin nadie presente.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

@@ -1085,3 +1085,132 @@ crudo**, no un dibujo —guardarlo tal cual deja al administrador mirando una
 línea que ningún teléfono escanea—, y el JID se resuelve con `getNumberId()`,
 nunca concatenando `@c.us`. Después de eso la demo se corre entera, incluida la
 mitad de "se corta el internet": la cola ya está construida para eso.
+
+---
+
+## 2026-07-31 — Sprint 7 (instalación): el respaldo y la restauración probada
+
+Entregadas **7.1, 7.2, 7.3, 7.4 y 7.7**. La 7.5 quedó a medias por decisión, la
+7.6 necesita la tienda. **503 tests en verde** (200 en `shared`, 296 en
+`server`, 7 en `web`), 47 nuevos.
+
+Se eligió este sprint porque el 6 no se puede cerrar sin alguien presente, y
+porque su tarea central —la 7.3— dice con esas palabras **"si no se prueba, no
+existe"**. Es de lo poco que se puede demostrar de verdad desde acá.
+
+### Por qué respaldar no es copiar el archivo
+
+La base corre en modo WAL (decisión 16): lo recién escrito vive en
+`ferrehouse.db-wal` hasta que SQLite hace checkpoint. **Medido en esta máquina:
+el `.db` pesaba 340 KB y su `-wal` 2,4 MB.** Copiar solo el primero se lleva una
+base **vieja y consistente** — la peor combinación posible, porque abre sin un
+solo error y le faltan las últimas ventas. Copiar los dos con la base abierta es
+peor todavía: se copian en instantes distintos.
+
+`VACUUM INTO` no tiene ese problema. Hay un test que hace la comparación
+completa: checkpoint, escribir un producto, copiar el `.db` a mano, respaldar, y
+comprobar que el producto **no está** en la copia y **sí** en el respaldo.
+
+Cuesta lo que cuesta el WAL pendiente, no el tamaño de la base: **132 ms con el
+WAL vacío, 1,5 s con 2,4 MB acumulados**. En ese rato la única conexión está
+ocupada (decisión 16), o sea que una venta que caiga justo ahí espera. Un
+segundo y medio una vez al día es aceptable, y por eso el respaldo va a una hora
+fija y no cada vez que alguien abre el panel.
+
+### Un respaldo que nunca se abrió es una esperanza
+
+Cada uno se verifica apenas se produce: se abre con un cliente aparte, se le
+corre `PRAGMA integrity_check` y se le cuentan filas —una base vacía también
+abre—. Si no pasa, **se borra**. Un archivo corrupto que se queda es peor que
+ninguno: la rotación lo cuenta como bueno y el panel dice "respaldado hoy".
+
+### Las tres trampas de restaurar, todas con test
+
+1. **Se verifica el respaldo ANTES de tocar la base viva.** Sobrescribir con un
+   archivo malo pierde las dos cosas de una vez.
+2. **La base que había no se borra: se aparta con la fecha.** Restaurar el
+   respaldo equivocado es un error de dedo perfectamente posible.
+3. **Se apartan el `-wal` y el `-shm` del destino.** Es la más fina: SQLite
+   encuentra un WAL viejo junto a una base nueva y le aplica encima
+   transacciones que no le corresponden. Queda abriendo bien, con datos
+   mezclados de dos bases distintas.
+
+Y `VACUUM INTO` produce un archivo que **no está en WAL** —el modo es por
+archivo, no por servidor—, así que el test comprueba que el arranque lo vuelve a
+activar. Sin eso, después de una restauración la tienda quedaría en modo
+rollback, más lenta y con los lectores bloqueando al escritor, sin que nadie lo
+note.
+
+### El ciclo completo, que es la tarea
+
+El test borra la base de verdad —el archivo, su `-wal` y su `-shm`—, restaura
+desde el respaldo, comprueba que está el producto cargado **antes** y no el
+cargado **después**, que el modo WAL vuelve, y que
+`runStartupChecks()` no encuentra nada. Es la 7.3 entera, corriendo en cada
+`pnpm check`.
+
+### Dos decisiones que evitan modos de falla concretos
+
+**La rotación guarda siempre los 7 más nuevos**, aunque estén todos vencidos. Sin
+ese piso, un PC apagado seis semanas vuelve y lo primero que hace al arrancar es
+borrar todos los respaldos por viejos, justo cuando son lo único que hay. Y solo
+borra archivos con su patrón de nombre: el destino puede ser un pendrive con
+cosas de otro.
+
+**El respaldo diario tiene dos disparadores.** La hora configurada, y "más de 24
+horas sin respaldo, a cualquier hora". El segundo no es redundante: una tienda
+que cierra a las 19:00 con la hora puesta en 22 **no se respaldaría nunca**, y el
+panel no tendría cómo saberlo.
+
+### El defecto que apareció mirando la pantalla
+
+La alerta *"el respaldo se guarda en el mismo PC"* ofrecía el botón **Respaldar**,
+y respaldar de nuevo deja el archivo exactamente donde la alerta dice que está
+mal. Es el *"botón que no cambia nada durable es peor que no tener botón"* que el
+propio código condena tres líneas más arriba, en la alerta de venta en espera.
+
+Peor: la acción que sí la cierra —elegir la carpeta de copia— **no existía**.
+`backup.copyTo` vive en `Setting` y solo se podía tocar editando la base a mano,
+o sea que en la práctica la copia externa no se iba a configurar nunca. Se
+agregó la ruta y el diálogo, y **la carpeta se valida escribiendo, no mirando**:
+un pendrive protegido contra escritura o una unidad de red sin permiso se ven
+igual de bien desde afuera.
+
+La causa de fondo es la misma de siempre: la lista de alertas elegía la acción
+por *"no tiene id"*, que hasta ayer significaba "es la venta en espera añeja".
+Ahora la elige por tipo.
+
+### Dos tests que estaban mal y no se notaba
+
+- Uno del **Sprint 6** dependía de la hora del día: fijaba el reloj en las 10:00
+  y el trabajo quedaba agendado con la hora real, así que pasaba en la mañana y
+  fallaba en la tarde. Empezó a fallar hoy a las 10:00, en la primera corrida.
+- Uno **propio, escrito hoy**, usaba `/proc/...` como carpeta imposible.
+  `mkdirSync` sobre procfs **no devuelve nunca** en esta máquina y el archivo de
+  pruebas entero quedaba esperando sin decir por qué. La carpeta imposible ahora
+  es una cuyo padre es un archivo: falla con ENOTDIR al toque y en cualquier
+  sistema. Una ruta inventada tampoco servía: corriendo como root se crearía de
+  verdad.
+
+### Lo que no se probó, y hay que decirlo
+
+Los `.bat` de `instalacion/` **no están probados**: no hay una máquina Windows
+acá. Están comentados y son cortos, y el README de esa carpeta se escribió para
+leerse al lado. Es la única parte del sprint que se escribió a ciegas, y por eso
+está separada del resto en su propia carpeta.
+
+De NSSM se aprovecha lo que ya hace: **rota los logs él mismo**
+(`AppRotateFiles`), así que no se escribió una capa de logging en Node —
+duplicar el rotador del supervisor, que además es el dueño del archivo, es
+buscarse un problema. Lo que sí faltaba es el apagado limpio: NSSM detiene
+mandando Ctrl+C, y Node sin manejador se muere en el acto dejando el WAL sin
+consolidar.
+
+### Un hallazgo que afecta al plan
+
+**No hay pantalla de devoluciones ni de anulaciones.** El endpoint existe y está
+probado desde el Sprint 4, pero no hay interfaz: es la misma deuda que tenían
+las cuatro pantallas construidas esta mañana. Una ferretería tiene una
+devolución en la primera semana, así que **la marcha blanca (7.6) no puede
+empezar sin eso** — está anotado en la guía del vendedor como "anótalo en el
+cuaderno y avísale al administrador", que es un parche, no una solución.
