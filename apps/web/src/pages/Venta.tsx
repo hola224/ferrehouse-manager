@@ -289,9 +289,15 @@ export function Venta() {
    * el aire: el foco se iba al `body` y la pantalla seguía prometiendo
    * «F2 Cobrar» sin hacer nada. Medido, no supuesto — ver lib/atajos.ts.
    *
-   * `Delete` va en la misma tabla pero el hook lo trata distinto: mientras el
-   * foco está en un campo de texto es del campo. Antes no lo era, y borrar un
-   * carácter mal escrito en el buscador borraba una LÍNEA DE LA VENTA.
+   * `Delete` y las flechas van en la misma tabla pero el hook las trata
+   * distinto: mientras el foco está en un campo de texto son del campo. Antes
+   * no lo eran, y borrar un carácter mal escrito en el buscador borraba una
+   * LÍNEA DE LA VENTA.
+   *
+   * Por eso estas tres entradas cubren solo el caso en que el foco NO está en
+   * la caja de escaneo —después de un clic en una línea, o en el `body`—. El
+   * caso que de verdad ocurre, con el foco en la caja y la caja vacía, se
+   * resuelve en el `onKeyDown` de la caja: ahí está el razonamiento.
    */
   useAtajos(
     {
@@ -347,17 +353,39 @@ export function Venta() {
             onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
               /*
-                Las flechas y Enter se manejan ACÁ y no en el atajo global: con
-                el foco en un campo de texto, `useAtajos` deja las teclas de
-                edición a quien está escribiendo. Es la misma regla que impide
-                que Delete borre una línea de la venta mientras se teclea.
+                Las flechas, Delete y Enter se manejan ACÁ y no en el atajo
+                global: con el foco en un campo de texto, `useAtajos` deja las
+                teclas de edición a quien está escribiendo. Esa regla existe
+                porque costó un dato —borrar un carácter mal escrito borraba una
+                LÍNEA DE LA VENTA— y no se toca.
+
+                Lo que sí se puede decidir acá es qué pasa con la caja VACÍA. El
+                foco vuelve siempre a esta caja, así que "vacía" es el estado en
+                el que el vendedor pasa la mayor parte del turno, y en ese estado
+                las teclas de edición no tienen nada que editar: son de la lista.
+                Sin esto, «↑↓ moverse» y «Supr quitar línea» estaban escritas en
+                la barra de ayuda y solo funcionaban después de tocar la línea
+                con el mouse — inalcanzables en un POS que se opera con teclado.
+
+                `texto === ""` y no `.trim()`: si hay un espacio escrito, el
+                campo tiene contenido y Delete vuelve a ser suyo. Un carácter
+                invisible no puede ser la diferencia entre mover el cursor y
+                borrarle una línea a la venta.
               */
+              const vacia = texto === "";
               if (e.key === "ArrowDown" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerido((i) => Math.min(i + 1, sugerencias.length - 1));
               } else if (e.key === "ArrowUp" && sugerencias.length > 0) {
                 e.preventDefault();
                 setSugerido((i) => Math.max(i - 1, 0));
+              } else if (vacia && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+                e.preventDefault();
+                const paso = e.key === "ArrowDown" ? 1 : -1;
+                setSeleccion((s) => Math.max(0, Math.min(s + paso, lineas.length - 1)));
+              } else if (vacia && e.key === "Delete" && lineas[seleccion]) {
+                e.preventDefault();
+                quitar(seleccion);
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 const elegido = sugerido >= 0 ? sugerencias[sugerido] : undefined;
