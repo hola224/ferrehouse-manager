@@ -68,16 +68,27 @@ El seed deja `CAJA-1` **sin impresora**, y una caja sin impresora vende igual
 pero no imprime nada ni abre el cajón. La venta se registra y la pantalla lo
 avisa, pero es un aviso que se aprende a ignorar el segundo día.
 
+**El orden importa**, y no es el que uno haría: la impresora **no se puede
+cambiar con la caja abierta** —la sesión en curso ya mandó trabajos a una
+impresora, y cambiarla a mitad de turno parte el reporte de cierre en dos— pero
+vender y anular **sí exigen la caja abierta**. Así que: primero la impresora,
+después el turno.
+
 1. Comparte la térmica en Windows con un nombre corto y sin espacios (por
    ejemplo `TERMICA`).
-2. En el sistema: **Usuarios → Cajas y terminales → Editar CAJA-1**.
-3. En «Impresora» escribe la ruta del recurso compartido, con la forma
-   `\\NOMBRE-DEL-PC\TERMICA`.
+2. Con la caja **cerrada** —en una instalación nueva lo está—: **Usuarios →
+   Cajas y terminales → Editar CAJA-1**, y en «Impresora» escribe la ruta del
+   recurso compartido, con la forma `\\NOMBRE-DEL-PC\TERMICA`.
+3. Ahora sí: **Caja → Abrir**, con $0 de fondo.
 4. Haz una venta de prueba de $100 en efectivo y comprueba dos cosas: que sale
    el ticket **y que se abre el cajón**. El cajón cuelga de la impresora y se
    abre con el mismo trabajo; si sale el papel pero no se abre, el problema es
    el cable del cajón, no el sistema.
-5. Anula esa venta desde **Devoluciones** para no dejarla en el arqueo.
+5. **Devoluciones → busca esa venta por su número → Anular la venta entera.**
+   La plata vuelve al cajón y el arqueo cierra en cero.
+6. **Caja → Cerrar**, contando $0. Queda un arqueo de prueba en la historia,
+   que es lo correcto: la venta y su anulación también quedan, y esa es la
+   forma en que este sistema registra las cosas — nada se borra.
 
 Un terminal de consulta —uno que solo mira precios y stock— se deja **sin
 impresora** a propósito: es la forma de decir que no imprime.

@@ -272,11 +272,14 @@ de operar sola, ese modo de falla es peor que una pantalla que falta. Ahora la
 barra de arriba sobrevive y el vendedor se va a otra pantalla.
 
 **2026-07-31 — Y el barrido inverso: qué endpoint quedaba sin pantalla.** De 64
-rutas, cuatro no aparecían en ninguna. Se construyeron tres: **reimprimir un
+rutas, cinco no aparecían en ninguna. Se construyeron cuatro: **reimprimir un
 ticket** (lo más cotidiano que faltaba: se atasca la impresora, el cliente pide
 copia), **administrar cajas y terminales** —que cierra la 7.5 y saca el `curl`
-del manual de instalación— y **reconciliar el libro de stock**, que es el único
-chequeo capaz de acusar una corrupción silenciosa del saldo.
+del manual de instalación—, **reconciliar el libro de stock**, que es el único
+chequeo capaz de acusar una corrupción silenciosa del saldo, y **la vista previa
+de la etiqueta**, que existía desde el Sprint 1 sin que ninguna pantalla la
+usara: su ruta pide token y un `<img src>` no manda la cabecera, así que se baja
+con `fetch` y se muestra como blob.
 
 La cuarta, `GET /api/cash/expected`, **se dejó sin pantalla a propósito**:
 entrega el monto esperado de una caja ABIERTA, y todo el diseño del Sprint 2 es

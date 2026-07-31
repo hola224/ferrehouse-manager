@@ -16,7 +16,7 @@
  *   no existen — ni en el DOM ni en el JSON, que el servidor ya filtra.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Boton, Chip } from "@/components/ui";
 import { ProductoForm } from "./ProductoForm";
@@ -488,6 +488,41 @@ function Detalle({
 }) {
   const cerrar = useRef<HTMLButtonElement>(null);
   const [etiqueta, setEtiqueta] = useState<string | null>(null);
+  const [previa, setPrevia] = useState<string | null>(null);
+
+  /**
+   * La vista previa de la etiqueta, que existía en el servidor desde el Sprint
+   * 1 y ninguna pantalla usaba.
+   *
+   * **Por qué nadie la había conectado**: la ruta pide token, y un `<img src>`
+   * no manda la cabecera `authorization`. Se baja con `fetch` y se convierte en
+   * una URL de blob, que el `<img>` sí puede mostrar.
+   *
+   * Y por qué vale la pena: la etiqueta térmica se imprime a ciegas. Una tira
+   * de veinte con el nombre cortado o el código equivocado se descubre en la
+   * repisa, con las etiquetas ya gastadas. El SVG dibuja el MISMO Code128 que
+   * va a la térmica.
+   */
+  useEffect(() => {
+    let url: string | null = null;
+    let vivo = true;
+    void (async () => {
+      try {
+        const r = await fetch(`/api/products/${producto.id}/label.svg`, {
+          headers: { authorization: `Bearer ${getToken() ?? ""}` },
+        });
+        if (!r.ok) return;
+        url = URL.createObjectURL(await r.blob());
+        if (vivo) setPrevia(url);
+      } catch {
+        // Sin vista previa se sigue pudiendo imprimir: no es un bloqueo.
+      }
+    })();
+    return () => {
+      vivo = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [producto.id]);
 
   useEffect(() => {
     cerrar.current?.focus();
@@ -576,7 +611,18 @@ function Detalle({
         </dl>
 
         {esAdmin ? (
-          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+          <div className="mt-6 border-t border-line pt-4">
+            {previa ? (
+              <div className="mb-3">
+                <div className="mb-1 text-xs uppercase tracking-wide text-ink-soft">Así va a salir la etiqueta</div>
+                <img
+                  src={previa}
+                  alt={`Etiqueta de ${producto.name}`}
+                  className="max-h-24 rounded border border-line bg-white p-1"
+                />
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-3">
             <Boton onClick={imprimir}>
               Imprimir etiqueta <span className="fh-num opacity-70">F6</span>
             </Boton>
@@ -584,6 +630,7 @@ function Detalle({
               Editar <span className="fh-num opacity-70">F8</span>
             </Boton>
             {etiqueta ? <span className="text-sm text-ink-soft">{etiqueta}</span> : null}
+            </div>
           </div>
         ) : null}
       </div>

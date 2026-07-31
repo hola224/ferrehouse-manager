@@ -1367,8 +1367,8 @@ primero que hay que descartar es el harness.**
 ## 2026-07-31 — El barrido inverso: qué endpoint quedó sin pantalla
 
 Cerrada la deuda conocida, la pregunta que quedaba era la contraria: **de las 64
-rutas del servidor, ¿cuáles no aparecen en ninguna pantalla?** Cuatro. Se
-construyeron tres y la cuarta se dejó afuera a propósito.
+rutas del servidor, ¿cuáles no aparecen en ninguna pantalla?** Cinco. Se
+construyeron cuatro y la quinta se dejó afuera a propósito.
 
 **Reimprimir un ticket** era lo más cotidiano que faltaba —se atasca la
 impresora, el papel sale en blanco, el cliente pide copia— y vive en
@@ -1390,6 +1390,14 @@ entra y desde dónde.
 alerta. Es el único chequeo capaz de acusar una corrupción silenciosa: todo lo
 demás mira el saldo, así que un saldo mal escrito no da ningún síntoma — los
 números simplemente son otros.
+
+**La vista previa de la etiqueta** existía desde el Sprint 1 y su propio
+comentario decía para qué: «es lo que se mira antes de gastar etiquetas».
+Ninguna pantalla la usaba, y el motivo es concreto: la ruta pide token y un
+`<img src>` no manda la cabecera `authorization`. Se baja con `fetch` y se
+muestra como blob. Vale los cinco minutos que cuesta — la etiqueta térmica se
+imprime a ciegas, y una tira de veinte con el nombre cortado se descubre en la
+repisa, con las etiquetas ya gastadas.
 
 ### La que no se construyó, y por qué
 
