@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
+import { useAtajos } from "@/lib/atajos";
 import { Boton, Campo, Chip } from "@/components/ui";
 import {
   calcularVenta,
@@ -158,28 +159,28 @@ export function Venta() {
     setSeleccion((s) => Math.max(0, Math.min(s, lineas.length - 2)));
   }
 
-  function alTeclado(e: React.KeyboardEvent) {
-    if (panel !== "nada") return;
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      setSeleccion((s) => (e.key === "ArrowDown" ? Math.min(s + 1, lineas.length - 1) : Math.max(s - 1, 0)));
-    } else if (e.key === "Delete" && lineas[seleccion]) {
-      e.preventDefault();
-      quitar(seleccion);
-    } else if (e.key === "F2" && lineas.length > 0) {
-      e.preventDefault();
-      setPanel("cobrar");
-    } else if (e.key === "F4" && lineas.length > 0) {
-      e.preventDefault();
-      setPanel("descuento");
-    } else if (e.key === "F6" && lineas.length > 0) {
-      e.preventDefault();
-      setPanel("guardar");
-    } else if (e.key === "F8") {
-      e.preventDefault();
-      setPanel("esperas");
-    }
-  }
+  /**
+   * Los atajos van en `window`, no en el contenedor. Colgados de un
+   * `onKeyDown` del div morían apenas el vendedor hacía clic en un botón o en
+   * el aire: el foco se iba al `body` y la pantalla seguía prometiendo
+   * «F2 Cobrar» sin hacer nada. Medido, no supuesto — ver lib/atajos.ts.
+   *
+   * `Delete` va en la misma tabla pero el hook lo trata distinto: mientras el
+   * foco está en un campo de texto es del campo. Antes no lo era, y borrar un
+   * carácter mal escrito en el buscador borraba una LÍNEA DE LA VENTA.
+   */
+  useAtajos(
+    {
+      ArrowDown: () => setSeleccion((s) => Math.min(s + 1, lineas.length - 1)),
+      ArrowUp: () => setSeleccion((s) => Math.max(s - 1, 0)),
+      Delete: lineas[seleccion] ? () => quitar(seleccion) : undefined,
+      F2: lineas.length > 0 ? () => setPanel("cobrar") : undefined,
+      F4: lineas.length > 0 ? () => setPanel("descuento") : undefined,
+      F6: lineas.length > 0 ? () => setPanel("guardar") : undefined,
+      F8: () => setPanel("esperas"),
+    },
+    panel === "nada",
+  );
 
   if (cajaAbierta === false) {
     // Se avisa desde el principio, no al cobrar: descubrirlo con el cliente
@@ -196,7 +197,7 @@ export function Venta() {
   }
 
   return (
-    <div className="flex gap-4" onKeyDown={alTeclado}>
+    <div className="flex gap-4">
       {/* ---------- Izquierda: la lista ---------- */}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         <input

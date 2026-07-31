@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, getToken } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useAtajos } from "@/lib/atajos";
 import { Boton, Chip } from "@/components/ui";
 import { ProductoForm } from "./ProductoForm";
 import { ImportarProductos } from "./ImportarProductos";
@@ -25,7 +26,7 @@ import {
   formatCLP,
   formatCostoMilli,
   formatQty,
-  atajosDe,
+  atajosVisibles,
   costoMilliPorUnidadDeVenta,
   margenDeListaPct,
 } from "@ferrehouse/shared";
@@ -175,55 +176,51 @@ export function Catalogo() {
    * responder "no autorizado". Le quedan ↑↓ y Enter, que es lo que necesita
    * para consultar un precio.
    */
-  const atajos = useMemo(() => (esAdmin ? atajosDe("catalogo") : []), [esAdmin]);
+  const atajos = useMemo(() => (esAdmin ? atajosVisibles("catalogo") : []), [esAdmin]);
 
+  /**
+   * Enter y Escape se quedan en el contenedor a propósito: significan cosas
+   * distintas según dónde esté el foco —Enter abre el producto marcado, Escape
+   * limpia la búsqueda— y son las dos únicas teclas que dependen del contexto.
+   * Todo lo demás vive en `window`, ver abajo.
+   */
   function alTeclear(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      setSeleccion((s) => {
-        const siguiente = e.key === "ArrowDown" ? Math.min(s + 1, productos.length - 1) : Math.max(s - 1, 0);
-        filas.current[siguiente]?.scrollIntoView({ block: "nearest" });
-        return siguiente;
-      });
-    } else if (e.key === "Enter" && productos[seleccion]) {
+    if (e.key === "Enter" && productos[seleccion]) {
       e.preventDefault();
       setAbierto(productos[seleccion]!);
     } else if (e.key === "Escape") {
       setTexto("");
-    } else if (esAdmin && e.key === "F2") {
-      e.preventDefault();
-      setFormulario(null);
-    } else if (esAdmin && e.key === "F4") {
-      e.preventDefault();
-      setImportando(true);
-    } else if (esAdmin && e.key === "F8" && productos[seleccion]) {
-      e.preventDefault();
-      setFormulario(productos[seleccion]!.id);
     }
   }
 
   /**
-   * Los atajos van en el `keydown` del documento y no solo en el contenedor
-   * porque el foco vive en la caja de búsqueda: un `onKeyDown` de React sobre
-   * el div no llega si el evento nace en un input hijo con `stopPropagation`,
-   * y sobre todo no llega si el foco se fue a un botón de la tabla.
+   * Antes esto estaba partido en dos: F2 y F4 colgaban de `window` y F8 solo
+   * del `onKeyDown` del div. Resultado medido: F8 «Editar» no hacía nada
+   * apenas el foco se iba del buscador, mientras la leyenda la seguía
+   * anunciando. Una sola tabla, un solo oyente.
    */
-  useEffect(() => {
-    if (!esAdmin) return;
-    function global(e: KeyboardEvent) {
-      // Con un diálogo abierto, las teclas son suyas.
-      if (formulario !== undefined || importando || abierto) return;
-      if (e.key === "F2") {
-        e.preventDefault();
-        setFormulario(null);
-      } else if (e.key === "F4") {
-        e.preventDefault();
-        setImportando(true);
-      }
-    }
-    window.addEventListener("keydown", global);
-    return () => window.removeEventListener("keydown", global);
-  }, [esAdmin, formulario, importando, abierto]);
+  const moverSeleccion = useCallback(
+    (paso: number) =>
+      setSeleccion((s) => {
+        const siguiente = Math.max(0, Math.min(s + paso, productos.length - 1));
+        filas.current[siguiente]?.scrollIntoView({ block: "nearest" });
+        return siguiente;
+      }),
+    [productos.length],
+  );
+
+  useAtajos(
+    {
+      ArrowDown: () => moverSeleccion(1),
+      ArrowUp: () => moverSeleccion(-1),
+      F2: esAdmin ? () => setFormulario(null) : undefined,
+      F4: esAdmin ? () => setImportando(true) : undefined,
+      F8: esAdmin && productos[seleccion] ? () => setFormulario(productos[seleccion]!.id) : undefined,
+    },
+    // Con un diálogo abierto las teclas son suyas: el detalle del producto
+    // tiene su propio F6/F8, y el formulario no quiere ninguno.
+    formulario === undefined && !importando && !abierto,
+  );
 
   function cerrarFormulario() {
     setFormulario(undefined);
