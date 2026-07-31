@@ -201,6 +201,36 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     },
   } satisfies Prisma.ProductDefaultArgs;
 
+  /**
+   * Ordena los resultados por CÓMO calzan, no por alfabeto.
+   *
+   * Alfabético parece neutral y no lo es: buscando «tor», «Juego de
+   * destornilladores» sale antes que «Tornillo autoperforante» porque la J va
+   * antes que la T. En una caja eso pone el producto equivocado en la primera
+   * posición, que es la que se elige sin mirar.
+   *
+   * Tres escalones, y dentro de cada uno se mantiene el alfabético:
+   *   0 — el nombre EMPIEZA con lo escrito           («tor» → Tornillo…)
+   *   1 — alguna PALABRA del nombre empieza con eso  («vol» → Tornillo volcanita)
+   *   2 — calza en cualquier parte                   («tor» → …destornilladores)
+   */
+  function ordenarPorCalce<T extends { name: string }>(filas: T[], q: string): T[] {
+    const buscado = normalizeSearch(q);
+    if (!buscado) return filas;
+    const escalon = (nombre: string): number => {
+      const n = normalizeSearch(nombre);
+      if (n.startsWith(buscado)) return 0;
+      if (n.split(" ").some((palabra) => palabra.startsWith(buscado))) return 1;
+      return 2;
+    };
+    return [...filas]
+      .map((f, i) => ({ f, e: escalon(f.name), i }))
+      // El índice desempata para que el orden sea estable: sin él, dos
+      // productos del mismo escalón podrían bailar entre una búsqueda y otra.
+      .sort((a, b) => a.e - b.e || a.i - b.i)
+      .map((x) => x.f);
+  }
+
   const listaQuery = z.object({
     q: z.string().trim().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
@@ -265,7 +295,7 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
       orderBy: { name: "asc" },
       take: limit,
     });
-    return { exacto: false, motivo: "TEXTO", productos };
+    return { exacto: false, motivo: "TEXTO", productos: ordenarPorCalce(productos, q) };
   });
 
   app.get("/api/products/:id", cualquiera, async (req) => {

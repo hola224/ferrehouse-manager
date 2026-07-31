@@ -40,6 +40,8 @@ type Producto = {
   name: string;
   priceGross: number;
   saleUnit: { id: number; symbol: string; factorMilli: number; groupId: number };
+  /** Viene en la misma respuesta de búsqueda: no cuesta una consulta extra. */
+  stockLevels?: Array<{ qtyBaseMilli: number }>;
 };
 
 type Linea = {
@@ -51,6 +53,21 @@ type Linea = {
 };
 
 type Config = { taxRatePercent: number; multiploRedondeo: number; topeDescuento: number };
+
+/**
+ * El saldo del producto en unidades de VENTA, para la lista de sugerencias.
+ *
+ * El libro guarda milésimas de unidad BASE; dividir por `factorMilli` lo pasa
+ * a la unidad en que el vendedor lo va a cobrar. Un saco de cemento tiene 25
+ * en base (kilos) por cada 1 en venta, y decir «1.500 kg» en la sugerencia de
+ * un producto que se vende por saco no ayuda a nadie.
+ */
+function saldoDe(p: Producto): string {
+  if (!p.stockLevels || p.stockLevels.length === 0) return "";
+  const base = p.stockLevels.reduce((t, n) => t + n.qtyBaseMilli, 0);
+  const enVenta = Math.round((base * 1000) / p.saleUnit.factorMilli);
+  return `${formatQty(enVenta)} ${p.saleUnit.symbol}`;
+}
 
 export function Venta() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -71,6 +88,18 @@ export function Venta() {
   /** La espera que se está cobrando, si estas líneas vinieron de una (F8). */
   const [espera, setEspera] = useState<{ id: number; label: string } | null>(null);
   const [ultimoCobro, setUltimoCobro] = useState<{ mensaje: string; aviso: string | null } | null>(null);
+  /**
+   * Las sugerencias que se van mostrando mientras el vendedor escribe.
+   * `sugerido` es cuál está marcada; **-1 es «ninguna»**, y eso importa: con
+   * -1, Enter vuelve a buscar en el servidor en vez de agregar la primera de
+   * la lista. Marcar la primera automáticamente sería repetir el error que
+   * esta pantalla tenía —tomaba `productos[0]` a ciegas—, y en una caja eso
+   * significa cobrar un destornillador cuando pidieron un tornillo.
+   */
+  const [sugerencias, setSugerencias] = useState<Producto[]>([]);
+  const [sugerido, setSugerido] = useState(-1);
+  /** groupId → admite fracción. Se pide una vez, no en cada producto agregado. */
+  const [fraccionables, setFraccionables] = useState<Map<number, boolean>>(new Map());
 
   const caja = useRef<HTMLInputElement>(null);
 
@@ -85,6 +114,8 @@ export function Venta() {
         setConfig(await api<Config>("/pos/config"));
         const c = await api<{ abierta: boolean }>("/cash/current");
         setCajaAbierta(c.abierta);
+        const g = await api<{ grupos: { id: number; allowsFraction: boolean }[] }>("/catalog/units");
+        setFraccionables(new Map(g.grupos.map((x) => [x.id, x.allowsFraction])));
       } catch (e) {
         setError(e instanceof ApiError ? e.message : "No se pudo preparar la venta");
       }
@@ -118,22 +149,86 @@ export function Venta() {
     }
   }, [lineas, config, descuento]);
 
+  /**
+   * Sugerencias mientras se escribe, desde la tercera letra.
+   *
+   * EL ESCÁNER MANDA EN ESTA PANTALLA y por eso esto es solo una ayuda visual:
+   * el escáner escribe el código entero y aprieta Enter en menos de lo que
+   * dura este retardo, así que quien decide qué se agrega sigue siendo Enter
+   * con una búsqueda fresca contra el servidor. Si la respuesta viene marcada
+   * `exacto` —código de barras o SKU— no se sugiere nada: no hay nada que
+   * elegir, y una lista de uno solo estorba.
+   *
+   * Desde la TERCERA letra y no la primera: con una o dos calza medio catálogo
+   * y la lista es ruido. Con 160 ms de espera, escribir corrido no dispara una
+   * consulta por tecla.
+   */
+  useEffect(() => {
+    const q = texto.trim();
+    if (q.length < 3 || panel !== "nada") {
+      setSugerencias([]);
+      setSugerido(-1);
+      return;
+    }
+    let vigente = true;
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          const r = await api<{ exacto: boolean; productos: Producto[] }>(
+            `/products/search?q=${encodeURIComponent(q)}&limit=8`,
+          );
+          if (!vigente) return;
+          setSugerencias(r.exacto ? [] : r.productos);
+          setSugerido(-1);
+        } catch {
+          // Una sugerencia que no llega no es un error que mostrar: el vendedor
+          // sigue pudiendo apretar Enter, que es el camino que sí avisa.
+          if (vigente) setSugerencias([]);
+        }
+      })();
+    }, 160);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [texto, panel]);
+
+  function agregarProducto(p: Producto) {
+    agregar(p, fraccionables.get(p.saleUnit.groupId) ?? true);
+    setTexto("");
+    setSugerencias([]);
+    setSugerido(-1);
+    setError(null);
+    volverAlFoco();
+  }
+
+  /**
+   * Enter. Vuelve a preguntarle al servidor —no usa la lista— porque puede no
+   * haber alcanzado a cargarse.
+   *
+   * Antes tomaba `productos[0]` pasara lo que pasara: escribir «tor» y apretar
+   * Enter agregaba «Juego de destornilladores» porque va primero en orden
+   * alfabético, sin decir que había otras siete opciones. Ahora, si calza más
+   * de una, no se agrega ninguna: se muestran y se elige con ↑↓.
+   */
   async function buscarYAgregar(q: string) {
     if (!q.trim()) return;
     setError(null);
     try {
       const r = await api<{ exacto: boolean; productos: Producto[] }>(
-        `/products/search?q=${encodeURIComponent(q.trim())}`,
+        `/products/search?q=${encodeURIComponent(q.trim())}&limit=8`,
       );
-      const p = r.productos[0];
-      if (!p) {
+      if (r.productos.length === 0) {
         setError(`Nada calza con «${q.trim()}».`);
+        setSugerencias([]);
         return;
       }
-      const grupos = await api<{ grupos: { id: number; allowsFraction: boolean }[] }>("/catalog/units");
-      const fraccionable = grupos.grupos.find((g) => g.id === p.saleUnit.groupId)?.allowsFraction ?? true;
-      agregar(p, fraccionable);
-      setTexto("");
+      if (r.exacto || r.productos.length === 1) {
+        agregarProducto(r.productos[0]!);
+        return;
+      }
+      setSugerencias(r.productos);
+      setSugerido(0);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo buscar");
     }
@@ -200,20 +295,76 @@ export function Venta() {
     <div className="flex gap-4">
       {/* ---------- Izquierda: la lista ---------- */}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <input
-          ref={caja}
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void buscarYAgregar(texto);
-            }
-          }}
-          placeholder="Escanea o escribe"
-          autoComplete="off"
-          className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-4 text-lg"
-        />
+        <div className="relative">
+          <input
+            ref={caja}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => {
+              /*
+                Las flechas y Enter se manejan ACÁ y no en el atajo global: con
+                el foco en un campo de texto, `useAtajos` deja las teclas de
+                edición a quien está escribiendo. Es la misma regla que impide
+                que Delete borre una línea de la venta mientras se teclea.
+              */
+              if (e.key === "ArrowDown" && sugerencias.length > 0) {
+                e.preventDefault();
+                setSugerido((i) => Math.min(i + 1, sugerencias.length - 1));
+              } else if (e.key === "ArrowUp" && sugerencias.length > 0) {
+                e.preventDefault();
+                setSugerido((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                const elegido = sugerido >= 0 ? sugerencias[sugerido] : undefined;
+                if (elegido) agregarProducto(elegido);
+                else void buscarYAgregar(texto);
+              } else if (e.key === "Escape" && sugerencias.length > 0) {
+                e.preventDefault();
+                setSugerencias([]);
+                setSugerido(-1);
+              }
+            }}
+            placeholder="Escanea o escribe"
+            autoComplete="off"
+            role="combobox"
+            aria-expanded={sugerencias.length > 0}
+            aria-controls="sugerencias"
+            className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-4 text-lg"
+          />
+
+          {sugerencias.length > 0 ? (
+            <ul
+              id="sugerencias"
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-80 overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface shadow-lg"
+            >
+              {sugerencias.map((p, i) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === sugerido}
+                    onMouseEnter={() => setSugerido(i)}
+                    onClick={() => agregarProducto(p)}
+                    className={`flex w-full items-baseline gap-3 px-3 py-2 text-left ${i === sugerido ? "bg-bg" : ""}`}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    {/*
+                      El saldo va en la sugerencia porque es la pregunta que
+                      sigue: el cliente pide algo y lo primero es si hay. Verlo
+                      acá evita ir al catálogo y volver con el cliente esperando.
+                    */}
+                    <span className="fh-num shrink-0 text-xs text-ink-soft">{saldoDe(p)}</span>
+                    <span className="fh-num shrink-0 text-sm font-semibold">{formatCLP(p.priceGross)}</span>
+                  </button>
+                </li>
+              ))}
+              <li className="border-t border-line px-3 py-1.5 text-xs text-ink-soft">
+                ↑↓ para elegir · Enter para agregar · Esc para cerrar
+              </li>
+            </ul>
+          ) : null}
+        </div>
 
         {error ? (
           <div className="rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
