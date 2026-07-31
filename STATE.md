@@ -1,7 +1,7 @@
 # STATE.md — Ferrehouse Manager
 
 > Traspaso a Claude Code (WSL). Leer completo antes de escribir código.
-> Última actualización: 2026-07-30
+> Última actualización: 2026-07-31
 
 ## Qué es
 
@@ -116,6 +116,36 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
     hoy. Sumar `qtyBaseMilli` y `totalCostNet` es exactamente para lo que la
     decisión 4 guardó el monto exacto en vez de una razón.
 
+27. **El transporte de WhatsApp vive detrás de un puerto**
+    (`apps/server/src/whatsapp/transporte.ts`: `estado()`, `qr()`,
+    `enviar(e164, mensaje)`). Ninguna otra parte del sistema sabe que WhatsApp
+    existe. El motivo no es purismo: **instanciar el cliente manda mensajes a
+    teléfonos reales**, así que es lo único del proyecto que no se puede
+    ejercitar sin consecuencias hacia afuera. El puerto deja que todo lo demás
+    —captura, cola, baja, plantilla, panel— sea código probado, y confina a un
+    archivo lo que hay que escribir a ciegas. Ese archivo lleva sus
+    instrucciones adentro; la que más importa: **resolver el JID con
+    `getNumberId()`, nunca pegarle `@c.us` al número**, y que el `error` que
+    devuelva sea texto para el administrador, porque se muestra tal cual en el
+    panel.
+28. **La baja de WhatsApp no se deshace desde el mesón.** El checkbox de
+    consentimiento del vendedor no vuelve a suscribir a un cliente con
+    `optOutAt`: la venta se registra y el cliente queda atribuido, pero no se
+    encola nada y la pantalla lo dice. Alguien puede marcar la casilla por
+    costumbre, y eso no es el consentimiento que una baja exige revertir.
+    Corolario en la cola: la baja se vuelve a mirar **al enviar**, no solo al
+    encolar — entre que un mensaje se agenda y sale pueden pasar horas, y
+    mandarlo "porque ya estaba en la cola" es justo lo que la baja prohíbe.
+29. **Un WhatsApp jamás pone en riesgo una venta** (refinamiento operativo de la
+    15). `WhatsAppJob.saleId` es único, así que el encolado va **fuera** de la
+    transacción de la venta —adentro, un duplicado haría rollback de una venta
+    cobrada— y además **detrás de un `catch`**: una excepción sin atrapar
+    devolvería 500 sobre una venta que sí quedó escrita, el vendedor leería
+    "error" y volvería a cobrar. Del mismo orden: **sin sesión conectada el
+    worker no toca la cola**; no marca intentos ni falla trabajos, porque
+    gastar uno por pasada dejaría todo en FALLIDO tras dos horas sin internet y
+    nada saldría al volver la conexión.
+
 **Precisión de la decisión 17 (Sprint 5):** al vendedor tampoco le viaja **la
 venta del día**, no solo el margen. El arqueo es a ciegas y casi toda la venta
 es efectivo, así que decirle cuánto se vendió es decirle cuánto debería tener el
@@ -176,9 +206,18 @@ importación de Excel, compras al proveedor y usuarios. Los endpoints existían 
 estaban probados desde los sprints 1 y 4, pero digitar una factura seguía siendo
 por API. **394 tests en verde.**
 
-**Sprint actual: 6 — WhatsApp.** Ojo con la tarea 6.2: vincular la sesión exige
-escanear un QR con un teléfono real, así que no se puede terminar sin alguien
-delante del computador con el número dedicado en la mano.
+**2026-07-31 — Sprint 6 (WhatsApp), todo menos el transporte.** Entregadas 6.1,
+6.3, 6.4, 6.5 y 6.6; de la 6.2, todo salvo el adaptador. **456 tests en verde.**
+
+**Sprint actual: sigue el 6, y no se puede cerrar sin alguien presente.** Falta
+un número dedicado, `pnpm add whatsapp-web.js`, escribir el adaptador contra
+`apps/server/src/whatsapp/transporte.ts` y **escanear el QR con ese teléfono**.
+Hasta entonces el sistema se comporta como corresponde: dice "Sin vincular",
+guarda los clientes, acumula la cola sin perder nada y respeta las bajas.
+
+Si se prefiere avanzar sin esperar a nadie, el **Sprint 7** (servicio Windows,
+respaldo automático y restauración probada) se puede hacer entero solo, y la
+7.3 —"si no se prueba, no existe"— se puede probar de verdad.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

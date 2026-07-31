@@ -9,6 +9,7 @@ import { Kardex } from "@/pages/Kardex";
 import { Reportes } from "@/pages/Reportes";
 import { Compras } from "@/pages/Compras";
 import { Usuarios } from "@/pages/Usuarios";
+import { WhatsApp } from "@/pages/WhatsApp";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                     { a: "/compras", texto: "Compras" },
                     { a: "/", texto: "Panel" },
                     { a: "/reportes", texto: "Reportes" },
+                    { a: "/whatsapp", texto: "WhatsApp" },
                     { a: "/usuarios", texto: "Usuarios" },
                   ]
                 : []),
@@ -132,6 +134,14 @@ export function App() {
             element={
               <Privado soloAdmin>
                 <Reportes />
+              </Privado>
+            }
+          />
+          <Route
+            path="/whatsapp"
+            element={
+              <Privado soloAdmin>
+                <WhatsApp />
               </Privado>
             }
           />

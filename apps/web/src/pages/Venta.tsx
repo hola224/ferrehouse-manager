@@ -26,6 +26,7 @@ import {
   formatCLP,
   formatQty,
   atajosDe,
+  normalizarTelefono,
   ErrorDeVenta,
   type VentaCalculada,
 } from "@ferrehouse/shared";
@@ -432,6 +433,36 @@ function Cobrar({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
+
+  /**
+   * 6.1 — el cliente para el WhatsApp, PLEGADO por omisión.
+   *
+   * Este diálogo es el camino más rápido de toda la aplicación: se abre, se
+   * digita lo que puso el cliente sobre el mesón y se cobra. Tres campos más
+   * siempre visibles le cuestan tiempo a cada venta, y la mayoría de las
+   * ventas de una ferretería no lleva cliente. Plegado, la venta de siempre no
+   * cambia en nada; desplegado, son dos campos y una casilla.
+   *
+   * No lleva tecla de función: las cuatro que Chrome deja libres ya están
+   * tomadas en esta pantalla (ver `atajos.ts`), y reasignar una que el
+   * vendedor ya aprendió cuesta más de lo que ahorra. Se llega con Tab, que es
+   * lo que el brief exige —el flujo completo sin mouse—, sin romper la tabla.
+   */
+  const [pideCliente, setPideCliente] = useState(false);
+  const [nombreCliente, setNombreCliente] = useState("");
+  const [telefonoCliente, setTelefonoCliente] = useState("");
+  const [consiente, setConsiente] = useState(false);
+  const campoTelefono = useRef<HTMLInputElement>(null);
+
+  /**
+   * El teléfono se valida MIENTRAS se escribe, con la misma función que el
+   * servidor usa para guardarlo. Dos implementaciones de "qué es un teléfono
+   * chileno" terminan discrepando, y la que se ve en pantalla no sería la que
+   * decide si el mensaje sale.
+   */
+  const tel = telefonoCliente.trim() === "" ? null : normalizarTelefono(telefonoCliente);
+
+  /** El foco arranca SIEMPRE en el efectivo: es lo primero que se digita. */
   useEffect(() => campo.current?.focus(), []);
 
   const soloDigitos = (v: string) => v.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
@@ -476,16 +507,37 @@ function Cobrar({
       if (nDebito > 0) pagos.push({ method: "DEBIT", amount: nDebito, reference: referencia || null });
       if (efectivo !== "") pagos.push({ method: "CASH", receivedAmount: nEfectivo });
 
-      const r = await api<{ mensaje: string; cambio: number; avisoImpresion: string | null }>("/sales", {
+      const r = await api<{
+        mensaje: string;
+        cambio: number;
+        avisoImpresion: string | null;
+        avisoCliente: string | null;
+        whatsapp: { encolado: boolean; motivo?: string };
+      }>("/sales", {
         method: "POST",
         body: JSON.stringify({
           items: lineas.map((l) => ({ productId: l.producto.id, qtyMilli: l.qtyMilli, discountAmount: l.discountAmount })),
           payments: pagos,
           fiscalDocType: docType,
           fiscalFolio: folio || null,
+          /*
+            El teléfono viaja como lo escribieron. Normalizarlo es del
+            servidor: es lo que decide si dos ventas son del mismo cliente, y
+            eso no puede depender de qué pantalla lo mandó.
+          */
+          cliente: telefonoCliente.trim()
+            ? { nombre: nombreCliente.trim() || null, telefono: telefonoCliente.trim(), consentimiento: consiente }
+            : undefined,
         }),
       });
-      onCobrada(r.mensaje, r.avisoImpresion);
+
+      /*
+        Los dos avisos van juntos y ninguno se pierde: el vendedor le dijo al
+        cliente "te llega un mensaje", así que si NO va a llegar tiene que
+        enterarse ahora, no cuando el cliente reclame.
+      */
+      const avisos = [r.avisoImpresion, r.avisoCliente].filter(Boolean).join(" ");
+      onCobrada(r.whatsapp.encolado ? `${r.mensaje} El WhatsApp sale en unos minutos.` : r.mensaje, avisos || null);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cobrar");
     } finally {
@@ -588,6 +640,80 @@ function Cobrar({
         </label>
       </div>
 
+      {/* --- 6.1: el cliente para el WhatsApp --- */}
+      <div className="mt-4 border-t border-line pt-3">
+        {!pideCliente ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPideCliente(true);
+              // El foco va al teléfono, no al nombre: el nombre es opcional y
+              // el teléfono es el dato sin el cual esto no sirve de nada.
+              setTimeout(() => campoTelefono.current?.focus(), 0);
+            }}
+            className="min-h-touch text-sm text-ink-soft underline decoration-dotted underline-offset-4 hover:text-ink"
+          >
+            + Agregar cliente para enviarle un WhatsApp
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-soft">Nombre (opcional)</span>
+                <input
+                  value={nombreCliente}
+                  onChange={(e) => setNombreCliente(e.target.value)}
+                  placeholder="Como lo saluda"
+                  className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-soft">Teléfono</span>
+                <input
+                  ref={campoTelefono}
+                  value={telefonoCliente}
+                  onChange={(e) => setTelefonoCliente(e.target.value)}
+                  inputMode="tel"
+                  placeholder="9 1234 5678"
+                  className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-sm"
+                />
+              </label>
+            </div>
+
+            {/*
+              Se muestra el número YA NORMALIZADO mientras se escribe. No es
+              adorno: es lo que se va a guardar, y verlo es la única forma de
+              cachar un dígito de más antes de cobrar.
+            */}
+            {tel ? (
+              <p className={`text-xs ${tel.ok ? "text-ink-soft" : "text-warn"}`}>
+                {tel.ok ? `Se guarda como ${tel.legible}` : tel.error}
+              </p>
+            ) : null}
+
+            <label className="flex min-h-touch cursor-pointer items-start gap-2 text-sm">
+              {/*
+                Arranca DESMARCADA y no se recuerda de la venta anterior: un
+                checkbox que viene marcado no es consentimiento, es una casilla
+                que alguien no desmarcó (WA-01).
+              */}
+              <input
+                type="checkbox"
+                checked={consiente}
+                onChange={(e) => setConsiente(e.target.checked)}
+                className="mt-1 h-4 w-4 accent-ink"
+              />
+              <span>
+                El cliente acepta recibir un WhatsApp de esta compra.
+                {tel?.ok && !consiente ? (
+                  <span className="block text-xs text-warn">Sin marcar esto, el mensaje no se envía.</span>
+                ) : null}
+              </span>
+            </label>
+          </div>
+        )}
+      </div>
+
       {previa.problema ? <p className="mt-4 text-sm text-warn">{previa.problema}</p> : null}
       {error ? (
         <div className="mt-4 rounded-[var(--fh-radio)] border border-error/30 bg-error/10 p-3 text-sm text-error">
@@ -638,8 +764,27 @@ function Dialogo({
   }, [onCerrar]);
 
   return (
-    <div className="fixed inset-0 z-10 grid place-items-center bg-ink/40 p-6" role="dialog" aria-modal="true">
-      <div className={`w-full ${ancho} rounded-[var(--fh-radio)] border border-line bg-surface p-6`}>{children}</div>
+    /*
+      El fondo se desplaza y la caja tiene tope de alto con scroll propio.
+      NO es precaución teórica: a 1366×768 —el presupuesto que fija el brief—
+      el diálogo de cobro con el bloque de cliente abierto y un error del
+      servidor de tres líneas mide 798 px. Sin esto, esas tres líneas quedaban
+      fuera de la pantalla **sin forma de llegar a ellas**, y el error que el
+      vendedor necesita leer para corregir es justo el que no puede ver.
+
+      `Modal` (components/ui.tsx) ya tenía esta protección; este diálogo está
+      escrito a mano desde el Sprint 3 y no la heredó.
+    */
+    <div
+      className="fixed inset-0 z-10 grid place-items-center overflow-y-auto bg-ink/40 p-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface p-6`}
+      >
+        {children}
+      </div>
     </div>
   );
 }

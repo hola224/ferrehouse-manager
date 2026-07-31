@@ -27,6 +27,11 @@
  *   está escrito y probado.
  * - Distinguir el fallo permanente (el número no tiene WhatsApp) del transitorio
  *   (no hay internet): el primero no se reintenta nunca, el segundo sí.
+ * - **`error` es texto para el administrador, no `e.message`.** Ese string se
+ *   muestra tal cual en el panel, y "TypeError: Cannot read properties of
+ *   undefined (reading 'sendMessage')" no le dice a nadie qué hacer (principio
+ *   5 del brief). El detalle técnico va a `console.error`; al panel va "La
+ *   sesión se cayó a mitad del envío" o "Ese número no tiene WhatsApp".
  */
 import type { EstadoSesion } from "@ferrehouse/shared";
 

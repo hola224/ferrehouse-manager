@@ -21,6 +21,7 @@ import { getSetting, setSetting } from "../settings.js";
 import { transporte } from "../whatsapp/transporte.js";
 import { procesarPendientes, reintentar, cancelar, resumenDeCola } from "../whatsapp/cola.js";
 import { darDeBaja } from "../whatsapp/entrante.js";
+import { haceCuanto } from "../alerts.js";
 import { formatTelefono, renderPlantilla, variablesDesconocidas, VARIABLES_PLANTILLA } from "@ferrehouse/shared";
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
@@ -51,6 +52,13 @@ export async function registerWhatsAppRoutes(app: FastifyInstance): Promise<void
         estado: t.estado(),
         qr: t.qr(),
         desde: t.desde(),
+        /**
+         * "hace 2 horas" y no "31-07-2026, 5:38:45". Para decidir si esto es
+         * urgente lo que importa es cuánto lleva así, no a qué hora empezó, y
+         * el cálculo lo hace el servidor con la MISMA función que las alertas
+         * — dos implementaciones de "hace cuánto" terminan discrepando.
+         */
+        hace: t.desde() ? haceCuanto(t.desde()!, new Date()) : null,
         /**
          * El paso que falta, dicho en la respuesta y no solo en un documento.
          * Mientras no exista el adaptador, el panel tiene que explicar por qué

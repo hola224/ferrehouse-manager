@@ -958,3 +958,113 @@ lo único que se puede hacer es mostrar la consecuencia mientras se escribe.
 
 Nada de los sprints 1 a 5. Lo que sigue es el Sprint 6 (WhatsApp) y el 7
 (instalación y marcha blanca).
+
+---
+
+## 2026-07-31 — Sprint 6: WhatsApp, entero menos el transporte
+
+El sprint queda **🟡 abierto a propósito**, no cerrado. Su demo dice "venta con
+cliente que acepta → le llega el WhatsApp", y eso no se puede correr sin un
+número dedicado y alguien delante del computador escaneando un QR. Lo que sí se
+podía construir y probar está construido y probado: **6.1, 6.3, 6.4, 6.5 y 6.6
+completas, y de la 6.2 todo salvo el adaptador.**
+
+### La decisión que ordena el sprint: un puerto de tres métodos
+
+`whatsapp/transporte.ts` define `estado()`, `qr()` y `enviar(e164, mensaje)`, y
+**nada más del sprint sabe que WhatsApp existe**. Arriba de esa costura hay
+código real: la captura del cliente, la cola con reintentos, la baja, la
+plantilla y el panel. Abajo queda un solo archivo por escribir.
+
+No se corrió `pnpm add whatsapp-web.js` y no es descuido. Instanciar el cliente
+abre una sesión de verdad y manda mensajes a teléfonos de verdad, la
+instalación arrastra un Chromium de Puppeteer del que no se puede ejercitar una
+línea sin esa sesión, y escribir el adaptador a ciegas es escribir contra una
+API imaginada. El puerto confina ese riesgo a un archivo.
+
+Lo que ese archivo tiene que hacer está escrito adentro del puerto, incluida la
+trampa que se lleva a más de uno: **resolver el JID con `getNumberId()`, no
+pegarle `@c.us` al número.** Esa función existe justamente porque concatenar
+funciona hasta que no.
+
+### Las cuatro reglas que el diseño protege
+
+**La venta nunca se cae por un WhatsApp** (decisión sellada 15).
+`WhatsAppJob.saleId` es único, así que un insert dentro de la transacción de la
+venta haría rollback de una venta ya cobrada. Se encola después del commit y
+además detrás de un `catch`: son dos redes para el mismo riesgo, y las dos
+hacen falta, porque una excepción sin atrapar devolvería 500 sobre una venta
+que sí quedó escrita — el vendedor leería "error", volvería a cobrar, y la
+ferretería cobraría dos veces. Hay un test que rompe la cola a propósito y
+verifica que la venta y su movimiento de caja siguen ahí.
+
+**Sin sesión conectada el worker no gasta intentos.** Si cada pasada quemara
+uno, dos horas sin internet dejarían la cola entera en FALLIDO y los mensajes
+no saldrían nunca al volver la conexión — que es literalmente la segunda mitad
+de la demo de cierre. Un intento se gasta solo cuando hubo un envío real que
+falló.
+
+**El teléfono se normaliza a E.164 antes de tocar la base.** `Customer.phone`
+es único y es la única llave del cliente: si `912345678` y `+56912345678`
+fueran dos filas, serían dos clientes, y el día que uno pida la baja quedaría
+protegido uno solo. La baja es requisito legal, así que la normalización no es
+prolijidad — es lo que hace que la baja funcione. El test que importa no es
+"reconoce un móvil" sino que **siete formas de escribir el mismo número dan un
+solo string**.
+
+**La baja no se deshace desde el mesón.** El checkbox del vendedor no vuelve a
+suscribir a quien pidió no recibir mensajes: la venta se registra igual, el
+cliente queda atribuido, y la pantalla lo dice. Alguien puede marcar la casilla
+por costumbre, y "alguien marcó una casilla" no es el consentimiento que una
+baja exige revertir.
+
+### Dónde se puso el umbral de la palabra de baja
+
+Una palabra suelta —"baja", "stop"— solo cuenta si es **todo** el mensaje; las
+frases inequívocas —"darme de baja", "no molestar"— valen aunque vengan dentro
+de un texto más largo. Así "la baja calidad de los tornillos" no da de baja a
+nadie, que además dejaría sin respuesta a quien estaba reclamando.
+
+Pero el umbral no está al medio: **ante la duda se da de baja**. Los dos errores
+no valen lo mismo. Dar de baja a quien no lo pidió cuesta un mensaje de
+agradecimiento que no llega; no darla cuesta seguir escribiéndole a alguien que
+dijo que no, que es lo que la ley sanciona.
+
+### El jitter no es cortesía
+
+Entre dos envíos hay una pausa al azar de 4 a 15 segundos, y los reintentos
+llevan ±20% de dispersión. Una cola que se vacía a un mensaje cada 200 ms es la
+firma de un bot, y **el número bloqueado no lo devuelve nadie** — el riesgo que
+el propio plan declara. El azar se inyecta en las funciones, así que los tests
+fijan el valor y miden las esperas: un test que tolera cualquier número no
+prueba nada.
+
+### Cuatro defectos que solo aparecieron mirando la pantalla
+
+1. **El diálogo de cobro no tenía scroll propio.** Con el bloque de cliente
+   abierto y un error del servidor de tres líneas mide 798 px en una pantalla
+   de 768: esas tres líneas quedaban fuera **sin forma de llegar a ellas**, y
+   el error que el vendedor necesita leer para corregir era justo el que no
+   podía ver. `Modal` ya tenía la protección desde el sprint pasado; este
+   diálogo está escrito a mano desde el Sprint 3 y no la heredó.
+2. **El panel afirmaba "esperan a que haya un número vinculado" con la sesión
+   caída**, cuando en ese estado el número sí está vinculado. Es el mismo error
+   del chip "Caja cerrada" del Sprint 0: dar por cierto un estado que nadie
+   verificó.
+3. **La sesión caída no decía qué hacer.** Un chip rojo y siete mensajes en
+   cola dejan al administrador sin saber si esperar, reiniciar o volver a
+   escanear. El riesgo declarado del sprint es que esto falle en silencio, y la
+   caída era justo el estado sin instrucción.
+4. **"Se rindieron tras 5 intentos" era falso** para el fallo más común: un
+   número sin WhatsApp falla al primero y no se reintenta, porque insistir no
+   lo va a arreglar.
+
+Los defectos 2, 3 y 4 aparecieron **fingiendo la respuesta del servidor** para
+renderizar la sesión caída con mensajes fallidos: un estado que todavía no
+ocurrió y que no puede ocurrir hasta que alguien vincule un número.
+
+### Lo que falta para cerrar el sprint
+
+Un número dedicado, `pnpm add whatsapp-web.js`, el adaptador contra el puerto y
+alguien escaneando el QR. Después de eso la demo se corre entera, incluida la
+mitad de "se corta el internet": la cola ya está construida para eso.

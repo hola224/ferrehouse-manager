@@ -278,7 +278,7 @@ Sin interfaz, con su endpoint listo: el registro de compras al proveedor.
 
 ---
 
-## Sprint 6 — WhatsApp (Semana 7)
+## Sprint 6 — WhatsApp (Semana 7) 🟡 todo menos el transporte, 2026-07-31
 
 **Objetivo:** el mensaje post-venta, sin poner en riesgo ni la venta ni el número.
 
@@ -298,6 +298,30 @@ Sin interfaz, con su endpoint listo: el registro de compras al proveedor.
 **Demo de cierre:** venta con cliente que acepta → le llega el WhatsApp. Se desconecta el internet, se hace otra venta → la venta cierra igual y el mensaje sale cuando vuelve la conexión.
 
 **Riesgo:** whatsapp-web.js depende del DOM de WhatsApp Web y se rompe cuando Meta cambia cosas. Mitigación: fijar versión, y el panel 6.6 para que la falla sea visible y no silenciosa. **Número dedicado, no el personal.**
+
+**Cómo va (2026-07-31):** 6.1, 6.3, 6.4, 6.5 y 6.6 entregadas y probadas; de la
+6.2, todo salvo el adaptador. 456 tests en verde (178 en `shared`, 271 en
+`server`, 7 en `web`), 62 nuevos.
+
+Todo se apoya en un puerto de tres métodos (`whatsapp/transporte.ts`) y **el
+adaptador de whatsapp-web.js no está escrito a propósito**: instanciarlo abre
+una sesión de verdad y manda mensajes a teléfonos de verdad, y la vinculación
+exige escanear un QR con el número dedicado en la mano. Escribirlo a ciegas
+sería escribir contra una API imaginada; el puerto confina ese riesgo a un
+archivo, cuyas instrucciones —incluida la de resolver el JID con `getNumberId()`
+en vez de concatenar `@c.us`— están escritas adentro.
+
+**Lo que falta para cerrar, y no se puede hacer sin alguien presente:** un
+número dedicado, `pnpm add whatsapp-web.js`, el adaptador y el escaneo del QR.
+Recién ahí se corre la demo. La mitad de "se corta el internet" ya está
+construida y probada: sin sesión conectada el worker no gasta intentos, así que
+la cola sobrevive intacta y sale cuando vuelve la conexión.
+
+**Verificado en pantalla** a 1366×768: la captura del cliente en el diálogo de
+cobro (plegada por omisión, alcanzable con Tab, sin robarle el foco al efectivo)
+y el panel, incluido el estado de sesión caída fingiendo la respuesta del
+servidor. Cuatro defectos corregidos que los tests no veían — están en
+`BITACORA.md`.
 
 ---
 
@@ -329,7 +353,7 @@ Sin interfaz, con su endpoint listo: el registro de compras al proveedor.
 | 3 | 4 | **Vender de verdad** (ticket + cajón + venta en espera) |
 | 4 | 5 | Kardex confiable + compras + devoluciones parciales |
 | 5 | 6 | Reportes + alertas |
-| 6 | 7 | WhatsApp post-venta |
+| 6 | 7 | WhatsApp post-venta 🟡 (falta vincular el número) |
 | 7 | 8 | Instalado y en marcha blanca |
 
 **Total: 8 semanas** hasta marcha blanca. Es un plan de mejor caso: lo realista es que S3 y S4 se coman una semana extra entre los dos, porque ahí viven el hardware y los casos de uso imprevistos. Presupuestar 9-10 semanas de calendario.
