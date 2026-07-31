@@ -367,6 +367,32 @@ describe("alertas de stock (tarea 5.5)", () => {
     expect(await db.alert.count({ where: { productId: pCable, resolvedAt: null } })).toBe(0);
   });
 
+  it("un producto fuera de línea tampoco alerta", async () => {
+    /**
+     * `active: false` es "agotado de línea, fuera de temporada" (schema): que
+     * esté en cero es lo esperado, no una noticia. Alertarlo es ruido, y el
+     * ruido es lo que hace que el panel deje de mirarse.
+     */
+    const pTemporada = (
+      await db.product.create({
+        data: {
+          sku: "FH-08888", name: "Estufa a parafina", saleUnitId: uUnidad, purchaseUnitId: uUnidad,
+          priceGross: 89_990, costNetMilliPeso: 60_000_000, searchKey: "estufa",
+          reorderLevelBaseMilli: 5_000, active: false,
+        },
+      })
+    ).id;
+    await db.stockLevel.create({ data: { productId: pTemporada, locationId: idLocal, qtyBaseMilli: 3_000 } });
+
+    await db.$transaction(async (tx) =>
+      registrarMovimiento(tx, {
+        productId: pTemporada, locationId: idLocal, type: "SHRINKAGE",
+        qtyBaseMilli: 3_000, userId: idVendedor, reason: "Se mojó la caja en la bodega",
+      }),
+    );
+    expect(await db.alert.count({ where: { productId: pTemporada, resolvedAt: null } })).toBe(0);
+  });
+
   it("un producto descontinuado no alerta: no se va a reponer", async () => {
     /**
      * Se escribe el movimiento directo en el libro porque ninguna ruta deja
@@ -501,6 +527,16 @@ describe("demo de cierre del Sprint 5", () => {
     expect(despues.iva).toBe(antes.iva);
     expect(despues.margen).toBe(antes.margen);
     expect(despues.documentos).toBe(antes.documentos + 2); // la venta y su anulación
+
+    /**
+     * Una ANULACIÓN no es una DEVOLUCIÓN, y el proyecto separa las dos
+     * palabras en todas partes (tabla de estados de STATE.md). Contarlas
+     * juntas obligaría a la pantalla a llamarlas de una sola forma, que
+     * estaría mal la mitad de las veces.
+     */
+    expect(despues.anulaciones).toBe(antes.anulaciones + 1);
+    expect(despues.devoluciones).toBe(antes.devoluciones);
+    expect(despues.reversas).toBe(despues.devoluciones + despues.anulaciones);
     expect(despues.neto + despues.iva).toBe(despues.total);
   });
 

@@ -56,8 +56,13 @@ export async function evaluarStockDeProducto(
       where: { id: pedido.productId },
       include: { saleUnit: { include: { group: true } } },
     });
-    // Un producto descontinuado no se repone: alertar de su quiebre es ruido.
-    if (!p || p.deletedAt !== null) return;
+    /*
+     * Ni el descontinuado ni el que está fuera de línea se van a reponer, así
+     * que su quiebre no es noticia: `active: false` es exactamente "agotado de
+     * línea, fuera de temporada" (schema). Alertarlo es ruido, y el ruido es
+     * lo que hace que el panel deje de mirarse.
+     */
+    if (!p || p.deletedAt !== null || !p.active) return;
 
     const quiebre = pedido.saldoDespues <= 0;
     const bajo = !quiebre && p.reorderLevelBaseMilli > 0 && pedido.saldoDespues <= p.reorderLevelBaseMilli;

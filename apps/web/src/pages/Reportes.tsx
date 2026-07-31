@@ -23,6 +23,8 @@ type Ventas = {
   hasta: string;
   documentos: number;
   devoluciones: number;
+  anulaciones: number;
+  reversas: number;
   total: number;
   totalTexto: string;
   neto: number;
@@ -204,7 +206,9 @@ export function Reportes() {
             <Tarjeta titulo="Total">
               <div className="fh-num text-3xl font-black">{ventas.totalTexto}</div>
               <div className="mt-1 text-sm text-ink-soft">
-                {ventas.documentos} documentos · {ventas.devoluciones} de reversa
+                {ventas.documentos} documentos
+                {ventas.devoluciones > 0 ? ` · ${ventas.devoluciones} devolución(es)` : ""}
+                {ventas.anulaciones > 0 ? ` · ${ventas.anulaciones} anulación(es)` : ""}
               </div>
             </Tarjeta>
             <Tarjeta titulo="Neto e IVA">

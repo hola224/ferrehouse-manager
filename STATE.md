@@ -163,7 +163,7 @@ de descontar, con override de administrador registrado. Queda sin interfaz, con
 su endpoint listo y probado: el registro de compras al proveedor.
 
 **Sprint 5 — Reportes y alertas: cerrado el 2026-07-30.** Las 7 tareas,
-incluido el dashboard de admin. **389 tests en verde.** Reporte de ventas por
+incluido el dashboard de admin. **390 tests en verde.** Reporte de ventas por
 rango con cuadratura de folios, margen realizado por producto y por categoría,
 inventario valorizado a una fecha reconstruido desde el libro, alertas de stock
 que se cierran solas y panel con resolución. El vendedor entra directo a Venta.

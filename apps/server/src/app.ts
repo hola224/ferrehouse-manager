@@ -176,6 +176,7 @@ export async function buildApp(opts: { jwtSecret?: string } = {}): Promise<Fasti
         totalTexto: dia.totalTexto,
         documentos: dia.documentos,
         devoluciones: dia.devoluciones,
+        anulaciones: dia.anulaciones,
         margen: dia.margen,
         margenTexto: formatCLP(dia.margen),
         margenPct: dia.margenPct,

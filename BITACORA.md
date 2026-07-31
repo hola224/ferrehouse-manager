@@ -749,8 +749,8 @@ dejó pendientes.
 
 ## Sprint 5 — Reportes y alertas — cerrado el 2026-07-30
 
-Las 7 tareas, incluida la pantalla clave. **389 tests en verde** (150 shared,
-232 servidor, 7 web). El sistema empezó a hablarle al administrador: cuánto se
+Las 7 tareas, incluida la pantalla clave. **390 tests en verde** (150 shared,
+233 servidor, 7 web). El sistema empezó a hablarle al administrador: cuánto se
 vendió, cuánto de eso quedó, qué hay en repisa y qué hay que reponer.
 
 ### Un solo lugar reparte la plata de una venta (5.1 y 5.2)
@@ -848,6 +848,35 @@ verde:
    mismo: el mensaje se corría seis píxeles entre filas.
 3. **Dos fechas salían en formato de cable**: "Jueves, 30 de julio" con una coma
    que en español no va, y "neto, al 2026-07-30" en la tarjeta del valorizado.
+
+### Cuatro más, de una segunda pasada por la pantalla
+
+4. **El dashboard llamaba «devolución» a una anulación.** La cuenta sumaba
+   todas las filas con `reversalKind`, así que una venta anulada se informaba
+   como devuelta. Este proyecto separa las dos palabras en todas partes —la
+   tabla de estados de STATE.md las distingue, y el defecto 2 del Sprint 4 fue
+   exactamente esta confusión—: ahora se cuentan y se nombran aparte.
+5. **Un producto marcado como fuera de línea (`active: false`) seguía
+   alertando.** El guard miraba solo `deletedAt`, pero el schema define
+   `active: false` como "agotado de línea, fuera de temporada": que esté en
+   cero es lo esperado, no una noticia. Alcanzable hoy con una merma.
+6. **La cifra grande se comía el padding de la tarjeta con siete cifras.** Un
+   sábado de `$1.234.567` mide 236px a 40px de cuerpo, dentro de una tarjeta
+   con 232px útiles: no se salía del borde, pero quedaba pegada al filo, y los
+   puntos de miles no dan punto de corte para que el texto se parta solo. Se
+   vio renderizando el dashboard con un día que todavía no ocurrió, y baja a
+   32px cuando el número pasa de nueve caracteres. **1366×768 es el
+   presupuesto que fija el brief, no una aspiración.**
+7. **El enlace de la alerta al kardex nunca se había hecho clic.** Funciona:
+   se agregó y se verificó abriendo el panel y siguiéndolo hasta la historia
+   completa del producto.
+
+También se miró **la pantalla de las 9 de la mañana** —cero ventas, cero
+alertas, caja cerrada—, que es la que Cristian ve todos los días antes de
+abrir y la única que nunca aparece mientras uno prueba con datos cargados.
+Está bien: "Todavía no se vende nada hoy", "Sin ventas que medir", "Cerrada"
+con el enlace para abrir el turno, y las alertas en cero **en verde**, porque
+el panel vacío es la buena noticia.
 
 ### Dos endpoints que se movieron
 

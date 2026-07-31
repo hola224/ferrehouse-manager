@@ -40,6 +40,7 @@ type Panel = {
     totalTexto: string;
     documentos: number;
     devoluciones: number;
+    anulaciones: number;
     margen: number;
     margenTexto: string;
     margenPct: number | null;
@@ -64,13 +65,21 @@ function fechaLarga(iso: string): string {
 
 /**
  * Un número grande y su explicación debajo. La cifra en `fh-num` —tabular— y
- * en 40px o más, que es el mínimo para leerse de pie frente al mesón.
+ * en 40px, que es el mínimo para leerse de pie frente al mesón.
+ *
+ * **Baja a 32px cuando el número pasa de 9 caracteres.** A 40px, un sábado de
+ * `$1.234.567` mide 236px dentro de una tarjeta que tiene 232px de espacio
+ * útil: no se sale del borde, pero se come el padding y queda pegado al filo.
+ * Los separadores de miles son puntos y no dan punto de corte, así que el
+ * texto no se parte solo — sigue creciendo hacia afuera. Un millón de pesos en
+ * un sábado no es un caso raro, y 1366×768 es el presupuesto que fija el
+ * brief, no una aspiración.
  */
 function Numerote({ valor, tono, children }: { valor: string; tono?: "ok" | "error"; children?: React.ReactNode }) {
   return (
     <div>
       <div
-        className={`fh-num text-[2.5rem] font-black leading-none ${
+        className={`fh-num font-black leading-none ${valor.length > 9 ? "text-[2rem]" : "text-[2.5rem]"} ${
           tono === "error" ? "text-error" : tono === "ok" ? "text-ok" : ""
         }`}
       >
@@ -135,8 +144,17 @@ export function Dashboard() {
             ) : (
               <>
                 {dia.documentos} {dia.documentos === 1 ? "documento" : "documentos"}
+                {/*
+                  Una anulación no es una devolución: el proyecto separa las
+                  dos palabras en todas partes, y juntarlas acá obligaría a
+                  llamarlas de una sola forma que estaría mal la mitad de las
+                  veces.
+                */}
                 {dia.devoluciones > 0
                   ? ` · ${dia.devoluciones} ${dia.devoluciones === 1 ? "devolución" : "devoluciones"}`
+                  : ""}
+                {dia.anulaciones > 0
+                  ? ` · ${dia.anulaciones} ${dia.anulaciones === 1 ? "anulación" : "anulaciones"}`
                   : ""}
               </>
             )}

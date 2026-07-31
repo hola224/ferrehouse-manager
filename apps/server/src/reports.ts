@@ -67,6 +67,7 @@ export async function resumenDeVentas(locationId: number, desde: Date, hasta: Da
   let descuentos = 0;
   let redondeos = 0;
   let devoluciones = 0;
+  let anulaciones = 0;
   const porMedio = new Map<string, { monto: number; operaciones: number }>();
   const porVendedor = new Map<number, { nombre: string; monto: number; documentos: number; margen: number }>();
 
@@ -78,7 +79,14 @@ export async function resumenDeVentas(locationId: number, desde: Date, hasta: Da
     costo += d.costo;
     descuentos += v.discountAmount;
     redondeos += v.roundingAmount;
-    if (v.reversalKind) devoluciones++;
+    /*
+     * Una anulación NO es una devolución, y este proyecto separó las dos
+     * palabras en todas partes (tabla de estados de STATE.md). Contarlas
+     * juntas obliga a la pantalla a elegir una de las dos para nombrarlas, y
+     * la que elija va a estar mal la mitad de las veces.
+     */
+    if (v.reversalKind === "RETURN") devoluciones++;
+    else if (v.reversalKind === "VOID") anulaciones++;
 
     for (const p of v.payments) {
       const acc = porMedio.get(p.method) ?? { monto: 0, operaciones: 0 };
@@ -103,6 +111,8 @@ export async function resumenDeVentas(locationId: number, desde: Date, hasta: Da
   return {
     documentos: ventas.length,
     devoluciones,
+    anulaciones,
+    reversas: devoluciones + anulaciones,
     total,
     totalTexto: formatCLP(total),
     neto,
