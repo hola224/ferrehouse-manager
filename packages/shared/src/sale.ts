@@ -72,6 +72,16 @@ export const saleInputSchema = z.object({
   payments: z.array(paymentInputSchema).min(1, "Falta indicar cómo se paga"),
   customerId: z.number().int().positive().nullable().optional(),
   /**
+   * La espera que esta venta viene a cobrar, si viene de una.
+   *
+   * Se manda para que el servidor la BORRE DENTRO de la misma transacción. Si
+   * la borrara la pantalla después de cobrar, dos terminales podrían recuperar
+   * la misma espera y cobrarla dos veces: dos ventas, doble descuento de stock
+   * y el cliente pagando una vez. Adentro, la segunda no encuentra la fila y
+   * su venta entera se echa atrás antes de existir.
+   */
+  suspendedSaleId: z.number().int().positive().nullable().optional(),
+  /**
    * El cliente capturado en el mesón (6.1 / WA-01). El teléfono viaja **como
    * lo escribieron**: normalizarlo es del servidor, porque es lo que decide si
    * dos ventas son del mismo cliente y eso no puede depender de la pantalla.

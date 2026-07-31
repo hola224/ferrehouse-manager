@@ -164,6 +164,21 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
     el modo es por archivo, así que el arranque lo vuelve a activar y hay un test
     que lo comprueba.
 
+32. **La venta en espera la consume el servidor, dentro de la transacción que
+    escribe la venta** (`suspendedSaleId` en el cuerpo de `POST /api/sales`).
+    Si la borrara la pantalla después de cobrar, habría una ventana en la que
+    dos cajas tienen la misma espera recuperada y las dos cobran: dos ventas, el
+    stock descontado dos veces y el cliente pagando una. Adentro, la segunda no
+    encuentra la fila y su venta entera se echa atrás antes de existir. Es el
+    mismo principio que la decisión 13: el invariante lo impone la base, no la
+    disciplina.
+33. **El listado del día es solo del administrador.** `GET /api/sales` devuelve
+    el `totalGross` de cada venta, y veinte de esos sumados a mano **son** la
+    venta del día — la cifra que la precisión de la decisión 17 le esconde al
+    vendedor porque el arqueo es a ciegas. Una venta suelta (`/api/sales/:id`)
+    sí es de los dos roles: es lo que hace falta para atender una devolución, y
+    el cliente llega con el ticket, que trae impreso «Venta #47».
+
 **Precisión de la decisión 17 (Sprint 5):** al vendedor tampoco le viaja **la
 venta del día**, no solo el margen. El arqueo es a ciegas y casi toda la venta
 es efectivo, así que decirle cuánto se vendió es decirle cuánto debería tener el
@@ -245,22 +260,17 @@ presente.**
   acá: es lo único del sprint escrito a ciegas), la pantalla de estaciones y la
   marcha blanca.
 
-**Antes de la marcha blanca hay tres pantallas que construir**, las tres con su
-endpoint hecho y probado, y las tres se pueden hacer sin nadie presente:
-
-1. **Devoluciones y anulaciones** (Sprint 4). Una ferretería tiene una devolución
-   en la primera semana.
-2. **Descuento en la venta** (Sprint 3). Su tecla, F4, estaba anunciada en
-   pantalla sin hacer nada.
-3. **Venta en espera** (Sprint 3). Igual que la anterior, y su F8 además dejaba
-   el teclado muerto: abría un panel que no se renderiza y el manejador se
-   cortaba, así que ni F2 cobraba. Corregido el 2026-07-31 — la tecla sigue
-   reservada en `atajos.ts` con `pendiente: true`, pero ya no se imprime.
+**2026-07-31 — Las tres pantallas que bloqueaban la marcha blanca, construidas.**
+Devoluciones y anulaciones (Sprint 4), descuento sobre el total (F4) y venta en
+espera (F6/F8), las tres sobre endpoints que ya existían y estaban probados.
+**513 tests en verde.** Con esto no queda ninguna deuda de interfaz que impida
+empezar a operar.
 
 **Regla que estrena esto:** una tecla se reserva en `atajos.ts` para que nadie la
 reasigne, pero **no se imprime en pantalla hasta que su acción exista**
 (`atajosVisibles`). Una leyenda que promete una tecla muerta hace que el vendedor
-deje de creerle a todas.
+deje de creerle a todas — y la marca se quita en el mismo commit que construye la
+acción, porque esconder una tecla que anda es el mismo error al revés.
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

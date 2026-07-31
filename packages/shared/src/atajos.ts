@@ -48,19 +48,16 @@ export const ATAJOS: readonly Atajo[] = [
   { tecla: "F4", etiqueta: "F4", accion: "Retiro", donde: "caja" },
   { tecla: "F6", etiqueta: "F6", accion: "Ingreso", donde: "caja" },
 
-  // Venta (Sprint 3). Se listan desde ya para que nadie reasigne una tecla
-  // creyendo que está libre.
+  // Venta (Sprint 3). Las cuatro construidas y andando desde el 2026-07-31.
   //
-  // Las tres marcadas `pendiente` NO están construidas: el descuento y la venta
-  // en espera no tienen interfaz todavía (el endpoint de espera existe desde la
-  // 3.x). Se descubrió el 2026-07-31 manejando la pantalla: la leyenda las
-  // anunciaba, F4 y F6 no hacían nada, y F8 dejaba el teclado muerto —abría un
-  // panel que no se renderiza en ninguna parte y el manejador se cortaba,
-  // así que ni siquiera F2 cobraba—.
+  // Hasta ese día tres de ellas estaban marcadas `pendiente`, porque la
+  // pantalla las anunciaba sin hacer nada —y F8 además dejaba el teclado
+  // muerto—. La marca se quitó en el mismo commit que las hizo funcionar:
+  // anunciar una tecla muerta y esconder una que anda son el mismo error.
   { tecla: "F2", etiqueta: "F2", accion: "Cobrar", donde: "venta" },
-  { tecla: "F4", etiqueta: "F4", accion: "Descuento", donde: "venta", pendiente: true },
-  { tecla: "F6", etiqueta: "F6", accion: "Dejar en espera", donde: "venta", pendiente: true },
-  { tecla: "F8", etiqueta: "F8", accion: "Recuperar espera", donde: "venta", pendiente: true },
+  { tecla: "F4", etiqueta: "F4", accion: "Descuento", donde: "venta" },
+  { tecla: "F6", etiqueta: "F6", accion: "Dejar en espera", donde: "venta" },
+  { tecla: "F8", etiqueta: "F8", accion: "Recuperar espera", donde: "venta" },
 
   // Kardex (Sprint 4). F2 lleva a la caja de búsqueda: en esta pantalla no
   // hay nada que crear, y buscar otro producto es la acción que más se repite.

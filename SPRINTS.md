@@ -362,10 +362,9 @@ desde el Sprint 2 y el acceso directo de los terminales está documentado; falta
 la pantalla de administración de estaciones, cuyo endpoint existe desde la 2.7.
 Es la pantalla de menor valor del sprint y arrastra la lista del brief §6.
 
-**7.6 necesita la tienda.** Y antes necesita otra cosa: **no hay pantalla de
-devoluciones ni de anulaciones**. El endpoint existe y está probado desde el
-Sprint 4, pero una ferretería tiene una devolución en la primera semana, así que
-la marcha blanca no puede empezar sin esa pantalla.
+**7.6 necesita la tienda**, y ya no necesita nada más: las tres pantallas que la
+bloqueaban —devoluciones y anulaciones, descuento y venta en espera— se
+construyeron el 2026-07-31. **513 tests en verde.**
 
 **Cierre del proyecto v1:** una semana de operación real sin intervención técnica.
 

@@ -126,7 +126,7 @@ export async function registerSuspendedRoutes(app: FastifyInstance): Promise<voi
         items: {
           include: {
             unit: true,
-            product: { include: { saleUnit: true } },
+            product: { include: { saleUnit: { include: { group: true } } } },
           },
         },
       },
@@ -149,9 +149,25 @@ export async function registerSuspendedRoutes(app: FastifyInstance): Promise<voi
       return {
         productId: it.productId,
         nombre: it.product.name,
+        sku: it.product.sku,
         qtyMilli: it.qtyMilli,
         unidadGuardada: it.unit.symbol,
         unidadActual: it.product.saleUnit.symbol,
+        /**
+         * La unidad de venta ENTERA y si su grupo admite fracciones.
+         *
+         * La pantalla de venta arma sus líneas con esta forma —es la misma que
+         * devuelve la búsqueda de productos— y sin ella tendría que inventarla.
+         * Se intentó: la línea recuperada quedaba sin `saleUnit` y la pantalla
+         * de venta se caía entera al pintar la tabla, con la venta adentro.
+         */
+        saleUnit: {
+          id: it.product.saleUnit.id,
+          symbol: it.product.saleUnit.symbol,
+          factorMilli: it.product.saleUnit.factorMilli,
+          groupId: it.product.saleUnit.groupId,
+        },
+        allowsFraction: it.product.saleUnit.group.allowsFraction,
         precioAhora,
         precioAlSuspender: it.unitPriceGrossAtHold,
         disponible: it.product.active && it.product.deletedAt === null,

@@ -20,13 +20,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
-import { Boton, Chip } from "@/components/ui";
+import { Boton, Campo, Chip } from "@/components/ui";
 import {
   calcularVenta,
   formatCLP,
+  formatHora,
   formatQty,
   atajosVisibles,
   normalizarTelefono,
+  requiereAutorizacion,
   ErrorDeVenta,
   type VentaCalculada,
 } from "@ferrehouse/shared";
@@ -56,7 +58,17 @@ export function Venta() {
   const [seleccion, setSeleccion] = useState(0);
   const [texto, setTexto] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"nada" | "cobrar" | "cantidad">("nada");
+  const [panel, setPanel] = useState<"nada" | "cobrar" | "cantidad" | "descuento" | "guardar" | "esperas">("nada");
+  /** Descuento sobre el TOTAL (F4). El de línea existe en el modelo pero no se digita acá. */
+  const [descuento, setDescuento] = useState(0);
+  /**
+   * El PIN con que un administrador autorizó un descuento sobre el tope. Viaja
+   * con la venta, porque es el servidor el que decide si hacía falta: acá solo
+   * se pide cuando la misma cuenta dice que sí, con la misma función.
+   */
+  const [pinDescuento, setPinDescuento] = useState<string | null>(null);
+  /** La espera que se está cobrando, si estas líneas vinieron de una (F8). */
+  const [espera, setEspera] = useState<{ id: number; label: string } | null>(null);
   const [ultimoCobro, setUltimoCobro] = useState<{ mensaje: string; aviso: string | null } | null>(null);
 
   const caja = useRef<HTMLInputElement>(null);
@@ -93,6 +105,7 @@ export function Venta() {
           unitPriceGross: l.producto.priceGross,
           discountAmount: l.discountAmount,
         })),
+        descuentoVenta: descuento,
         // Sin pagos todavía: se usa una pata en efectivo ficticia para ver el
         // total redondeado, que es el que el vendedor va a decir en voz alta.
         pagos: [{ method: "CASH", receivedAmount: 100_000_000 }],
@@ -102,7 +115,7 @@ export function Venta() {
     } catch {
       return null;
     }
-  }, [lineas, config]);
+  }, [lineas, config, descuento]);
 
   async function buscarYAgregar(q: string) {
     if (!q.trim()) return;
@@ -156,15 +169,16 @@ export function Venta() {
     } else if (e.key === "F2" && lineas.length > 0) {
       e.preventDefault();
       setPanel("cobrar");
+    } else if (e.key === "F4" && lineas.length > 0) {
+      e.preventDefault();
+      setPanel("descuento");
+    } else if (e.key === "F6" && lineas.length > 0) {
+      e.preventDefault();
+      setPanel("guardar");
+    } else if (e.key === "F8") {
+      e.preventDefault();
+      setPanel("esperas");
     }
-    /*
-     * F8 abría un panel «esperas» que NO SE RENDERIZA en ninguna parte, y como
-     * este manejador se corta cuando hay un panel abierto, el teclado quedaba
-     * muerto: ni las flechas, ni Supr, ni F2 para cobrar. En medio de una venta,
-     * con el cliente esperando, y sin nada en pantalla que explicara por qué.
-     * La venta en espera no tiene interfaz todavía (su tecla sigue reservada en
-     * `atajos.ts`, marcada `pendiente`), así que acá no hay nada que atender.
-     */
   }
 
   if (cajaAbierta === false) {
@@ -287,6 +301,10 @@ export function Venta() {
 
         <dl className="border-t border-line pt-3 text-sm">
           <Fila etiqueta="Subtotal" valor={formatCLP(total?.subtotalGross ?? 0)} />
+          {/* El descuento se ve SIEMPRE que exista, no solo al cobrar: es la
+              diferencia entre el precio de la repisa y lo que se está cobrando,
+              y esa diferencia hay que poder explicársela al cliente. */}
+          {descuento > 0 ? <Fila etiqueta="Descuento" valor={formatCLP(-descuento)} /> : null}
           {total && total.roundingAmount !== 0 ? (
             <Fila etiqueta="Redondeo" valor={formatCLP(total.roundingAmount)} />
           ) : null}
@@ -295,6 +313,12 @@ export function Venta() {
           <Fila etiqueta="Neto" valor={formatCLP(total?.netAmount ?? 0)} suave />
           <Fila etiqueta={`IVA ${config?.taxRatePercent ?? 19}%`} valor={formatCLP(total?.taxAmount ?? 0)} suave />
         </dl>
+
+        {espera ? (
+          <div className="rounded-[var(--fh-radio)] border border-line bg-bg px-3 py-2 text-sm">
+            Cobrando la espera <strong>«{espera.label}»</strong>
+          </div>
+        ) : null}
 
         <Boton variante="principal" disabled={lineas.length === 0} onClick={() => setPanel("cobrar")}>
           Cobrar <span className="fh-num opacity-70">F2</span>
@@ -327,11 +351,67 @@ export function Venta() {
           total={total}
           lineas={lineas}
           config={config}
+          descuento={descuento}
+          adminPin={pinDescuento}
+          esperaId={espera?.id ?? null}
           onCerrar={() => setPanel("nada")}
           onCobrada={(mensaje, aviso) => {
             setLineas([]);
+            // Todo lo que colgaba de ESTA venta se va con ella: dejar el
+            // descuento puesto para la siguiente sería regalar plata en
+            // silencio, y dejar la espera atada haría que el próximo cobro
+            // intentara consumir una que ya no existe.
+            setDescuento(0);
+            setPinDescuento(null);
+            setEspera(null);
             setPanel("nada");
             setUltimoCobro({ mensaje, aviso });
+          }}
+        />
+      ) : null}
+
+      {panel === "descuento" && total && config ? (
+        <Descuento
+          subtotal={total.subtotalGross}
+          actual={descuento}
+          topePorciento={config.topeDescuento}
+          onCerrar={() => setPanel("nada")}
+          onAplicar={(monto, pin) => {
+            setDescuento(monto);
+            setPinDescuento(pin);
+            setPanel("nada");
+          }}
+        />
+      ) : null}
+
+      {panel === "guardar" ? (
+        <GuardarEspera
+          lineas={lineas}
+          espera={espera}
+          onCerrar={() => setPanel("nada")}
+          onGuardada={(mensaje) => {
+            // El mesón queda libre: de eso se trata dejar algo en espera.
+            setLineas([]);
+            setDescuento(0);
+            setPinDescuento(null);
+            setEspera(null);
+            setPanel("nada");
+            setUltimoCobro({ mensaje, aviso: null });
+          }}
+        />
+      ) : null}
+
+      {panel === "esperas" ? (
+        <Esperas
+          hayLineas={lineas.length > 0}
+          onCerrar={() => setPanel("nada")}
+          onRecuperada={(id, label, nuevas, aviso) => {
+            setLineas(nuevas);
+            setEspera({ id, label });
+            setDescuento(0);
+            setPinDescuento(null);
+            setPanel("nada");
+            if (aviso) setError(aviso);
           }}
         />
       ) : null}
@@ -421,12 +501,21 @@ function Cobrar({
   total,
   lineas,
   config,
+  descuento,
+  adminPin,
+  esperaId,
   onCerrar,
   onCobrada,
 }: {
   total: VentaCalculada;
   lineas: Linea[];
   config: Config;
+  /** Descuento sobre el total, ya aplicado con F4. */
+  descuento: number;
+  /** El PIN con que se autorizó ese descuento, si hizo falta. */
+  adminPin: string | null;
+  /** La espera que esta venta viene a cobrar, para que el servidor la consuma. */
+  esperaId: number | null;
   onCerrar: () => void;
   onCobrada: (mensaje: string, aviso: string | null) => void;
 }) {
@@ -493,6 +582,7 @@ function Cobrar({
             unitPriceGross: l.producto.priceGross,
             discountAmount: l.discountAmount,
           })),
+          descuentoVenta: descuento,
           pagos,
           taxRatePercent: config.taxRatePercent,
           multiploRedondeo: config.multiploRedondeo,
@@ -502,7 +592,7 @@ function Cobrar({
     } catch (e) {
       return { venta: null, problema: e instanceof ErrorDeVenta ? e.message : "Los montos no cuadran." };
     }
-  }, [nDebito, nEfectivo, efectivo, referencia, lineas, config]);
+  }, [nDebito, nEfectivo, efectivo, referencia, lineas, config, descuento]);
 
   async function cobrar() {
     setEnviando(true);
@@ -522,7 +612,15 @@ function Cobrar({
         method: "POST",
         body: JSON.stringify({
           items: lineas.map((l) => ({ productId: l.producto.id, qtyMilli: l.qtyMilli, discountAmount: l.discountAmount })),
+          discountAmount: descuento,
           payments: pagos,
+          /*
+            La espera la consume el SERVIDOR, dentro de la misma transacción que
+            escribe la venta. Borrarla acá después de cobrar dejaría una ventana
+            en la que dos cajas la tienen recuperada y las dos cobran.
+          */
+          suspendedSaleId: esperaId,
+          ...(adminPin ? { adminPin } : {}),
           fiscalDocType: docType,
           fiscalFolio: folio || null,
           /*
@@ -755,10 +853,13 @@ function Dialogo({
   children,
   onCerrar,
   ancho = "max-w-lg",
+  titulo,
 }: {
   children: React.ReactNode;
   onCerrar: () => void;
   ancho?: string;
+  /** Opcional: los dos diálogos viejos pintan su propia cabecera, con el total al lado. */
+  titulo?: string;
 }) {
   useEffect(() => {
     const alTeclado = (e: KeyboardEvent) => {
@@ -788,8 +889,379 @@ function Dialogo({
       <div
         className={`my-auto max-h-[calc(100vh-3rem)] w-full ${ancho} overflow-y-auto rounded-[var(--fh-radio)] border border-line bg-surface p-6`}
       >
+        {titulo ? <h2 className="mb-4 text-lg font-bold">{titulo}</h2> : null}
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * El descuento sobre el total (tarea 3.6, tecla F4).
+ *
+ * **Se digita en pesos, no en porcentaje**, porque así se negocia en el mesón:
+ * "te lo dejo en 20 lucas", no "te hago un 7,3%". El porcentaje se muestra al
+ * lado porque es lo que decide si hace falta autorización.
+ *
+ * El tope lo impone el servidor con la MISMA función que se usa acá
+ * (`requiereAutorizacion`): la pantalla pide el PIN cuando corresponde en vez
+ * de dejar que el cobro reviente con el cliente al frente y la plata en la
+ * mano. Si las dos discreparan, gana el servidor y el vendedor se lleva un
+ * error a destiempo — por eso es la misma función y no dos cuentas parecidas.
+ */
+function Descuento({
+  subtotal,
+  actual,
+  topePorciento,
+  onCerrar,
+  onAplicar,
+}: {
+  subtotal: number;
+  actual: number;
+  topePorciento: number;
+  onCerrar: () => void;
+  onAplicar: (monto: number, pin: string | null) => void;
+}) {
+  const [monto, setMonto] = useState(actual > 0 ? String(actual) : "");
+  const [pin, setPin] = useState("");
+  const campo = useRef<HTMLInputElement>(null);
+  useEffect(() => campo.current?.focus(), []);
+
+  const n = Math.max(0, Math.round(Number(monto.replace(/\D/g, "")) || 0));
+  const excede = n > subtotal;
+  const pide = requiereAutorizacion({ subtotalGross: subtotal, descuentoTotal: n, topeVendedorPorciento: topePorciento });
+  const porciento = subtotal > 0 ? (n / subtotal) * 100 : 0;
+
+  return (
+    <Dialogo titulo="Descuento" onCerrar={onCerrar}>
+      <div className="grid gap-4">
+        <div className="flex items-end gap-4">
+          <div className="w-44">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-ink-soft">Descuento en pesos</span>
+              <input
+                ref={campo}
+                value={monto}
+                inputMode="numeric"
+                onChange={(e) => setMonto(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !excede && (!pide || pin.length >= 4)) {
+                    e.preventDefault();
+                    onAplicar(n, pide ? pin : null);
+                  }
+                }}
+                className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-lg"
+              />
+            </label>
+          </div>
+          <div className="pb-2 text-sm text-ink-soft">
+            sobre {formatCLP(subtotal)} ={" "}
+            <span className="fh-num font-semibold text-ink">{porciento.toFixed(1).replace(".", ",")}%</span>
+          </div>
+        </div>
+
+        {excede ? (
+          <p className="text-sm text-error">El descuento no puede ser mayor que el subtotal.</p>
+        ) : pide ? (
+          <>
+            <p className="text-sm text-warn">
+              Pasa del {topePorciento}% que puedes autorizar. Pide el PIN de un administrador: queda registrado quién lo
+              autorizó.
+            </p>
+            <div className="w-52">
+              <Campo
+                etiqueta="PIN del administrador"
+                type="password"
+                inputMode="numeric"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                className="fh-num"
+              />
+            </div>
+          </>
+        ) : null}
+
+        <div className="flex justify-end gap-3">
+          {actual > 0 ? (
+            <Boton variante="fantasma" onClick={() => onAplicar(0, null)}>
+              Quitar el descuento
+            </Boton>
+          ) : null}
+          <Boton variante="secundaria" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton
+            variante="principal"
+            disabled={excede || (pide && pin.length < 4)}
+            onClick={() => onAplicar(n, pide ? pin : null)}
+          >
+            Aplicar <span className="fh-num opacity-70">Enter</span>
+          </Boton>
+        </div>
+      </div>
+    </Dialogo>
+  );
+}
+
+/**
+ * Dejar la venta en espera (ADR-001, tecla F6).
+ *
+ * El caso real: el cliente se acordó de que le faltaba algo y se fue a buscarlo
+ * con el mesón lleno atrás. Se guarda con un nombre que sirva para gritarlo
+ * —«el de la camioneta azul»— y la caja queda libre.
+ *
+ * **La espera no reserva stock ni toca la caja.** Es una tabla aparte, sin
+ * ninguna relación con las dos: el aislamiento es estructural, no de
+ * disciplina. Por eso guardar no descuenta nada y recuperar no garantiza que
+ * todavía haya.
+ */
+function GuardarEspera({
+  lineas,
+  espera,
+  onCerrar,
+  onGuardada,
+}: {
+  lineas: Linea[];
+  espera: { id: number; label: string } | null;
+  onCerrar: () => void;
+  onGuardada: (mensaje: string) => void;
+}) {
+  const [label, setLabel] = useState(espera?.label ?? "");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  const campo = useRef<HTMLInputElement>(null);
+  useEffect(() => campo.current?.focus(), []);
+
+  async function guardar() {
+    setEnviando(true);
+    setError(null);
+    const items = lineas.map((l) => ({ productId: l.producto.id, qtyMilli: l.qtyMilli }));
+    try {
+      /*
+        Si estas líneas vinieron de una espera, se ACTUALIZA esa misma en vez de
+        crear otra. Crear una nueva dejaría dos «Don Luis» en la lista, una con
+        lo de antes y otra con lo de ahora, y nadie sabría cuál cobrar.
+      */
+      const r = espera
+        ? await api<{ ok: true }>(`/suspended/${espera.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ label: label.trim(), note: note.trim() || null, items }),
+          })
+        : await api<{ mensaje: string; aviso: string | null }>("/suspended", {
+            method: "POST",
+            body: JSON.stringify({ label: label.trim(), note: note.trim() || null, items }),
+          });
+      const mensaje = "mensaje" in r ? r.mensaje : `Actualizada «${label.trim()}».`;
+      const aviso = "aviso" in r && r.aviso ? ` ${r.aviso}` : "";
+      onGuardada(mensaje + aviso);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar");
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Dialogo titulo={espera ? `Actualizar «${espera.label}»` : "Dejar en espera"} onCerrar={onCerrar}>
+      <div className="grid gap-4">
+        <Campo
+          ref={campo}
+          etiqueta="Con qué nombre"
+          hint="El que sirva para encontrarla después: «el de la camioneta azul», «Don Luis»."
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          maxLength={60}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && label.trim().length >= 2) {
+              e.preventDefault();
+              void guardar();
+            }
+          }}
+        />
+        <Campo
+          etiqueta="Nota (opcional)"
+          hint="«Fue a buscar la medida», «vuelve después de almuerzo»."
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={200}
+        />
+        <p className="text-sm text-ink-soft">
+          {lineas.length} {lineas.length === 1 ? "línea" : "líneas"}. La espera <strong>no reserva stock</strong>: si
+          alguien se lleva lo último, al recuperarla no va a estar.
+        </p>
+        {error ? <p className="text-sm text-error">{error}</p> : null}
+        <div className="flex justify-end gap-3">
+          <Boton variante="secundaria" onClick={onCerrar}>
+            Cancelar
+          </Boton>
+          <Boton variante="principal" disabled={enviando || label.trim().length < 2} onClick={() => void guardar()}>
+            {enviando ? "Guardando…" : "Guardar"} <span className="fh-num opacity-70">Enter</span>
+          </Boton>
+        </div>
+      </div>
+    </Dialogo>
+  );
+}
+
+type EsperaFila = {
+  id: number;
+  label: string;
+  note: string | null;
+  lineas: number;
+  touchedAt: string;
+  user: { name: string };
+};
+
+type LineaRecuperada = {
+  productId: number;
+  nombre: string;
+  sku: string;
+  qtyMilli: number;
+  unidadActual: string;
+  saleUnit: Producto["saleUnit"];
+  allowsFraction: boolean;
+  precioAhora: number;
+  precioAlSuspender: number;
+  disponible: boolean;
+  aviso: string | null;
+};
+
+/**
+ * Recuperar una venta en espera (tecla F8).
+ *
+ * Al recuperar, **el precio que se cobra es el de hoy**, no el del momento en
+ * que se guardó: la espera no es una cotización. Pero el precio viejo viaja
+ * igual y se muestra, porque el cliente se acuerda del que le dijeron y el
+ * vendedor tiene que enterarse antes de cobrar, no cuando le reclamen.
+ */
+function Esperas({
+  hayLineas,
+  onCerrar,
+  onRecuperada,
+}: {
+  hayLineas: boolean;
+  onCerrar: () => void;
+  onRecuperada: (id: number, label: string, lineas: Linea[], aviso: string | null) => void;
+}) {
+  const [filas, setFilas] = useState<EsperaFila[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ocupado, setOcupado] = useState<number | null>(null);
+
+  const cargar = useCallback(async () => {
+    try {
+      setFilas((await api<{ esperas: EsperaFila[] }>("/suspended")).esperas);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudieron leer las esperas");
+      setFilas([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargar();
+  }, [cargar]);
+
+  async function recuperar(f: EsperaFila) {
+    setOcupado(f.id);
+    setError(null);
+    try {
+      const r = await api<{ lineas: LineaRecuperada[]; hayCambios: boolean }>(`/suspended/${f.id}`);
+      const faltan = r.lineas.filter((l) => !l.disponible);
+      const avisos = r.lineas.filter((l) => l.aviso).map((l) => `${l.nombre}: ${l.aviso}`);
+      const lineas: Linea[] = r.lineas
+        .filter((l) => l.disponible)
+        .map((l) => ({
+          /*
+            El producto se arma con la MISMA forma que devuelve la búsqueda,
+            `saleUnit` incluida. Antes se armaba a mano con un cast y sin
+            `saleUnit`: la tabla se caía al pintar la primera línea y la
+            pantalla de venta entera desaparecía —pantalla en blanco, sin
+            forma de volver, con la venta a medio armar—.
+          */
+          producto: {
+            id: l.productId,
+            sku: l.sku,
+            name: l.nombre,
+            priceGross: l.precioAhora,
+            saleUnit: l.saleUnit,
+          },
+          qtyMilli: l.qtyMilli,
+          discountAmount: 0,
+          fraccionable: l.allowsFraction,
+        }));
+      const aviso =
+        [
+          faltan.length ? `${faltan.length} ${faltan.length === 1 ? "producto ya no está" : "productos ya no están"} y no se recuperaron.` : "",
+          ...avisos,
+        ]
+          .filter(Boolean)
+          .join(" ") || null;
+      onRecuperada(f.id, f.label, lineas, aviso);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo recuperar");
+      setOcupado(null);
+      void cargar();
+    }
+  }
+
+  async function descartar(f: EsperaFila) {
+    setOcupado(f.id);
+    try {
+      await api(`/suspended/${f.id}`, { method: "DELETE" });
+      await cargar();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo descartar");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  return (
+    <Dialogo titulo="Ventas en espera" ancho="max-w-2xl" onCerrar={onCerrar}>
+      <div className="grid gap-3">
+        {/*
+          El aviso va ARRIBA y no al recuperar: recuperar reemplaza lo que hay
+          en pantalla, y descubrirlo después de perder ocho líneas tecleadas es
+          descubrirlo tarde.
+        */}
+        {hayLineas ? (
+          <p className="rounded-[var(--fh-radio)] border border-warn/40 bg-warn/10 p-3 text-sm">
+            Hay una venta empezada en pantalla. Recuperar una espera la reemplaza: si no querías perderla, déjala en
+            espera primero con F6.
+          </p>
+        ) : null}
+
+        {filas === null ? (
+          <p className="text-ink-soft">Cargando…</p>
+        ) : filas.length === 0 ? (
+          <p className="text-ink-soft">No hay ninguna venta en espera.</p>
+        ) : (
+          <ul className="divide-y divide-line rounded-[var(--fh-radio)] border border-line">
+            {filas.map((f) => (
+              <li key={f.id} className="flex items-center gap-3 px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold">{f.label}</div>
+                  <div className="truncate text-sm text-ink-soft">
+                    {f.lineas} {f.lineas === 1 ? "línea" : "líneas"} · {f.user.name} · {formatHora(f.touchedAt)}
+                    {f.note ? ` · ${f.note}` : ""}
+                  </div>
+                </div>
+                <Boton variante="principal" disabled={ocupado === f.id} onClick={() => void recuperar(f)}>
+                  Recuperar
+                </Boton>
+                <Boton variante="fantasma" disabled={ocupado === f.id} onClick={() => void descartar(f)}>
+                  Descartar
+                </Boton>
+              </li>
+            ))}
+          </ul>
+        )}
+        {error ? <p className="text-sm text-error">{error}</p> : null}
+        <div className="flex justify-end">
+          <Boton variante="secundaria" onClick={onCerrar}>
+            Cerrar
+          </Boton>
+        </div>
+      </div>
+    </Dialogo>
   );
 }

@@ -26,9 +26,17 @@ A mano sirve el nombre o el código, sin tildes ni mayúsculas —`caneria` encu
 | **Enter** | Cambiar la cantidad de la línea marcada |
 | **Supr** | Quitar la línea marcada |
 | **F2** | **Cobrar** |
+| **F4** | Descuento sobre el total |
+| **F6** | Dejar la venta en espera |
+| **F8** | Recuperar una venta en espera |
 
-*El descuento y la venta en espera todavía no están construidos.* Si alguien te
-dijo que van en F4 y F6, todavía no.
+**Dejar en espera (F6)** es para el que se fue a buscar algo con el mesón lleno
+atrás: le pones un nombre que sirva para gritarlo y la caja queda libre. Vuelve,
+**F8**, y sigue donde iba. Ojo: la espera **no reserva stock** y se cobra al
+precio de hoy; si algo cambió, la pantalla te avisa antes de cobrar.
+
+**Descuento (F4)** va en pesos. Si pasa de lo que puedes autorizar, te pide el
+PIN de un administrador y queda registrado quién lo autorizó.
 
 ## 3 · Cobrar
 
@@ -53,9 +61,10 @@ Al confirmar, sale el ticket y se abre el cajón.
 - **Se cortó la luz o se colgó el navegador** → se vuelve a entrar y se sigue.
   Nada de lo cobrado se pierde.
 - **El cliente se arrepiente antes de cobrar** → se quitan las líneas con
-  **Supr**. Dejar la venta en espera todavía no se puede.
-- **El cliente devuelve algo después de pagar** → *todavía no se hace desde el
-  sistema.* Anótalo en el cuaderno y avísale al administrador el mismo día.
+  **Supr**, o se deja todo en espera con **F6** si va a volver.
+- **El cliente devuelve algo después de pagar** → pestaña **Devoluciones**. Le
+  pides el ticket, digitas el número que dice «Venta #47», marcas qué se
+  devuelve y por qué. La autoriza un administrador con su PIN.
 - **Te equivocaste en una venta ya cobrada** → no se borra ni se edita nunca.
   Avísale al administrador.
 

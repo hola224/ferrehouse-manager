@@ -357,6 +357,26 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
+      /**
+       * La espera se consume ACÁ ADENTRO, en la misma transacción que la venta.
+       *
+       * Es lo que impide cobrar dos veces la misma espera desde dos cajas. Si
+       * el borrado viviera en la pantalla —cobrar y después borrar— habría una
+       * ventana en la que las dos terminales tienen «Don Luis» recuperado y las
+       * dos cobran: dos ventas, el stock descontado dos veces y el cliente
+       * pagando una. Adentro, la segunda no encuentra la fila, `delete` lanza y
+       * la venta entera se echa atrás antes de existir.
+       */
+      if (datos.suspendedSaleId) {
+        try {
+          await tx.suspendedSale.delete({ where: { id: datos.suspendedSaleId } });
+        } catch {
+          throw malaPeticion(
+            "Esa venta en espera ya no está: la cobró o la descartó otra caja. Revisa antes de volver a cobrar.",
+          );
+        }
+      }
+
       return sale;
     });
 

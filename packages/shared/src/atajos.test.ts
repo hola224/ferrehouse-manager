@@ -32,17 +32,31 @@ describe("tabla de atajos (tarea 3.11)", () => {
    * pantalla de venta: anunciaba «F4 descuento» y «F6 dejar en espera», y
    * ninguna de las dos hacía nada.
    */
-  it("las teclas reservadas sin construir no se imprimen en pantalla", () => {
-    const reservadas = ATAJOS.filter((a) => a.pendiente);
-    expect(reservadas.length).toBeGreaterThan(0);
-    for (const a of reservadas) {
-      expect(atajosDe(a.donde), `${a.tecla} sigue reservada`).toContainEqual(a);
-      expect(atajosVisibles(a.donde), `${a.tecla} no se anuncia`).not.toContainEqual(a);
+  /**
+   * Reservar una tecla y anunciarla no son lo mismo. La reservada sin construir
+   * sigue en la tabla —para que nadie la reasigne creyéndola libre— pero no se
+   * imprime; la construida se imprime siempre. Los dos errores son el mismo
+   * error: la pantalla diciendo algo que no es.
+   */
+  it("se imprime lo construido y solo lo construido", () => {
+    for (const a of ATAJOS) {
+      expect(atajosDe(a.donde), `${a.tecla} ${a.accion} sigue reservada`).toContainEqual(a);
+      if (a.pendiente) {
+        expect(atajosVisibles(a.donde), `${a.tecla} ${a.accion} no se anuncia`).not.toContainEqual(a);
+      } else {
+        expect(atajosVisibles(a.donde), `${a.tecla} ${a.accion} se anuncia`).toContainEqual(a);
+      }
     }
   });
 
-  it("en venta hoy solo se imprime F2 cobrar", () => {
-    expect(atajosVisibles("venta").map((a) => `${a.tecla} ${a.accion}`)).toEqual(["F2 Cobrar"]);
+  /** Las cuatro de venta quedaron construidas el 2026-07-31. */
+  it("en venta se imprimen las cuatro", () => {
+    expect(atajosVisibles("venta").map((a) => `${a.tecla} ${a.accion}`)).toEqual([
+      "F2 Cobrar",
+      "F4 Descuento",
+      "F6 Dejar en espera",
+      "F8 Recuperar espera",
+    ]);
   });
 
   it("el catálogo tiene sus cuatro atajos", () => {

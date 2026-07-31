@@ -1260,3 +1260,73 @@ kardex implementan todo lo que anuncian.
 Esto suma a la deuda que bloquea la marcha blanca: además de la pantalla de
 devoluciones faltan **el descuento en la venta y la venta en espera**, las dos
 con su endpoint hecho desde el Sprint 3.
+
+---
+
+## 2026-07-31 — Las tres pantallas que bloqueaban la marcha blanca
+
+Devoluciones y anulaciones (Sprint 4), descuento sobre el total (F4) y venta en
+espera (F6/F8). Las tres sobre endpoints que existían y estaban probados desde
+sus sprints: lo que faltaba era poder digitarlas sin `curl`. **513 tests en
+verde** (202 en `shared`, 304 en `server`, 7 en `web`).
+
+### Devoluciones: se entra por el número del ticket
+
+El comprobante trae impreso «Venta #47» y ese número es la llave. Con eso basta
+para atender a cualquiera, y por eso **el listado del día quedó solo para el
+administrador**: `GET /api/sales` devuelve el `totalGross` de cada venta, y
+veinte de esos sumados a mano **son** la venta del día — justo la cifra que la
+precisión de la decisión 17 le esconde al vendedor, porque el arqueo es a ciegas
+y casi todo es efectivo. El endpoint estaba abierto a los dos roles y no lo usaba
+nadie; la primera pantalla que lo iba a usar destapó el agujero.
+
+Las dos puertas cerradas se dicen **antes** de la tabla: devolver una devolución
+y anular lo ya anulado son los dos errores que el modelo no puede permitir, y
+descubrirlos después de llenar las cantidades es descubrir que se perdió el
+tiempo. «Anular» quedó al otro extremo de «devolver lo marcado» y no al lado: no
+es "devolver todo", es otro documento con otro nombre.
+
+### La espera la consume el servidor, no la pantalla
+
+`POST /api/sales` acepta `suspendedSaleId` y **borra la espera dentro de la misma
+transacción** que escribe la venta. Antes no la consumía nadie, y el borrado
+natural —cobrar y después borrar desde la pantalla— deja una ventana en la que
+dos cajas tienen «Don Luis» recuperado y las dos cobran: dos ventas, el stock
+descontado dos veces y el cliente pagando una. Adentro, la segunda no encuentra
+la fila y su venta entera se echa atrás antes de existir. Hay un test que cobra
+dos veces la misma espera y comprueba que la segunda no deja **nada** escrito.
+
+### Cuatro defectos, todos encontrados manejando la pantalla
+
+1. **El mensaje de confirmación de una devolución nunca aparecía.** `buscar`
+   limpia el resultado anterior —tiene que hacerlo, si no el aviso de una
+   devolución quedaría colgado sobre otra venta— y se llamaba después de
+   ponerlo. La devolución quedaba registrada y la pantalla no lo decía.
+2. **La hora salía «07:37 a. m.»** El default de `es-CL` es de 12 horas y el
+   resto de la aplicación usa 24. `formatHora` existe en `shared` justo para que
+   no haya dos relojes, y esta pantalla se había escrito su propio `Intl`.
+3. **Con cinco líneas los botones caían a 848 px** en una pantalla de 768. Se
+   alcanzaban desplazando —no es el caso del Sprint 6, donde no había forma de
+   llegar— pero el presupuesto del brief es 1366×768. La búsqueda se encoge a
+   una línea cuando ya hay una venta en pantalla: quedaron a 689.
+4. **Recuperar una espera tumbaba la pantalla de venta entera.** La línea
+   recuperada se armaba a mano, con un cast y sin `saleUnit`, y la tabla se caía
+   al pintarla: pantalla en blanco, sin forma de volver, con la venta a medio
+   armar. Se arregló donde correspondía —el servidor devuelve la unidad completa
+   y si su grupo admite fracciones, igual que hace `returnable`— y no con un
+   `?.` en la pantalla, que habría escondido el síntoma dejando la línea sin
+   unidad.
+
+El cuarto deja algo anotado que no se arregló: **no hay error boundary**. Un
+error de render en la pantalla de venta deja la aplicación en blanco, sin
+navegación y sin forma de volver salvo recargar. En un POS eso es peor de lo que
+suena, porque pasa con la venta a medio armar. No está en ningún sprint.
+
+### Sobre el harness, otra vez
+
+Dos falsos negativos, los dos míos y ninguno del producto: le hice `blur()` al
+campo de búsqueda antes de mandar F4, y el manejador de teclas cuelga del
+contenedor —con el foco en `body` el evento no entra—; y el servidor se reinició
+a mitad de una corrida, la aplicación cerró sesión y todo lo que siguió midió la
+pantalla de entrada. Vale anotarlo: **cuando la pantalla "no hace nada", lo
+primero que hay que descartar es el harness.**

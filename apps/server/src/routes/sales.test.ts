@@ -512,3 +512,61 @@ describe("el listado del día", () => {
     expect((await get(`/api/sales/${venta.id}/returnable`, tokenVendedor)).statusCode).toBe(200);
   });
 });
+
+/**
+ * La espera se consume DENTRO de la transacción de la venta (ADR-001).
+ *
+ * Es lo que impide que dos cajas cobren la misma espera. Si el borrado viviera
+ * en la pantalla —cobrar y después borrar— habría una ventana en la que las dos
+ * tienen la misma espera recuperada, y las dos cobran: dos ventas, el stock
+ * descontado dos veces y el cliente pagando una.
+ */
+describe("cobrar una venta en espera", () => {
+  async function unaEspera() {
+    const r = await post("/api/suspended", {
+      label: "Don Luis",
+      items: [{ productId: pPerno, qtyMilli: 2_000 }],
+    });
+    return JSON.parse(r.body).espera.id as number;
+  }
+
+  it("la borra en la misma transacción que escribe la venta", async () => {
+    const id = await unaEspera();
+    const r = await vender({
+      items: [{ productId: pPerno, qtyMilli: 2_000 }],
+      payments: [{ method: "CASH", receivedAmount: 1_000 }],
+      suspendedSaleId: id,
+    });
+    expect(r.statusCode).toBe(201);
+    expect(await db.suspendedSale.count({ where: { id } })).toBe(0);
+  });
+
+  it("la segunda caja no cobra dos veces, y su venta no queda escrita", async () => {
+    const id = await unaEspera();
+    const primera = await vender({
+      items: [{ productId: pPerno, qtyMilli: 2_000 }],
+      payments: [{ method: "CASH", receivedAmount: 1_000 }],
+      suspendedSaleId: id,
+    });
+    expect(primera.statusCode).toBe(201);
+
+    const antes = await db.sale.count();
+    const segunda = await vender({
+      items: [{ productId: pPerno, qtyMilli: 2_000 }],
+      payments: [{ method: "CASH", receivedAmount: 1_000 }],
+      suspendedSaleId: id,
+    });
+    expect(segunda.statusCode).toBe(400);
+    expect(JSON.parse(segunda.body).error).toContain("ya no está");
+    // Y no quedó media venta escrita: la transacción se echó atrás entera.
+    expect(await db.sale.count()).toBe(antes);
+  });
+
+  it("sin espera, la venta normal sigue igual", async () => {
+    const r = await vender({
+      items: [{ productId: pPerno, qtyMilli: 1_000 }],
+      payments: [{ method: "CASH", receivedAmount: 500 }],
+    });
+    expect(r.statusCode).toBe(201);
+  });
+});
