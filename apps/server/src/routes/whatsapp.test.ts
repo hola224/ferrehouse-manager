@@ -237,9 +237,19 @@ describe("encolado (6.3, decisión sellada 15)", () => {
 // ============================================================
 
 describe("worker de la cola (6.3)", () => {
+  /**
+   * Un trabajo pendiente, agendado MUY atrás a propósito.
+   *
+   * La cola solo mira lo que ya venció (`scheduledAt <= ahora`), y varias
+   * pruebas de acá abajo le pasan un reloj fijo. Con el `scheduledAt` real, esas
+   * pruebas pasaban en la mañana y fallaban en la tarde —el trabajo quedaba
+   * agendado DESPUÉS del reloj falso— y un test que depende de la hora del día
+   * es peor que uno que falla siempre: se aprende a ignorarlo.
+   */
   async function unPendiente() {
     await vender({ nombre: "Ana", telefono: "912345678", consentimiento: true });
-    return db.whatsAppJob.findFirstOrThrow();
+    const job = await db.whatsAppJob.findFirstOrThrow();
+    return db.whatsAppJob.update({ where: { id: job.id }, data: { scheduledAt: new Date("2020-01-01T00:00:00") } });
   }
 
   /**

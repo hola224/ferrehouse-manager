@@ -137,6 +137,15 @@ actualiza: el seed no pisa lo que el admin ya configuró.
 | `print.maxAttempts` | `3` | entero |
 | `whatsapp.maxAttempts` | `5` | entero |
 | `whatsapp.template` | `Hola {nombre}, gracias por tu compra en Ferrehouse...` | texto |
+| `backup.dir` | `respaldos` | texto — relativa va junto a la base; absoluta manda |
+| `backup.copyTo` | *(vacío)* | texto — pendrive o nube. Vacío = sin copia externa |
+| `backup.keepDays` | `30` | entero (días) |
+| `backup.hour` | `13` | entero (0-23) |
+
+**`backup.copyTo` nace vacío a propósito.** No hay un valor por defecto
+razonable —la letra del pendrive cambia de PC en PC— y adivinar uno haría que el
+panel dijera "copia al día" apuntando a una carpeta que no existe. Vacío, el
+panel dice la verdad: el respaldo está solo en este PC.
 
 **No existe `location.default`**: duplicaba `Location.isDefault`. Dos fuentes de
 verdad para la misma cosa siempre terminan discrepando, y gana la que está

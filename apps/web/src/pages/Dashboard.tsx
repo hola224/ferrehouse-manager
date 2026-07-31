@@ -49,6 +49,24 @@ type Panel = {
 };
 
 /**
+ * El respaldo (tarea 7.2). Va abajo, en una línea, y no como un quinto número
+ * grande: el brief pide cuatro datos y no cuarenta, y este no cambia ninguna
+ * decisión del día — salvo cuando está mal, y entonces aparece arriba como
+ * alerta.
+ *
+ * Pero se muestra SIEMPRE, aunque esté todo bien. Un respaldo del que solo se
+ * habla cuando falla se parece demasiado a uno que no existe: la única forma de
+ * confiar en él es verlo decir "hoy" todos los días.
+ */
+type Respaldo = {
+  antiguedad: string;
+  cantidad: number;
+  carpeta: string;
+  copia: { configurada: boolean; alDia: boolean; problema: string | null };
+  ultimo: { archivo: string; bytes: number } | null;
+};
+
+/**
  * "Jueves 30 de julio": la fecha completa, que es la que uno dice en voz alta.
  *
  * `Intl` devuelve "jueves, 30 de julio" y en español esa coma no va — se la
@@ -95,6 +113,9 @@ export function Dashboard() {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resolviendo, setResolviendo] = useState<number | null>(null);
+  const [respaldo, setRespaldo] = useState<Respaldo | null>(null);
+  const [respaldando, setRespaldando] = useState(false);
+  const [ultimoAviso, setUltimoAviso] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -103,11 +124,35 @@ export function Dashboard() {
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cargar el panel");
     }
+    /*
+     * En su propio `try`: que no se pueda leer la carpeta de respaldos no
+     * puede dejar al administrador sin la venta del día.
+     */
+    try {
+      setRespaldo(await api<Respaldo>("/backup"));
+    } catch {
+      setRespaldo(null);
+    }
   }, []);
 
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  async function respaldarAhora() {
+    setRespaldando(true);
+    try {
+      const r = await api<{ mensaje: string }>("/backup", { method: "POST", body: "{}" });
+      setError(null);
+      await cargar();
+      // El mensaje del servidor dice si la copia externa salió o no.
+      if (r.mensaje) setUltimoAviso(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo respaldar");
+    } finally {
+      setRespaldando(false);
+    }
+  }
 
   async function resolver(id: number) {
     setResolviendo(id);
@@ -224,7 +269,22 @@ export function Dashboard() {
                   posición fila por fila obliga a leerla en vez de barrerla.
                 */}
                 <div className="w-28 shrink-0 text-right">
-                  {a.id === null ? (
+                  {/*
+                    La acción se elige por TIPO y no por «no tiene id».
+                    Las derivadas ya son dos clases distintas —la espera añeja
+                    y el respaldo— y tratarlas por igual ponía un «Ver espera»
+                    que no lleva a ninguna parte debajo de «nunca se ha
+                    respaldado la base».
+                  */}
+                  {a.type.startsWith("BACKUP") ? (
+                    <button
+                      onClick={() => void respaldarAhora()}
+                      disabled={respaldando}
+                      className="text-sm underline underline-offset-4 hover:text-ink disabled:opacity-40"
+                    >
+                      {respaldando ? "…" : "Respaldar"}
+                    </button>
+                  ) : a.id === null ? (
                     /*
                      * La de venta en espera añeja no se resuelve marcándola:
                      * se resuelve cobrando la espera o descartándola. Un botón
@@ -269,6 +329,44 @@ export function Dashboard() {
           Inventario valorizado
         </Link>
         {error ? <span className="text-error">{error}</span> : null}
+      </section>
+
+      <section className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-4 text-sm">
+        <span className="font-semibold uppercase tracking-wide text-ink-soft">Respaldo</span>
+        {respaldo === null ? (
+          <span className="text-ink-soft">No se pudo leer la carpeta de respaldos.</span>
+        ) : (
+          <>
+            <span>
+              Último: <span className="fh-num">{respaldo.antiguedad}</span>
+            </span>
+            <span className="text-ink-soft">
+              {respaldo.cantidad} {respaldo.cantidad === 1 ? "guardado" : "guardados"}
+            </span>
+            {/*
+              Sin copia afuera el respaldo protege del «borré algo sin querer»
+              pero no del incendio ni del robo, que son los casos por los que
+              uno respalda. Se dice acá aunque además sea una alerta: en el
+              lugar donde uno mira el respaldo tiene que estar la verdad
+              completa.
+            */}
+            <span className={respaldo.copia.alDia ? "text-ok" : "text-warn"}>
+              {respaldo.copia.alDia
+                ? "copia externa al día"
+                : respaldo.copia.configurada
+                  ? "copia externa atrasada"
+                  : "solo en este PC"}
+            </span>
+            <button
+              onClick={() => void respaldarAhora()}
+              disabled={respaldando}
+              className="underline underline-offset-4 hover:text-ink disabled:opacity-40"
+            >
+              {respaldando ? "Respaldando…" : "Respaldar ahora"}
+            </button>
+            {ultimoAviso ? <span className="text-ink-soft">{ultimoAviso}</span> : null}
+          </>
+        )}
       </section>
     </div>
   );

@@ -60,6 +60,24 @@ export const SETTINGS = {
     "Hola {nombre}, gracias por tu compra en Ferrehouse por {total}.",
     "Plantilla del mensaje post-venta",
   ),
+  /**
+   * Respaldo (7.2). La carpeta va relativa a la base de datos si no es
+   * absoluta: así el default funciona en cualquier PC sin configurar nada.
+   */
+  "backup.dir": texto("respaldos", "Carpeta de respaldos, junto a la base si es relativa"),
+  /**
+   * **Lo que convierte el snapshot en respaldo.** Un archivo en el mismo disco
+   * no protege del caso que este sprint declara: se perdió el PC. Vacío = sin
+   * copia externa, y el panel lo dice en vez de callarlo.
+   */
+  "backup.copyTo": texto("", "Carpeta externa (pendrive o nube). Vacío = sin copia"),
+  "backup.keepDays": entero(30, "Días que se guardan los respaldos", (s) => s.min(1)),
+  /**
+   * 13:00 y no las 22: a las diez de la noche el PC de una ferretería está
+   * apagado. La hora es una preferencia; que exista un respaldo del día lo
+   * asegura la regla de las 24 horas (ver `backup.ts` en shared).
+   */
+  "backup.hour": entero(13, "Hora del respaldo diario (0-23)", (s) => s.min(0).max(23)),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;

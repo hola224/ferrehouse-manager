@@ -37,7 +37,8 @@ export type AuditAction =
   | "CASH_SESSION_OPENED"
   | "CASH_SESSION_CLOSED"
   | "STATION_CREATED"
-  | "STATION_UPDATED";
+  | "STATION_UPDATED"
+  | "BACKUP_CREATED";
 
 export async function audit(
   entrada: {

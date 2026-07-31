@@ -31,6 +31,7 @@ import type { Prisma } from "@prisma/client";
 import { formatQty } from "@ferrehouse/shared";
 import { db } from "./db.js";
 import { getSetting } from "./settings.js";
+import { estadoDeRespaldo } from "./backup.js";
 
 /** Las dos que describen un estado. Las demás son hechos. */
 const TIPOS_DE_ESTADO = ["LOW_STOCK", "OUT_OF_STOCK"] as const;
@@ -193,9 +194,85 @@ export async function alertasVigentes(locationId: number, ahora = new Date()): P
     });
   }
 
+  vistas.push(...(await alertasDeRespaldo(ahora)));
+
   return vistas.sort(
     (a, b) =>
       (ORDEN_SEVERIDAD[a.severity] ?? 9) - (ORDEN_SEVERIDAD[b.severity] ?? 9) ||
       b.createdAt.getTime() - a.createdAt.getTime(),
   );
+}
+
+/**
+ * El respaldo, derivado al leer (tarea 7.2).
+ *
+ * Es de la misma clase que `SUSPENDED_SALE_STALE` y por eso se calcula acá y no
+ * se guarda: **que pase el tiempo sin respaldar no es un evento**, así que no
+ * hay nada que dispare una fila. Persistirla obligaría a un barrido que
+ * escribiría la misma alerta cada vez que pasa.
+ *
+ * Y tiene que estar en el panel, no en una pantalla de configuración que nadie
+ * abre: un respaldo que dejó de correr no se nota hasta el día que hace falta,
+ * que es el único día en que ya no se puede hacer nada.
+ *
+ * Lee el disco (dos `readdir` y unos `stat`), no la base. Si la carpeta no
+ * existe o el pendrive no está, eso ES la respuesta, no un error.
+ */
+async function alertasDeRespaldo(ahora: Date): Promise<AlertaVista[]> {
+  let e: Awaited<ReturnType<typeof estadoDeRespaldo>>;
+  try {
+    e = await estadoDeRespaldo(ahora);
+  } catch {
+    // Un problema leyendo la carpeta no puede dejar sin alertas al panel entero.
+    return [];
+  }
+
+  const vistas: AlertaVista[] = [];
+
+  if (e.ultimo === null) {
+    vistas.push({
+      id: null,
+      type: "BACKUP_STALE",
+      severity: "CRITICAL",
+      message: `Nunca se ha respaldado la base. La carpeta ${e.carpeta} está vacía.`,
+      createdAt: ahora,
+      ref: null,
+    });
+  } else {
+    const horas = (ahora.getTime() - e.ultimo.fecha.getTime()) / 3_600_000;
+    /**
+     * 30 horas y no 24: el respaldo diario es a una hora fija, así que la edad
+     * normal oscila y toca las 24 casi todos los días. Avisar ahí sería avisar
+     * siempre, y una alerta que aparece todos los días se deja de leer.
+     */
+    if (horas >= 30) {
+      vistas.push({
+        id: null,
+        type: "BACKUP_STALE",
+        severity: horas >= 72 ? "CRITICAL" : "WARNING",
+        message: `El último respaldo es de ${e.antiguedad}. Debería haber uno de hoy.`,
+        createdAt: e.ultimo.fecha,
+        ref: null,
+      });
+    }
+  }
+
+  /**
+   * Sin copia afuera, el respaldo protege del "borré algo sin querer" pero no
+   * del incendio, el robo ni el disco quemado — que son justo los casos por los
+   * que uno respalda. Es un aviso permanente hasta que se configure, y está
+   * bien que moleste: es una decisión pendiente, no un estado normal.
+   */
+  if (!e.copia.configurada || !e.copia.alDia) {
+    vistas.push({
+      id: null,
+      type: "BACKUP_COPY",
+      severity: "WARNING",
+      message: e.copia.problema ?? "La copia externa del respaldo no está al día.",
+      createdAt: e.ultimo?.fecha ?? ahora,
+      ref: null,
+    });
+  }
+
+  return vistas;
 }

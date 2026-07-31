@@ -12,6 +12,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:restore": "tsx src/restaurar-cli.ts",
+    "db:backup": "tsx src/respaldar-cli.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {
