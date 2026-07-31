@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
 import { useAtajos } from "@/lib/atajos";
+import { copiarAlPortapapeles } from "@/lib/portapapeles";
 import { Boton, Campo, Chip } from "@/components/ui";
 import {
   calcularVenta,
@@ -476,14 +477,26 @@ export function Venta() {
           Cobrar <span className="fh-num opacity-70">F2</span>
         </Boton>
 
+        {/*
+          La leyenda se APAGA cuando la tecla no puede hacer nada ahora mismo.
+          Con la venta vacía, F4 y F6 no tienen sobre qué actuar y se
+          imprimían igual de negras que las que sí funcionan: el vendedor
+          aprieta, no pasa nada, y a partir de ahí no le cree a ninguna. Es el
+          mismo error que las teclas anunciadas sin construir, con otra cara.
+        */}
         <div className="flex flex-col gap-1 text-sm text-ink-soft">
           {atajosVisibles("venta")
             .filter((a) => a.accion !== "Cobrar")
-            .map((a) => (
-              <span key={a.tecla}>
-                <span className="fh-num font-semibold text-ink">{a.etiqueta}</span> {a.accion.toLowerCase()}
-              </span>
-            ))}
+            .map((a) => {
+              const disponible = a.tecla === "F8" || lineas.length > 0;
+              return (
+                <span key={a.tecla} className={disponible ? "" : "opacity-40"}>
+                  <span className={`fh-num font-semibold ${disponible ? "text-ink" : ""}`}>{a.etiqueta}</span>{" "}
+                  {a.accion.toLowerCase()}
+                  {disponible ? "" : " — con la venta vacía, no"}
+                </span>
+              );
+            })}
         </div>
       </aside>
 
@@ -679,6 +692,18 @@ function Cobrar({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
+  const botonCobrar = useRef<HTMLButtonElement>(null);
+  /**
+   * Los dos campos de monto arrancan PLEGADOS. La venta corriente es «todo
+   * con débito» o «todo en efectivo justo», y para esas dos no hay nada que
+   * digitar: un botón deja el monto puesto. Los campos aparecen al elegir
+   * pago mixto, o al usar un botón —para que se VEA lo que va a cobrar antes
+   * de confirmar—.
+   */
+  const [mostrarCampos, setMostrarCampos] = useState(false);
+  /** El Nº de comprobante de la tarjeta, plegado: casi nadie lo anota. */
+  const [pideReferencia, setPideReferencia] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   /**
    * 6.1 — el cliente para el WhatsApp, PLEGADO por omisión.
@@ -708,8 +733,55 @@ function Cobrar({
    */
   const tel = telefonoCliente.trim() === "" ? null : normalizarTelefono(telefonoCliente);
 
-  /** El foco arranca SIEMPRE en el efectivo: es lo primero que se digita. */
-  useEffect(() => campo.current?.focus(), []);
+  /**
+   * LOS DOS TOTALES NO SON EL MISMO NÚMERO, y confundirlos cobra de menos o de
+   * más en cada venta:
+   *
+   *   - En efectivo se cobra REDONDEADO al múltiplo configurado, porque no
+   *     existe la moneda de $1.
+   *   - Con tarjeta se cobra AL PESO EXACTO: no hay vuelto que dar, así que no
+   *     hay nada que redondear.
+   *
+   * `totalGross` viene calculado con una pata en efectivo ficticia, o sea ya
+   * trae el redondeo sumado; restarle `roundingAmount` devuelve el exacto.
+   */
+  const montoEfectivo = total.totalGross;
+  const montoTarjeta = total.totalGross - total.roundingAmount;
+
+  /**
+   * El foco arranca en «Todo en efectivo», no en «Cobrar».
+   *
+   * Cobrar nace DESHABILITADO —todavía no se indicó cómo paga el cliente— y un
+   * botón deshabilitado no recibe foco: el intento se perdía en silencio y el
+   * foco se quedaba en el `body`, o sea que Enter no hacía nada. Se enfoca lo
+   * primero que sí se puede apretar, y desde ahí Tab llega a débito.
+   */
+  const botonEfectivo = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    botonEfectivo.current?.focus();
+  }, []);
+
+  function todoEn(medio: "efectivo" | "debito"): void {
+    if (medio === "efectivo") {
+      setEfectivo(String(montoEfectivo));
+      setDebito("");
+    } else {
+      setDebito(String(montoTarjeta));
+      setEfectivo("");
+    }
+    // Se muestran los campos con el monto ya puesto: el vendedor ve lo que va
+    // a cobrar antes de confirmar, y puede corregirlo sin volver atrás.
+    setMostrarCampos(true);
+    setTimeout(() => botonCobrar.current?.focus(), 0);
+  }
+
+  async function copiarTotal(): Promise<void> {
+    // Solo los dígitos: es lo que se teclea en el POS de la tarjeta, y un
+    // "$6.515" pegado ahí no sirve. Se copia el EXACTO, que es el de tarjeta.
+    const ok = await copiarAlPortapapeles(String(montoTarjeta));
+    setCopiado(ok);
+    if (ok) setTimeout(() => setCopiado(false), 2000);
+  }
 
   const soloDigitos = (v: string) => v.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
   const nDebito = Number(debito || 0);
@@ -807,39 +879,116 @@ function Cobrar({
     <Dialogo onCerrar={onCerrar} ancho="max-w-2xl">
       <div className="flex items-baseline justify-between">
         <h2 className="text-lg font-bold">A cobrar</h2>
-        <span className="fh-num text-3xl font-black">{formatCLP(previa.venta?.totalGross ?? total.totalGross)}</span>
+        <div className="flex items-baseline gap-3">
+          <span className="fh-num text-3xl font-black">{formatCLP(previa.venta?.totalGross ?? total.totalGross)}</span>
+          {/*
+            Copiar el monto de TARJETA —el exacto— porque es el que hay que
+            teclear en la máquina del banco, que es el paso lento de una venta
+            con débito. Solo los dígitos: un "$6.515" pegado ahí no sirve.
+          */}
+          <button
+            type="button"
+            onClick={() => void copiarTotal()}
+            className="text-xs text-ink-soft underline underline-offset-4"
+          >
+            {copiado ? "copiado ✓" : "copiar"}
+          </button>
+        </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-4">
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-ink-soft">Efectivo recibido</span>
-          <input
-            ref={campo}
-            value={efectivo === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nEfectivo)}
-            onChange={(e) => setEfectivo(soloDigitos(e.target.value))}
-            inputMode="numeric"
-            placeholder="$0"
-            className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
-          />
-          <span className="mt-1 block text-xs text-ink-soft">Lo que puso el cliente sobre el mesón.</span>
-        </label>
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-ink-soft">Débito o crédito</span>
-          <input
-            value={debito === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nDebito)}
-            onChange={(e) => setDebito(soloDigitos(e.target.value))}
-            inputMode="numeric"
-            placeholder="$0"
-            className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
-          />
-          <input
-            value={referencia}
-            onChange={(e) => setReferencia(e.target.value)}
-            placeholder="Nº de comprobante"
-            className="mt-1 min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-sm"
-          />
-        </label>
+      {/*
+        Los dos caminos de siempre, sin teclear un peso. El monto de cada botón
+        va IMPRESO en el botón: elegir a ciegas entre dos cifras parecidas es
+        justo lo que hace que se cobre la equivocada.
+      */}
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          ref={botonEfectivo}
+          onClick={() => todoEn("efectivo")}
+          className="min-h-touch rounded-[var(--fh-radio)] border border-line bg-surface p-3 text-left hover:bg-bg"
+        >
+          <span className="block text-sm font-medium text-ink-soft">Todo en efectivo</span>
+          <span className="fh-num block text-2xl font-black">{formatCLP(montoEfectivo)}</span>
+          <span className="block text-xs text-ink-soft">justo, sin vuelto</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => todoEn("debito")}
+          className="min-h-touch rounded-[var(--fh-radio)] border border-line bg-surface p-3 text-left hover:bg-bg"
+        >
+          <span className="block text-sm font-medium text-ink-soft">Todo con débito o crédito</span>
+          <span className="fh-num block text-2xl font-black">{formatCLP(montoTarjeta)}</span>
+          <span className="block text-xs text-ink-soft">
+            {total.roundingAmount !== 0 ? "al peso exacto, sin redondeo" : "al peso exacto"}
+          </span>
+        </button>
       </div>
+
+      {!mostrarCampos ? (
+        <button
+          type="button"
+          onClick={() => {
+            setMostrarCampos(true);
+            setTimeout(() => campo.current?.focus(), 0);
+          }}
+          className="mt-2 text-sm text-ink-soft underline underline-offset-4"
+        >
+          Pago mixto, o efectivo con vuelto
+        </button>
+      ) : null}
+
+      {mostrarCampos ? (
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-ink-soft">Efectivo recibido</span>
+            <input
+              ref={campo}
+              value={efectivo === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nEfectivo)}
+              onChange={(e) => setEfectivo(soloDigitos(e.target.value))}
+              inputMode="numeric"
+              placeholder="$0"
+              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+            />
+            <span className="mt-1 block text-xs text-ink-soft">Lo que puso el cliente sobre el mesón.</span>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-ink-soft">Débito o crédito</span>
+            <input
+              value={debito === "" ? "" : "$" + new Intl.NumberFormat("es-CL").format(nDebito)}
+              onChange={(e) => setDebito(soloDigitos(e.target.value))}
+              inputMode="numeric"
+              placeholder="$0"
+              className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-bg px-3 text-2xl font-bold"
+            />
+            {/*
+              El Nº de comprobante NO es el folio: el folio es el número del
+              documento tributario y este es el voucher que imprime la máquina
+              de la tarjeta. Se usa para cuadrar contra la liquidación del
+              banco. Como la mayoría no lo anota, va plegado.
+            */}
+            {nDebito > 0 ? (
+              pideReferencia ? (
+                <input
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  autoFocus
+                  placeholder="Nº de comprobante de la tarjeta"
+                  className="mt-1 min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3 text-sm"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setPideReferencia(true)}
+                  className="mt-1 text-xs text-ink-soft underline underline-offset-4"
+                >
+                  + Nº de comprobante de la tarjeta
+                </button>
+              )
+            ) : null}
+          </label>
+        </div>
+      ) : null}
 
       {efectivoACobrar !== null && previa.venta ? (
         <p className="mt-3 text-sm text-ink-soft">
@@ -977,7 +1126,7 @@ function Cobrar({
       ) : null}
 
       <div className="mt-5 flex gap-3">
-        <Boton variante="principal" disabled={enviando || !previa.venta} onClick={cobrar}>
+        <Boton ref={botonCobrar} variante="principal" disabled={enviando || !previa.venta} onClick={cobrar}>
           Cobrar e imprimir <span className="fh-num opacity-70">F2</span>
         </Boton>
         <Boton variante="fantasma" onClick={onCerrar}>
