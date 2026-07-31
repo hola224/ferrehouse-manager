@@ -24,7 +24,7 @@ export type Atajo = {
   /** Qué hace, en el mismo verbo que el botón (brief §2.10). */
   accion: string;
   /** En qué pantalla aplica. */
-  donde: "catalogo" | "venta" | "caja";
+  donde: "catalogo" | "venta" | "caja" | "kardex";
 };
 
 export const ATAJOS: readonly Atajo[] = [
@@ -45,6 +45,14 @@ export const ATAJOS: readonly Atajo[] = [
   { tecla: "F4", etiqueta: "F4", accion: "Descuento", donde: "venta" },
   { tecla: "F6", etiqueta: "F6", accion: "Dejar en espera", donde: "venta" },
   { tecla: "F8", etiqueta: "F8", accion: "Recuperar espera", donde: "venta" },
+
+  // Kardex (Sprint 4). F2 lleva a la caja de búsqueda: en esta pantalla no
+  // hay nada que crear, y buscar otro producto es la acción que más se repite.
+  // F4 y F6 son las dos correcciones, en el mismo orden que en Caja: la que
+  // suma o resta primero, la excepcional después.
+  { tecla: "F2", etiqueta: "F2", accion: "Buscar producto", donde: "kardex" },
+  { tecla: "F4", etiqueta: "F4", accion: "Ajustar", donde: "kardex" },
+  { tecla: "F6", etiqueta: "F6", accion: "Merma", donde: "kardex" },
 ] as const;
 
 /** Teclas que el navegador se queda: no se pueden asignar. */

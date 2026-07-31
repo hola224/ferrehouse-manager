@@ -210,6 +210,41 @@ describe("kardex (tarea 4.8)", () => {
     expect(compra.qtyMilli).toBe(100_000);
   });
 
+  /**
+   * La pantalla necesita distinguir "no hay nada con este filtro" de "este
+   * producto nunca se movió": si no, un producto recién creado invita a probar
+   * con toda la historia, y toda la historia tampoco tiene nada.
+   */
+  it("dice si el producto tiene historia, sin mirar los filtros", async () => {
+    const nuevo = await db.product.create({
+      data: { sku: "FH-09500", name: "Sin historia", saleUnitId: uUnidad, purchaseUnitId: uUnidad, priceGross: 100, costNetMilliPeso: 0, searchKey: "sin historia" },
+    });
+    expect(cuerpo(await get(`/api/stock/${nuevo.id}/kardex`)).hayHistoria).toBe(false);
+    expect(cuerpo(await get(`/api/stock/${pCable}/kardex?tipo=TRANSFER_IN`)).hayHistoria).toBe(true);
+    expect(cuerpo(await get(`/api/stock/${pCable}/kardex?tipo=TRANSFER_IN`)).movimientos).toEqual([]);
+  });
+
+  it("una devolución no se referencia como si fuera la venta original", async () => {
+    // La fila de reversa ES un documento propio: seguir "Venta #3" para
+    // entender por qué volvió mercadería lleva a la nota de crédito, no a la
+    // venta que la originó.
+    const venta = cuerpo(
+      await post(
+        "/api/sales",
+        { items: [{ productId: pPerno, qtyMilli: 2000 }], payments: [{ method: "DEBIT", amount: 700 }] },
+        tokenVendedor,
+      ),
+    ).venta;
+    await post(`/api/sales/${venta.id}/return`, {
+      reason: "Uno estaba malo",
+      refundMethod: "TRANSFER",
+      items: [{ itemId: venta.items[0].id, qtyMilli: 1000 }],
+    });
+    const k = cuerpo(await get(`/api/stock/${pPerno}/kardex`));
+    expect(k.movimientos[0].type).toBe("RETURN_IN");
+    expect(k.movimientos[0].referencia).toMatch(new RegExp(`de la venta #${venta.id}`));
+  });
+
   it("al vendedor no le llega ningún costo del kardex", async () => {
     const r = await get(`/api/stock/${pCable}/kardex`, tokenVendedor);
     expect(r.statusCode).toBe(200);

@@ -1,10 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link, NavLink } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { Login } from "@/pages/Login";
 import { Dashboard } from "@/pages/Dashboard";
 import { Catalogo } from "@/pages/Catalogo";
 import { Caja } from "@/pages/Caja";
 import { Venta } from "@/pages/Venta";
+import { Kardex } from "@/pages/Kardex";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -16,16 +17,29 @@ function Layout({ children }: { children: React.ReactNode }) {
           <Link to="/" className="text-lg font-black tracking-tight">
             Ferrehouse
           </Link>
+          {/*
+            La pestaña activa se marca con `NavLink`, no con una clase fija.
+            Antes "Venta" estaba en negrita siempre: en el kardex la barra decía
+            que uno estaba en Venta. Una pantalla que miente sobre dónde estás
+            es peor que una sin marca de activo.
+          */}
           <nav className="flex gap-4 text-sm">
-            <Link to="/venta" className="font-semibold text-ink">
-              Venta
-            </Link>
-            <Link to="/catalogo" className="text-ink-soft hover:text-ink">
-              Catálogo
-            </Link>
-            <Link to="/caja" className="text-ink-soft hover:text-ink">
-              Caja
-            </Link>
+            {[
+              { a: "/venta", texto: "Venta" },
+              { a: "/catalogo", texto: "Catálogo" },
+              { a: "/caja", texto: "Caja" },
+              { a: "/kardex", texto: "Kardex" },
+            ].map((i) => (
+              <NavLink
+                key={i.a}
+                to={i.a}
+                className={({ isActive }) =>
+                  isActive ? "font-semibold text-ink underline underline-offset-8" : "text-ink-soft hover:text-ink"
+                }
+              >
+                {i.texto}
+              </NavLink>
+            ))}
           </nav>
         </div>
         <div className="flex items-center gap-4">
@@ -92,6 +106,14 @@ export function App() {
             element={
               <Privado>
                 <Venta />
+              </Privado>
+            }
+          />
+          <Route
+            path="/kardex"
+            element={
+              <Privado>
+                <Kardex />
               </Privado>
             }
           />

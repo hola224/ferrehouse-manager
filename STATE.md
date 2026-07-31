@@ -54,7 +54,38 @@ SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un 
 16. **Escrituras serializadas**: `connection_limit=1` en la URL de SQLite. Sin eso, dos ventas simultáneas del mismo producto corrompen el saldo del libro en silencio. Ver [ADR-006](.agents/DECISIONS/006-concurrencia-sqlite.md).
 17. **Lo que el vendedor no puede ver no sale del servidor.** USR-03 —el vendedor no ve costos ni márgenes— es regla de negocio, no `display:none`. Los campos de costo (`Product.costNetMilliPeso`, `SaleItem.lineCostNet`, `StockMovement.totalCostNet`, `StockMovement.balanceCostNetMilliPeso` y todo `Purchase`) **se omiten al serializar** cuando el token es de rol `SELLER`. Los DTO por rol viven en `packages/shared` desde el Sprint 0: si se parchan endpoint por endpoint, basta que uno se olvide para que el costo viaje en el JSON aunque la pantalla no lo pinte. El principio 8 del brief de UI ("no existe en su DOM") es inaplicable si el dato ya cruzó la red.
 18. **El costo de un producto se digita solo hasta su primer movimiento de stock.** Después lo manda el libro. Hasta el Sprint 4 no existen compras, así que el inventario inicial no tiene otra forma de cargar su costo que tecleándolo; pero en cuanto entra mercadería, `Product.costNetMilliPeso` pasa a ser el PMP —un caché reconstruible desde `StockMovement`— y dejarlo editable permitiría que un tecleo contradiga al libro sin dejar rastro. La regla se apaga sola: nadie tiene que acordarse de quitar el campo en el Sprint 4. Corregirlo después es un ajuste de stock, que sí queda registrado.
+   **Precisión del Sprint 4:** el bloqueo lo disparan solo los movimientos que
+   traen costo propio (`PURCHASE`, `INITIAL`, `RETURN_IN`, `TRANSFER_IN`), no
+   todos. Una venta no fija ningún costo —lo copia del vigente—, y contarla
+   dejaba sin corrección posible a cualquier producto vendido antes de cargar
+   el inventario inicial.
 19. **El texto que se busca se guarda normalizado.** `Product.searchKey` lleva nombre + SKU + códigos en minúsculas y sin tildes, escrito en la misma transacción que el producto. El `LIKE` de SQLite ignora mayúsculas **solo en ASCII**: sin esta columna, buscar "caneria" no encuentra "Cañería" y buscar "CAÑERIA" tampoco, o sea media repisa invisible desde la caja de búsqueda.
+
+20. **Con saldo bajo cero, el costo del ingreso pasa a ser el costo del
+    producto.** El promedio ponderado divide por el saldo resultante; con saldo
+    anterior negativo estaría promediando contra una deuda cuyo costo nunca
+    existió, y el resultado sale por debajo de lo que se acaba de pagar.
+    Conservar el costo anterior —como estaba— es peor y además silencioso: se
+    digita la factura con el precio nuevo del proveedor y el margen se sigue
+    calculando con el viejo. La regla vale también para el saldo cero.
+
+21. **El libro de stock tiene un solo escritor** (`apps/server/src/stock-ledger.ts`).
+    Ninguna ruta escribe `StockMovement` ni `StockLevel` por su cuenta. Los seis
+    tipos de movimiento hacen los mismos cuatro pasos con distinto signo, y una
+    copia que olvide la foto del costo deja el kardex mintiendo sin que el saldo
+    —lo único que se mira— acuse nada.
+
+22. **Lo devuelto de una línea se deriva en un solo lugar** (`resumirLineas`, en
+    `packages/shared/src/returns.ts`). No es columna de `SaleItem`: se cuenta
+    sumando las líneas de reversa que la apuntan. De ahí viven el invariante que
+    impide devolver más de lo vendido, la etiqueta visible de la venta y el
+    prorrateo del costo. Con tres implementaciones, dos discrepan y el descuadre
+    aparece en el margen, que es donde menos se mira.
+
+23. **El prorrateo de una devolución parcial es acumulativo.** Se calcula cuánto
+    corresponde al total devuelto hasta ahora y se resta lo ya devuelto, en vez
+    de prorratear cada trozo. Así la devolución que agota la línea se lleva el
+    residuo sin ninguna regla especial, y la suma de las parciales es exacta.
 
 ## Decisiones provisionales
 
@@ -91,8 +122,12 @@ antes de que aparezca nada, y el servidor tampoco le sirve el monto esperado.
 **Sprint 3 — POS: cerrado el 2026-07-30.** Las 11 tareas, incluida la pantalla
 de venta. 280 tests en verde. Falta lo físico: el ticket y el cajón reales.
 
-**Sprint actual: 4 — Kardex, compras y márgenes.** Ahí la venta pasa a validar
-saldo antes de descontar (tarea 4.5).
+**Sprint 4 — Kardex y compras: cerrado el 2026-07-30.** Las 9 tareas, incluida
+la pantalla de kardex. **331 tests en verde.** La venta ya valida saldo antes
+de descontar, con override de administrador registrado. Queda sin interfaz, con
+su endpoint listo y probado: el registro de compras al proveedor.
+
+**Sprint actual: 5 — Reportes y alertas.**
 
 El schema vive ahora en `apps/server/prisma/schema.prisma` (lo pide Prisma por
 convención). Sigue siendo la fuente de verdad del modelo.

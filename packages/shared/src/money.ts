@@ -107,6 +107,22 @@ export function formatHora(fecha: Date | string): string {
   );
 }
 
+/**
+ * Costo por unidad, que a diferencia de un MONTO sí lleva decimales.
+ *
+ * Es la razón de ser de las milésimas (decisión sellada 2): una caja de 1.000
+ * tarugos a $3.500 da $3,5 por tarugo, y mostrarlo como "$4" es un 14% de
+ * error a la vista, justo en el número con el que se calcula el margen.
+ * `formatCLP` es para plata que cambia de manos; esto es para razones.
+ */
+export function formatCostoMilli(milliPeso: number): string {
+  const signo = milliPeso < 0 ? "-" : "";
+  const texto = new Intl.NumberFormat("es-CL", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(
+    Math.abs(milliPeso) / 1000,
+  );
+  return `${signo}$${texto}`;
+}
+
 /** Cantidad en milésimas → texto con coma decimal, sin ceros de relleno. */
 export function formatQty(qtyMilli: number, allowsFraction = true): string {
   const v = qtyMilli / 1000;

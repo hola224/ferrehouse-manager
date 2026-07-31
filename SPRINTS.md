@@ -221,9 +221,12 @@ acuerde de correrla a mano.
 
 ---
 
-## Sprint 4 — Kardex y compras (Semana 5)
+## Sprint 4 — Kardex y compras (Semana 5) — **CERRADO 2026-07-30**
 
 **Objetivo:** que el inventario diga la verdad.
+
+**Estado: 9/9 tareas.** 331 tests en verde. Detalle en [`BITACORA.md`](BITACORA.md).
+Sin interfaz, con su endpoint listo: el registro de compras al proveedor.
 
 | # | Tarea | Referencia |
 |---|---|---|

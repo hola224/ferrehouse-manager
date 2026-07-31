@@ -22,6 +22,7 @@ import { audit } from "../audit.js";
 import {
   adjustmentInputSchema,
   STOCK_RULES,
+  STOCK_MOVEMENT_TYPES,
   toBaseMilli,
   roundSym,
   formatQty,
@@ -58,6 +59,10 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
         take: z.coerce.number().int().min(1).max(500).default(100),
         desde: z.coerce.date().optional(),
         hasta: z.coerce.date().optional(),
+        // El filtro por tipo va en el servidor y no en la pantalla: filtrando
+        // en el cliente, "solo compras" mostraría las compras que quedaron
+        // dentro de las últimas 100 filas, no las compras del producto.
+        tipo: z.enum(STOCK_MOVEMENT_TYPES).optional(),
       })
       .parse(req.query ?? {});
 
@@ -76,6 +81,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
       where: {
         productId: id,
         locationId,
+        ...(q.tipo ? { type: q.tipo } : {}),
         ...(q.desde || q.hasta
           ? { createdAt: { ...(q.desde ? { gte: q.desde } : {}), ...(q.hasta ? { lte: q.hasta } : {}) } }
           : {}),
@@ -92,7 +98,7 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
     const ventas = idsVenta.length
       ? await db.sale.findMany({
           where: { id: { in: idsVenta } },
-          select: { id: true, status: true, reversalKind: true, fiscalFolio: true },
+          select: { id: true, status: true, reversalKind: true, reversesId: true, fiscalFolio: true },
         })
       : [];
     const compras = idsCompra.length
@@ -108,16 +114,28 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
       where: { productId_locationId: { productId: id, locationId } },
     });
 
+    /**
+     * ¿Tiene historia, ignorando los filtros? Sin este dato la pantalla no
+     * puede distinguir "no hay nada con este filtro" de "este producto nunca
+     * se movió", y termina invitando a probar otro filtro que tampoco va a
+     * encontrar nada.
+     */
+    const hayHistoria =
+      (await db.stockMovement.count({ where: { productId: id, locationId }, take: 1 })) > 0;
+
     return {
       producto: {
         id: producto.id,
         sku: producto.sku,
         name: producto.name,
         unidad: producto.saleUnit.symbol,
+        /** Milésimas de unidad base por unidad de venta: la pantalla convierte. */
+        factorMilli: factor,
         allowsFraction: fraccion,
         costNetMilliPeso: producto.costNetMilliPeso,
       },
       saldoBaseMilli: nivel?.qtyBaseMilli ?? 0,
+      hayHistoria,
       saldoTexto: `${formatQty(aUnidadDeVenta(nivel?.qtyBaseMilli ?? 0, factor), fraccion)} ${producto.saleUnit.symbol}`,
       movimientos: movimientos.map((m) => {
         const regla = STOCK_RULES[m.type as StockMovementType];
@@ -141,8 +159,16 @@ export async function registerStockRoutes(app: FastifyInstance): Promise<void> {
           reason: m.reason,
           refType: m.refType,
           refId: m.refId,
+          /**
+           * Una devolución NO se referencia como "Venta #3": la fila #3 es la
+           * nota de crédito, y quien siga esa referencia para entender por qué
+           * volvieron 2 m va a encontrar la devolución misma, no la venta que
+           * la originó. Se nombran las dos.
+           */
           referencia: venta
-            ? `Venta #${venta.id}${venta.fiscalFolio ? ` (${venta.fiscalFolio})` : ""}`
+            ? venta.reversalKind
+              ? `${venta.reversalKind === "VOID" ? "Anulación" : "Devolución"} #${venta.id} — de la venta #${venta.reversesId}`
+              : `Venta #${venta.id}${venta.fiscalFolio ? ` (${venta.fiscalFolio})` : ""}`
             : compra
               ? `Compra #${compra.id} — ${compra.supplier.name}${compra.documentNumber ? ` (${compra.documentNumber})` : ""}`
               : null,

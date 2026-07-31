@@ -612,3 +612,124 @@ Vender de verdad destapó tres cosas:
    sigue igual y aparece un aviso ámbar que nombra la caja.
 
 Las tres salieron de usar la pantalla, no de los tests. Los 280 pasaban.
+
+---
+
+## 2026-07-30 — Sprint 4: kardex, compras y devoluciones
+
+Las 9 tareas del sprint. **331 tests en verde**, 51 nuevos. El inventario
+empieza a decir la verdad: hasta acá el stock era un número que solo bajaba.
+
+### Un solo escritor para el libro
+
+Escribir un movimiento son cuatro pasos que van juntos o no van: leer el saldo
+anterior, calcular saldo y costo promedio resultantes, insertar la fila con esas
+dos fotos, actualizar el caché `StockLevel`. Compra, venta, ajuste, merma,
+devolución e inventario inicial hacen lo **mismo** con distinto signo.
+
+Copiado seis veces, basta que una copia olvide `balanceCostNetMilliPeso` para
+que el kardex mienta sobre el costo sin que ninguna prueba lo note: el saldo
+—que es lo que se mira— seguiría bien. Por eso `stock-ledger.ts` es el único
+lugar del sistema que escribe en `StockMovement`, y recibe la transacción por
+parámetro: nunca abre la suya, porque el movimiento y lo que lo origina tienen
+que ser atómicos entre sí.
+
+### Tres cosas que estaban mal y no se veían
+
+1. **El promedio ponderado con saldo negativo.** `recalcAverageCost`
+   conservaba el costo viejo cuando el saldo anterior era bajo cero — que es
+   exactamente el estado con que llega este sprint, porque el Sprint 3 vendió
+   contra stock sin cargar. Se digitaba la factura con el precio nuevo del
+   proveedor y el sistema seguía calculando el margen con el costo obsoleto, en
+   silencio. Ahora, con saldo bajo cero, **manda el costo de lo que entra**: es
+   el único dato real que hay. Promediar contra una deuda cuyo costo nunca
+   existió da un promedio por debajo de lo que se acaba de pagar.
+
+2. **El bloqueo del costo contaba las ventas.** La decisión sellada 18 dice que
+   el costo se teclea hasta el primer movimiento; el código contaba *todos* los
+   movimientos, y una venta no fija ningún costo — lo copia del vigente. Un
+   producto vendido antes de cargar el inventario inicial quedaba con el costo
+   bloqueado para siempre, sin forma de corregir un tecleo malo. Ahora solo lo
+   bloquean los tipos que traen costo propio: compra, inventario inicial,
+   devolución y traslado que entra.
+
+3. **`deriveSaleStatus` pedía un campo que no existe.** Recibía
+   `returnedQtyMilli` por línea, que no es columna de `SaleItem` y que nada
+   calculaba: un molde sin nadie que lo llenara, escrito en el Sprint 3 y nunca
+   alimentado. Ahora la cantidad devuelta se deriva en **un** solo lugar
+   (`resumirLineas`) y de ahí viven las tres cosas que la necesitan: el
+   invariante que impide devolver más de lo vendido, la etiqueta que ve el
+   usuario y el prorrateo del costo.
+
+### El prorrateo es acumulativo, no por trozo
+
+Para repartir el costo de una línea entre varias devoluciones parciales no se
+prorratea cada trozo por separado: se calcula cuánto corresponde al **total
+devuelto hasta ahora** y se resta lo que ya se había devuelto. Así la devolución
+que agota la línea se lleva el residuo sola, sin ninguna regla especial.
+
+Tres devoluciones de un tercio de $1.000 devuelven 333, 334 y 333 —exactamente
+$1.000—. Prorrateando cada trozo por su cuenta, cada una se lleva 333 y el peso
+que sobra no vuelve nunca: el costo histórico de la venta queda descuadrado
+contra el libro de stock, en el número con que se calcula el margen.
+
+La misma regla reparte el descuento y el redondeo de cabecera. Ignorar el
+descuento al devolver es devolverle al cliente más plata de la que pagó.
+
+### Lo que decidió el resto
+
+- **La venta valida saldo y junta todas las líneas que no alcanzan antes de
+  reclamar.** Fallar en la primera obliga a corregir, reintentar y descubrir la
+  segunda: en el mesón, con el cliente al frente, son tres viajes a la bodega en
+  vez de uno. Un administrador puede autorizar igual —la ferretería no deja de
+  vender porque el sistema esté atrasado—, y la autorización queda como
+  `STOCK_OVERRIDE` en la bitácora.
+- **La reconciliación escribe la alerta ANTES de corregir el caché.** Al revés,
+  la corrección borraría la única evidencia de que hubo descuadre: el saldo
+  quedaría bien y nadie se enteraría de que el caché se había despegado del
+  libro, que es justo lo que ese job existe para detectar.
+- **El efectivo de una devolución sale de la caja abierta ahora**, no de la del
+  día de la venta, que puede llevar semanas cerrada. Y si no hay suficiente en
+  el cajón se dice con el saldo a la vista, en vez de dejar el arqueo en
+  negativo.
+- **La devolución la autoriza un administrador**, igual que un descuento fuera
+  de tope. No es desconfianza: es que la autorización quede registrada y sea de
+  alguien.
+
+### La pantalla de kardex (4.8)
+
+Wireframe aprobado por Cristian, con una decisión propia: **el orden es el de
+tecleo, no el de fecha**. El saldo de cada fila es una foto tomada al escribir
+el movimiento; ordenando por fecha, una factura del viernes digitada el lunes
+aparecería entre los movimientos del viernes con un saldo que no calza con la
+fila de arriba. La fecha del hecho se lee en su columna.
+
+Cuatro defectos aparecieron al usarla, con los 329 tests de entonces en verde:
+
+1. **El costo promedio decía `$486 / m` cuando era `$485,59`.** Redondear a
+   pesos enteros un costo *por unidad* es exactamente el error de 14% que la
+   decisión sellada 2 existe para evitar: un tarugo de $3,5 se vería como $4.
+   `formatCLP` es para plata que cambia de manos; las razones ahora tienen su
+   propio `formatCostoMilli`.
+2. **Una devolución se referenciaba como «Venta #3».** La fila #3 *es* la nota
+   de crédito: quien siguiera esa referencia para entender por qué volvieron 2 m
+   encontraría la devolución misma, no la venta que la originó. Ahora dice
+   «Devolución #3 — de la venta #2».
+3. **El estado vacío mandaba a buscar algo que no existe.** Un producto recién
+   creado decía «no hay movimientos con ese filtro, prueba con toda la
+   historia», y toda la historia tampoco tenía nada. El mensaje ahora depende de
+   si hay historia, dato que el servidor calcula ignorando los filtros.
+4. **La barra decía que uno estaba en Venta** estando en el kardex: la pestaña
+   activa era una clase fija, no un `NavLink`.
+
+Y una defensa que no salió de un defecto sino de imaginar el error: el campo de
+ajuste pide **la diferencia**, y lo natural es teclear lo que uno contó. Ahora,
+mientras se escribe, la pantalla dice en cuánto queda. Escribir 275 donde iba
+−3 muestra «Queda en 553 m» antes de confirmar.
+
+### Lo que no se construyó
+
+La **pantalla de compras**: la tarea 4.1 entrega el endpoint y el sprint pide
+solo el kardex. Digitar una factura sigue siendo por API. Es la primera
+candidata para el próximo sprint, junto con las tres pantallas que el Sprint 1
+dejó pendientes.
