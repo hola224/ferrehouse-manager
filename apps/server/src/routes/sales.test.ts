@@ -482,3 +482,33 @@ describe("sin impresora configurada, la venta sigue pero se avisa", () => {
     expect(body.avisoImpresion).toBeNull();
   });
 });
+
+/**
+ * El listado del día suma la venta del día, y esa cifra no le viaja al
+ * vendedor (precisión de la decisión 17 en el Sprint 5): el arqueo es a ciegas
+ * y casi todo es efectivo, así que decirle cuánto se vendió es decirle cuánto
+ * debería tener el cajón.
+ */
+describe("el listado del día", () => {
+  it("el administrador lo ve", async () => {
+    const r = await get("/api/sales", tokenAdmin);
+    expect(r.statusCode).toBe(200);
+    expect(Array.isArray(JSON.parse(r.body).ventas)).toBe(true);
+  });
+
+  it("al vendedor no le llega", async () => {
+    expect((await get("/api/sales", tokenVendedor)).statusCode).toBe(403);
+  });
+
+  /**
+   * Pero UNA venta suelta sí, y es lo que necesita para devolver: el cliente
+   * llega con el ticket, que trae impreso «Venta #123».
+   */
+  it("una venta suelta sí, que es con lo que se atiende una devolución", async () => {
+    const venta = JSON.parse(
+      (await vender({ items: [{ productId: pPerno, qtyMilli: 1_000 }], payments: [{ method: "CASH", receivedAmount: 500 }] })).body,
+    ).venta;
+    expect((await get(`/api/sales/${venta.id}`, tokenVendedor)).statusCode).toBe(200);
+    expect((await get(`/api/sales/${venta.id}/returnable`, tokenVendedor)).statusCode).toBe(200);
+  });
+});

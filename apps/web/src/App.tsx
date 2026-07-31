@@ -10,6 +10,7 @@ import { Reportes } from "@/pages/Reportes";
 import { Compras } from "@/pages/Compras";
 import { Usuarios } from "@/pages/Usuarios";
 import { WhatsApp } from "@/pages/WhatsApp";
+import { Devoluciones } from "@/pages/Devoluciones";
 import { Boton } from "@/components/ui";
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,9 @@ function Layout({ children }: { children: React.ReactNode }) {
               { a: "/venta", texto: "Venta" },
               { a: "/catalogo", texto: "Catálogo" },
               { a: "/caja", texto: "Caja" },
+              // Devolver es tarea de mesón, no de administración: la hace
+              // quien atiende, con el PIN de un administrador al lado.
+              { a: "/devoluciones", texto: "Devoluciones" },
               { a: "/kardex", texto: "Kardex" },
               // El panel y los reportes solo para el administrador: al
               // vendedor no le viaja ninguna cifra de plata del día, así que
@@ -158,6 +162,14 @@ export function App() {
             element={
               <Privado>
                 <Caja />
+              </Privado>
+            }
+          />
+          <Route
+            path="/devoluciones"
+            element={
+              <Privado>
+                <Devoluciones />
               </Privado>
             }
           />

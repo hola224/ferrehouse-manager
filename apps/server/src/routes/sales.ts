@@ -456,7 +456,23 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
    * con devoluciones parciales sigue siendo una venta por su monto original—
    * se perdería en la tercera copia.
    */
-  app.get("/api/sales", cualquiera, async (req) => {
+  /**
+   * El listado del día es **solo del administrador**, y no por los datos de
+   * cada venta sino por la suma.
+   *
+   * La precisión de la decisión 17 en el Sprint 5 dice que al vendedor no le
+   * viaja la venta del día: el arqueo es a ciegas y casi todo es efectivo, así
+   * que decirle cuánto se vendió es decirle cuánto debería tener el cajón.
+   * Veinte ventas con su `totalGross` son la venta del día, sumadas a mano.
+   *
+   * Una venta SUELTA sí puede verla —`/api/sales/:id` sigue abierto a los dos
+   * roles—, y es lo que necesita para devolver: el cliente llega con el ticket,
+   * que trae impreso «Venta #123». Ese número es la llave. Un listado
+   * navegable, en cambio, no hace falta para atender a nadie: si el cliente
+   * perdió el ticket, la devolución igual la tiene que autorizar un
+   * administrador con su PIN, y él sí tiene el listado.
+   */
+  app.get("/api/sales", { preHandler: requireRole("ADMIN") }, async (req) => {
     const q = z
       .object({
         desde: z.coerce.date().optional(),
