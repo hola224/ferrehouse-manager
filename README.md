@@ -7,11 +7,10 @@ del mesón entran por navegador desde la LAN. No usa internet para funcionar —
 hay una comprobación (`pnpm check:offline`) que falla si algo empieza a
 depender de la red, porque la tienda no siempre la tiene.
 
-> **Estado: funcional, sin instalar en tienda todavía.** El punto de venta, la
-> caja, el kardex, las compras, las devoluciones y los reportes andan y tienen
-> pruebas. Lo que falta para que esto sea un producto instalable está abajo, en
-> «Lo que falta», y con nombre de archivo en
-> [`.agents/TRASPASO-WINDOWS.md`](.agents/TRASPASO-WINDOWS.md).
+> **Estado: listo para instalar.** El punto de venta, la caja, el kardex, las
+> compras, las devoluciones, los reportes, la impresión de tickets ESC/POS y
+> las alertas por WhatsApp andan y tienen pruebas. La instalación en el PC de
+> la tienda es un doble clic: [`instalacion/`](instalacion/README.md).
 
 ## Levantarlo
 
@@ -27,7 +26,7 @@ pnpm dev        # servidor en :3000, web en :5173
 ```
 
 > **Si esto va a una tienda, no lo instales a mano: usa
-> [`instalacion/INSTALAR.bat`](instalacion/README.md).** Hace todo esto y además
+> [`instalacion/INSTALAR.exe`](instalacion/README.md).** Hace todo esto y además
 > genera la clave, sortea los PIN, deja el arranque automático y crea el acceso
 > directo.
 
@@ -95,18 +94,6 @@ que la pantalla y el servidor **tienen que** calcular igual —el total de una
 venta, el redondeo del efectivo, la conversión de unidades—. Tenerlas dos veces
 es tenerlas mal.
 
-## Antes de tocar el código
-
-| Documento | Qué contiene |
-|---|---|
-| [`STATE.md`](STATE.md) | Decisiones selladas. **Leer completo antes de escribir código.** |
-| [`CLAUDE.md`](CLAUDE.md) | Las reglas que ninguna prueba alcanza a ver |
-| [`.agents/DECISIONS/`](.agents/DECISIONS/) | Los ADR: por qué las cosas son como son |
-| [`.agents/TRASPASO-WINDOWS.md`](.agents/TRASPASO-WINDOWS.md) | Qué falta, con nombre de archivo y por dónde entrar |
-| [`SPRINTS.md`](SPRINTS.md) | El plan, sprint por sprint |
-| [`BITACORA.md`](BITACORA.md) | Qué se hizo y qué se aprendió |
-| [`UI-BRIEF.md`](UI-BRIEF.md) | Lo visual del principio. **Superado** por el rediseño de marca — ver [ADR 007](.agents/DECISIONS/007-marca-y-navegacion.md) |
-
 ## Trampas que ya costaron caro
 
 1. **`connection_limit=1` en `DATABASE_URL` no es cosmético.** Sin él, dos
@@ -146,16 +133,9 @@ Se usa `VACUUM INTO`, y hay un test que hace la comparación.
 
 ## Lo que falta
 
-Nada de esto está a medias: está **sin empezar**. Cada uno tiene su detalle en
-[`.agents/TRASPASO-WINDOWS.md`](.agents/TRASPASO-WINDOWS.md).
-
 | Falta | Por qué importa |
 |---|---|
-| **Quien imprima** | El servidor encola los tickets en `PrintJob` como bytes ESC/POS. Nadie lee esa cola: hoy no imprime nada, en ninguna impresora |
-| **Instalador de Windows** | Los `.bat` de [`instalacion/`](instalacion/) existen pero nunca corrieron en un Windows real |
-| **Arranque automático** | Que el servidor levante solo al prender el PC de la tienda |
 | **Ancho del ticket** | Fijo en 32 columnas, que es papel de 58 mm. Con una impresora de 3" sale angosto |
-| **WhatsApp** | La cola y el consentimiento están; falta escanear el QR y dejarlo andando |
 | **Excel** | Importar y exportar catálogo andan; faltan los reportes exportables |
 
 ## Licencia

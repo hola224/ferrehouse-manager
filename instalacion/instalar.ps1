@@ -223,11 +223,9 @@ Bien "corepack habilitado"
 
 Paso "El código de la aplicación"
 
-# Los papeles de trabajo del desarrollo no van al PC de la tienda: no le sirven
-# a nadie ahí y solo confunden a quien abra la carpeta buscando algo.
-$carpetasFuera = @(".agents", ".github", ".claude", "design_handoff_marca_ferrehouse")
-$archivosFuera = @("CLAUDE.md", "BITACORA.md", "SPRINTS.md", "STATE.md", "STATE UI.md",
-                   "REVISION.md", "USE-CASES.md", "UI-BRIEF.md")
+# Lo que no es de la aplicación no va al PC de la tienda: no le sirve a nadie
+# ahí y solo confunde a quien abra la carpeta buscando algo.
+$carpetasFuera = @(".github", ".claude")
 
 if ($DesdeCarpeta) {
   if (-not (Test-Path (Join-Path $DesdeCarpeta "package.json"))) {
@@ -287,7 +285,7 @@ $argsRobo = @($origen, $Destino, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/
 $argsRobo += "/XD"; $argsRobo += $carpetasFuera; $argsRobo += @("node_modules", "respaldos", "logs", ".wa-sesion")
 # `.env`, la base y sus archivos de WAL NO se pisan jamás: son lo único
 # irreemplazable que hay en ese PC.
-$argsRobo += "/XF"; $argsRobo += $archivosFuera; $argsRobo += @(".env", "*.db", "*.db-wal", "*.db-shm")
+$argsRobo += "/XF"; $argsRobo += @(".env", "*.db", "*.db-wal", "*.db-shm")
 & robocopy.exe @argsRobo | Out-Null
 if ($LASTEXITCODE -ge 8) { Morir "Falló la copia de archivos a $Destino (robocopy $LASTEXITCODE)" }
 Bien "Código instalado en $Destino"

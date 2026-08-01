@@ -60,7 +60,7 @@ queda en tus manos:
 |---|---|---|
 | 1 | **Node 22** | Si falta, lo baja de nodejs.org **verificando el SHA-256 publicado** y lo instala en silencio |
 | 2 | **pnpm** | Por corepack, en la versión exacta que fija el `package.json` |
-| 3 | **La aplicación** | ZIP de GitHub → `C:\Ferrehouse`. **No copia** los papeles de desarrollo (`CLAUDE.md`, `.agents/`, `BITACORA.md`, `STATE*.md`, `SPRINTS.md`, `REVISION.md`, `USE-CASES.md`, `UI-BRIEF.md`, `design_handoff/`, `.github/`) |
+| 3 | **La aplicación** | ZIP de GitHub → `C:\Ferrehouse`. No copia lo que no es de la aplicación (`.github/`, `.claude/`) ni pisa jamás `.env`, la base ni la sesión de WhatsApp |
 | 4 | **`.env`** | Clave de firma de 64 caracteres al azar y dos PIN sorteados. Si ya existe, **no lo toca** |
 | 5 | **Compilar** | `pnpm install` + `pnpm build`. Verifica que quedó `apps/web/dist/index.html` |
 | 6 | **Base de datos** | `prisma generate`, migraciones y seed. El seed es idempotente: no pisa nada existente |

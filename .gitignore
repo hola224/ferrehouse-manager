@@ -24,5 +24,18 @@ backups/
 # Worktrees y estado local de los agentes de Claude Code.
 .claude/
 
+# Papeles de trabajo del desarrollo. Viven solo en el PC de desarrollo: no van
+# al repositorio publico ni al ZIP que baja el instalador.
+.agents/
+design_handoff_marca_ferrehouse/
+BITACORA.md
+CLAUDE.md
+REVISION.md
+SPRINTS.md
+STATE.md
+STATE UI.md
+UI-BRIEF.md
+USE-CASES.md
+
 .DS_Store
 *.tsbuildinfo
