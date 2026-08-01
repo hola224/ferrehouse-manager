@@ -39,6 +39,12 @@ const stationSchema = z.object({
    * de consulta, que no imprime.
    */
   printerTarget: z.string().trim().max(120).nullable().optional(),
+  /**
+   * Columnas de texto del papel: 32 en 58 mm, 48 en 80 mm. Se aceptan valores
+   * intermedios porque hay térmicas de 42 y 44, pero fuera de ese rango no
+   * existe papel de ticket: un 8 o un 500 es un error de tipeo, no un modelo.
+   */
+  printerWidth: z.number().int().min(24, "El ancho mínimo es 24 columnas").max(64, "El ancho máximo es 64 columnas").default(32),
   active: z.boolean().default(true),
 });
 
@@ -90,7 +96,7 @@ export async function registerStationRoutes(app: FastifyInstance): Promise<void>
      * reporte de cierre en dos realidades.
      */
     const abierta = await db.cashSession.findUnique({ where: { openStationId: id } });
-    if (abierta && (datos.locationId !== undefined || datos.printerTarget !== undefined)) {
+    if (abierta && (datos.locationId !== undefined || datos.printerTarget !== undefined || datos.printerWidth !== undefined)) {
       throw malaPeticion(
         `${actual.name} tiene una caja abierta. Ciérrala antes de cambiarle la ubicación o la impresora.`,
       );

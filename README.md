@@ -135,7 +135,6 @@ Se usa `VACUUM INTO`, y hay un test que hace la comparación.
 
 | Falta | Por qué importa |
 |---|---|
-| **Ancho del ticket** | Fijo en 32 columnas, que es papel de 58 mm. Con una impresora de 3" sale angosto |
 | **Excel** | Importar y exportar catálogo andan; faltan los reportes exportables |
 
 ## Licencia

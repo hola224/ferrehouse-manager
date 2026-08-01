@@ -116,6 +116,36 @@ describe("el ancho del papel", () => {
   });
 });
 
+describe("el papel de 80 mm (48 columnas)", () => {
+  it("las líneas separadoras usan el ancho completo, no las 32 de siempre", () => {
+    const { lineas } = desarmar(ticketEscPos(VENTA, { tienda: "FERREHOUSE", ancho: 48, abrirCajon: false }));
+    expect(lineas.some((l) => l.texto === "-".repeat(48))).toBe(true);
+    expect(lineas.some((l) => l.texto === "-".repeat(32))).toBe(false);
+  });
+
+  it("ninguna línea se pasa de las 48 columnas", () => {
+    const { lineas } = desarmar(ticketEscPos(VENTA, { tienda: "FERREHOUSE", ancho: 48, abrirCajon: true }));
+    for (const l of lineas) {
+      expect(l.columnas, `«${l.texto}» ocupa ${l.columnas} columnas`).toBeLessThanOrEqual(48);
+    }
+  });
+
+  /**
+   * En 58 mm un total de siete cifras no cabe en doble ancho y se baja a doble
+   * alto. En 80 mm sí cabe: 17 caracteres × 2 = 34 ≤ 48. Que el papel ancho
+   * recupere el total en grande es la mitad del motivo de configurar el ancho.
+   */
+  it("el total de siete cifras sale en doble ancho, que en 58 mm no cabía", () => {
+    const venta = { ...VENTA, totalGross: 1_234_567, subtotalGross: 1_234_567, discountAmount: 0 };
+    const en58 = desarmar(ticketEscPos(venta, { tienda: "F", abrirCajon: false }));
+    const en80 = desarmar(ticketEscPos(venta, { tienda: "F", ancho: 48, abrirCajon: false }));
+    const dobleAncho = (r: { lineas: Linea[] }) =>
+      r.lineas.find((l) => l.texto.startsWith("TOTAL") && l.columnas === l.texto.length * 2);
+    expect(dobleAncho(en58)).toBeUndefined();
+    expect(dobleAncho(en80)).toBeDefined();
+  });
+});
+
 describe("lo que la térmica sabe imprimir", () => {
   /**
    * La tabla es tipo CP437: una tilde o una eñe salen como otro carácter. El

@@ -378,6 +378,7 @@ export async function registerReturnRoutes(app: FastifyInstance): Promise<void> 
           saleId: completa.id,
           payload: ticketEscPos(completa, {
             tienda,
+            ancho: estacion.printerWidth,
             // El cajón se abre porque hay que SACAR plata, igual que se abre
             // para guardarla. Con tarjeta no: la plata vuelve por el POS.
             abrirCajon: datos.refundMethod === "CASH",

@@ -411,6 +411,7 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
           saleId: creada.id,
           payload: ticketEscPos(completa, {
             tienda,
+            ancho: estacion.printerWidth,
             // El cajón se abre solo si entró efectivo: no hay nada que guardar
             // ni vuelto que dar en una venta pagada entera con tarjeta.
             abrirCajon: efectivoAlCajon(venta.pagos) > 0,
@@ -594,6 +595,7 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
         isReprint: true,
         payload: ticketEscPos(venta, {
           tienda,
+          ancho: estacion.printerWidth,
           esReimpresion: true,
           // La copia NO abre el cajón: abrirlo sin una venta detrás es
           // exactamente lo que un arqueo no puede explicar.

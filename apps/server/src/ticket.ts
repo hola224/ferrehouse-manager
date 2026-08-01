@@ -21,7 +21,13 @@ import {
 
 const ESC = 0x1b;
 const GS = 0x1d;
-const ANCHO = 32; // caracteres por línea en papel de 58 mm
+/**
+ * Caracteres por línea si nadie dice otra cosa: papel de 58 mm. La estación
+ * puede pedir otro ancho (48 en una térmica de 80 mm) vía `opciones.ancho` —
+ * el número vive en `Station.printerWidth`, al lado de la dirección de la
+ * impresora, porque el ancho es del papel y el papel es de la impresora.
+ */
+const ANCHO_58MM = 32;
 
 /**
  * Las fracciones que un catálogo de ferretería tiene sí o sí: media pulgada,
@@ -86,9 +92,9 @@ const t = (s: string) => {
  */
 const MARCA = ["   /\\", "  /  \\", " /_FH_\\", ""].join("\n");
 
-function linea(izq: string, der: string): string {
+function linea(ancho: number, izq: string, der: string): string {
   const a = stripDiacritics(izq);
-  const relleno = Math.max(1, ANCHO - a.length - der.length);
+  const relleno = Math.max(1, ancho - a.length - der.length);
   return a + " ".repeat(relleno) + der + "\n";
 }
 
@@ -123,9 +129,11 @@ export type VentaParaTicket = {
 
 export function ticketEscPos(
   venta: VentaParaTicket,
-  opciones: { tienda: string; esReimpresion?: boolean; abrirCajon?: boolean },
+  opciones: { tienda: string; ancho?: number; esReimpresion?: boolean; abrirCajon?: boolean },
 ): Buffer {
   const b: Buffer[] = [];
+  const ancho = opciones.ancho ?? ANCHO_58MM;
+  const fila = (izq: string, der: string) => linea(ancho, izq, der);
   const neto = Math.round(venta.totalGross / (1 + venta.taxRatePercent / 100));
   const iva = venta.totalGross - neto;
 
@@ -145,7 +153,7 @@ export function ticketEscPos(
   }
 
   b.push(Buffer.from([ESC, 0x61, 0x00])); // a la izquierda
-  b.push(t("-".repeat(ANCHO) + "\n"));
+  b.push(t("-".repeat(ancho) + "\n"));
   b.push(t(`Venta #${venta.id}\n`));
   b.push(
     t(
@@ -156,27 +164,27 @@ export function ticketEscPos(
   if (venta.fiscalFolio) {
     b.push(t(`${venta.fiscalDocType ?? "DOC"} ${venta.fiscalFolio}\n`));
   }
-  b.push(t("-".repeat(ANCHO) + "\n"));
+  b.push(t("-".repeat(ancho) + "\n"));
 
   // --- Líneas ---
   for (const it of venta.items) {
-    b.push(t(stripDiacritics(it.descriptionSnapshot).slice(0, ANCHO) + "\n"));
+    b.push(t(stripDiacritics(it.descriptionSnapshot).slice(0, ancho) + "\n"));
     const cantidad = formatQty(it.qtyMilli, it.unit.group.allowsFraction);
-    b.push(t(linea(`  ${cantidad} ${it.unit.symbol} x ${formatCLP(it.unitPriceGross)}`, formatCLP(it.lineTotalGross))));
+    b.push(t(fila(`  ${cantidad} ${it.unit.symbol} x ${formatCLP(it.unitPriceGross)}`, formatCLP(it.lineTotalGross))));
     if (it.discountAmount > 0) {
-      b.push(t(linea("  descuento", formatCLP(-it.discountAmount))));
+      b.push(t(fila("  descuento", formatCLP(-it.discountAmount))));
     }
   }
 
-  b.push(t("-".repeat(ANCHO) + "\n"));
+  b.push(t("-".repeat(ancho) + "\n"));
   if (venta.discountAmount > 0) {
-    b.push(t(linea("Subtotal", formatCLP(venta.subtotalGross))));
-    b.push(t(linea("Descuento", formatCLP(-venta.discountAmount))));
+    b.push(t(fila("Subtotal", formatCLP(venta.subtotalGross))));
+    b.push(t(fila("Descuento", formatCLP(-venta.discountAmount))));
   }
   if (venta.roundingAmount !== 0) {
     // Se imprime siempre que exista: un total que no calza con la suma de las
     // líneas y no explica por qué es una discusión en el mesón.
-    b.push(t(linea("Redondeo efectivo", formatCLP(venta.roundingAmount))));
+    b.push(t(fila("Redondeo efectivo", formatCLP(venta.roundingAmount))));
   }
 
   /**
@@ -194,31 +202,31 @@ export function ticketEscPos(
    */
   const totalTexto = formatCLP(venta.totalGross);
   const enDobleAncho = `TOTAL  ${totalTexto}`;
-  if (enDobleAncho.length * 2 <= ANCHO) {
+  if (enDobleAncho.length * 2 <= ancho) {
     b.push(Buffer.from([ESC, 0x21, 0x30])); // doble ancho + doble alto
     b.push(t(enDobleAncho + "\n"));
   } else {
     b.push(Buffer.from([ESC, 0x21, 0x10])); // solo doble alto
-    b.push(t(linea("TOTAL", totalTexto)));
+    b.push(t(fila("TOTAL", totalTexto)));
   }
   b.push(Buffer.from([ESC, 0x21, 0x00]));
 
-  b.push(t(linea(`Neto`, formatCLP(neto))));
-  b.push(t(linea(`IVA ${venta.taxRatePercent}%`, formatCLP(iva))));
-  b.push(t("-".repeat(ANCHO) + "\n"));
+  b.push(t(fila(`Neto`, formatCLP(neto))));
+  b.push(t(fila(`IVA ${venta.taxRatePercent}%`, formatCLP(iva))));
+  b.push(t("-".repeat(ancho) + "\n"));
 
   // --- Pagos, y el vuelto en grande: es el número que más errores evita ---
   for (const p of venta.payments) {
     const nombre = PAYMENT_METHOD_TEXT[p.method as PaymentMethod] ?? p.method;
-    b.push(t(linea(nombre + (p.reference ? ` ${p.reference}` : ""), formatCLP(p.amount))));
+    b.push(t(fila(nombre + (p.reference ? ` ${p.reference}` : ""), formatCLP(p.amount))));
     if (p.method === "CASH" && p.receivedAmount !== null) {
-      b.push(t(linea("  recibido", formatCLP(p.receivedAmount))));
+      b.push(t(fila("  recibido", formatCLP(p.receivedAmount))));
     }
   }
   const vuelto = venta.payments.reduce((s, p) => s + (p.changeAmount ?? 0), 0);
   if (vuelto > 0) {
     b.push(Buffer.from([ESC, 0x21, 0x10])); // doble alto
-    b.push(t(linea("VUELTO", formatCLP(vuelto))));
+    b.push(t(fila("VUELTO", formatCLP(vuelto))));
     b.push(Buffer.from([ESC, 0x21, 0x00]));
   }
 

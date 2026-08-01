@@ -435,6 +435,11 @@ model Station {
   // impresora Ethernet, "host:9100". Null = no imprime (terminal de consulta).
   printerTarget String?
 
+  // Columnas de texto del papel: 32 en 58 mm, 48 en 80 mm. Es de la estación
+  // y no un setting global porque es una propiedad de la impresora, y la
+  // impresora es de la estación — dos cajas pueden tener térmicas distintas.
+  printerWidth Int @default(32)
+
   location  Location      @relation(fields: [locationId], references: [id])
   sessions  CashSession[]
   printJobs PrintJob[]

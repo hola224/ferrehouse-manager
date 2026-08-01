@@ -31,10 +31,22 @@ type Estacion = {
   name: string;
   locationId: number;
   printerTarget: string | null;
+  printerWidth: number;
   active: boolean;
   location: { id: number; name: string };
   sessions: Array<{ id: number; openedAt: string }>;
 };
+
+/**
+ * Los dos papeles de ticket que existen en el mercado, por sus columnas de
+ * texto. El servidor acepta valores intermedios (hay térmicas de 42), pero el
+ * selector ofrece los dos normales: quien tenga una rara sabe qué número poner
+ * y puede pedirlo por API.
+ */
+const PAPELES = [
+  { columnas: 32, nombre: "58 mm (angosto, 32 columnas)" },
+  { columnas: 48, nombre: "80 mm (ancho, 48 columnas)" },
+];
 
 type Ubicacion = { id: number; name: string };
 
@@ -122,7 +134,10 @@ export function Estaciones() {
                   <td className="px-4 py-3">{e.location.name}</td>
                   <td className="px-4 py-3">
                     {e.printerTarget ? (
-                      <span className="fh-num">{e.printerTarget}</span>
+                      <span className="fh-num">
+                        {e.printerTarget}
+                        <span className="text-ink-soft"> · {e.printerWidth === 48 ? "80 mm" : e.printerWidth === 32 ? "58 mm" : `${e.printerWidth} col`}</span>
+                      </span>
                     ) : (
                       /*
                         Se dice el HECHO —no imprime— y no la intención. El
@@ -212,6 +227,7 @@ function FormEstacion({
   const [name, setName] = useState(estacion?.name ?? "");
   const [locationId, setLocationId] = useState(estacion?.locationId ?? ubicaciones[0]?.id ?? 0);
   const [printerTarget, setPrinterTarget] = useState(estacion?.printerTarget ?? "");
+  const [printerWidth, setPrinterWidth] = useState(estacion?.printerWidth ?? 32);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -231,6 +247,7 @@ function FormEstacion({
         name: normalizado,
         locationId,
         printerTarget: printerTarget.trim() || null,
+        printerWidth,
       };
       if (estacion) {
         await api(`/stations/${estacion.id}`, { method: "PATCH", body: JSON.stringify(cuerpo) });
@@ -290,6 +307,20 @@ function FormEstacion({
           placeholder="\\\\SERVIDOR\\TERMICA"
           className="fh-num"
         />
+
+        <Selector
+          etiqueta="Papel del ticket"
+          hint="El ancho del rollo. Si el ticket sale usando solo una parte del papel, esta caja tiene una térmica de 80 mm."
+          value={printerWidth}
+          disabled={abierta}
+          onChange={(e) => setPrinterWidth(Number(e.target.value))}
+        >
+          {PAPELES.concat(PAPELES.some((p) => p.columnas === printerWidth) ? [] : [{ columnas: printerWidth, nombre: `${printerWidth} columnas` }]).map((p) => (
+            <option key={p.columnas} value={p.columnas}>
+              {p.nombre}
+            </option>
+          ))}
+        </Selector>
 
         {abierta ? (
           <p className="text-sm text-warn">
