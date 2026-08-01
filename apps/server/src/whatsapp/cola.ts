@@ -68,8 +68,31 @@ export async function encolarMensajeDeVenta(saleId: number): Promise<ResultadoEn
      * diciendo a qué número se mandó. Lo mismo con el texto, que cambia cuando
      * el admin edita la plantilla.
      */
+    /**
+     * `scheduledAt` explícito y NO el `@default(now())` del esquema.
+     *
+     * Parece lo mismo y no lo es: el default lo resuelve el motor de Prisma con
+     * SU lectura del reloj del sistema, mientras que el worker filtra con
+     * `scheduledAt <= ahora` y ese `ahora` es un `new Date()` de Node. Son dos
+     * relojes distintos y en Windows discrepan en un milisegundo — medido: un
+     * trabajo recién creado quedaba con `scheduledAt` UN MILISEGUNDO EN EL
+     * FUTURO respecto de un `new Date()` posterior, así que la pasada siguiente
+     * no lo veía.
+     *
+     * En la tienda eso solo costaba 30 segundos —la pasada siguiente sí lo
+     * agarra— y por eso nadie lo iba a notar nunca. En los tests costaba dos
+     * fallos intermitentes, que es la forma en que este bug pedía que lo
+     * arreglaran. Poniendo la fecha desde Node, el que escribe y el que compara
+     * usan el mismo reloj y el borde deja de depender de la suerte.
+     */
     const job = await db.whatsAppJob.create({
-      data: { saleId, customerId: venta.customer.id, phone: venta.customer.phone, message: mensaje },
+      data: {
+        saleId,
+        customerId: venta.customer.id,
+        phone: venta.customer.phone,
+        message: mensaje,
+        scheduledAt: new Date(),
+      },
       select: { id: true },
     });
 

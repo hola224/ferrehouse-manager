@@ -348,6 +348,33 @@ describe("worker de la cola (6.3)", () => {
     expect(pausas).toEqual([9500, 9500]); // dos pausas para tres envíos
   });
 
+  /**
+   * EL TRABAJO RECIÉN AGENDADO TIENE QUE SER VISIBLE PARA LA PASADA SIGUIENTE.
+   *
+   * Este test existe por un bug que se manifestaba como dos fallos
+   * intermitentes y no como uno reproducible, que es la peor forma de
+   * manifestarse. `scheduledAt` venía del `@default(now())` del esquema, o sea
+   * del reloj con que el motor de Prisma lee el sistema; el worker filtra con
+   * `scheduledAt <= ahora`, y ese `ahora` es un `new Date()` de Node. En
+   * Windows los dos relojes discrepan en un milisegundo, así que un trabajo
+   * recién creado podía quedar UN MILISEGUNDO EN EL FUTURO y la pasada
+   * inmediata no lo veía.
+   *
+   * Se compara contra un `new Date()` tomado DESPUÉS de encolar: es exactamente
+   * lo que hace `procesarPendientes`, y es la comparación que fallaba.
+   */
+  it("un mensaje recién agendado no queda con la fecha en el futuro", async () => {
+    await vender({ telefono: "912345678", consentimiento: true });
+    const despuesDeEncolar = new Date();
+
+    const job = await db.whatsAppJob.findFirstOrThrow();
+    expect(job.scheduledAt.getTime()).toBeLessThanOrEqual(despuesDeEncolar.getTime());
+
+    // Y la consecuencia, que es lo que de verdad importa: la pasada lo agarra.
+    const r = await procesarPendientes({ ...sinAzar, transporte: transporteFalso() });
+    expect(r.enviados).toBe(1);
+  });
+
   it("respeta el límite por pasada", async () => {
     await vender({ telefono: "912345678", consentimiento: true });
     await vender({ telefono: "987654321", consentimiento: true });
