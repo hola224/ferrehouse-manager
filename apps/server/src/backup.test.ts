@@ -227,7 +227,14 @@ describe("la copia externa", () => {
 
     const r = await respaldar();
     expect(r.copia.ok, r.copia.problema ?? "").toBe(true);
-    expect(existsSync(join(afuera, r.archivo!.split("/").pop()!))).toBe(true);
+    /*
+      `[\\/]` y no `/`: en Windows `r.archivo` viene con barras invertidas, y
+      partir solo por `/` devolvía la ruta ENTERA como si fuera el nombre del
+      archivo. El `join` resultante no existía y el test fallaba acusando al
+      respaldo de no haber copiado nada — cuando el que estaba mal era él.
+      Es la misma forma de `backup.ts`, que ya partía por las dos.
+    */
+    expect(existsSync(join(afuera, r.archivo!.split(/[\\/]/).pop()!))).toBe(true);
 
     const estado = await estadoDeRespaldo();
     expect(estado.copia).toMatchObject({ configurada: true, alDia: true, problema: null });
