@@ -17,6 +17,10 @@ dist/
 *.antes-de-restaurar-*
 backups/
 
+# Credenciales de la sesion de WhatsApp. Vincular de nuevo es escanear un QR;
+# subirlas al repositorio es regalar la sesion de la tienda.
+.wa-sesion/
+
 # Worktrees y estado local de los agentes de Claude Code.
 .claude/
 

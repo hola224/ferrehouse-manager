@@ -14,6 +14,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import QRCode from "qrcode";
 import { db } from "../db.js";
 import { audit } from "../audit.js";
 import { requireRole } from "../roles.js";
@@ -73,6 +74,13 @@ export async function registerWhatsAppRoutes(app: FastifyInstance): Promise<void
          * no hay QR que escanear en vez de mostrar un cuadro vacío.
          */
         pendienteDeInstalacion: t.estado() === "DESCONECTADA" && t.qr() === null,
+        /**
+         * Que exista una imagen que pedir. La pantalla no recibe el QR acá: lo
+         * pide aparte a `/api/whatsapp/qr.svg`, porque un SVG dentro del JSON
+         * del panel se recargaría entero cada vez que cambia un contador de la
+         * cola, y el QR parpadearía mientras alguien intenta escanearlo.
+         */
+        hayImagen: typeof t.qrPayload === "function" && t.qrPayload() !== null,
       },
       cola: await resumenDeCola(),
       plantilla,
@@ -95,6 +103,37 @@ export async function registerWhatsAppRoutes(app: FastifyInstance): Promise<void
   });
 
   /** 6.4 — la plantilla, validada CONTRA LAS VARIABLES antes de guardarse. */
+  /**
+   * El QR como imagen, que es la forma en que de verdad se escanea.
+   *
+   * SOLO ADMIN, y hay que decir por qué: **este QR es una credencial**. Quien
+   * lo escanee se lleva la sesión de WhatsApp de la ferretería — puede leer las
+   * conversaciones y escribirle a los clientes en nombre de la tienda. Es la
+   * misma razón por la que `qr` está en la lista de campos que nunca salen
+   * hacia un vendedor (decisión 17).
+   *
+   * `no-store` por lo mismo: el QR rota cada veinte segundos y una copia
+   * cacheada en el disco del terminal es una credencial olvidada ahí.
+   */
+  app.get("/api/whatsapp/qr.svg", soloAdmin, async (_req, reply) => {
+    const t = transporte();
+    const payload = typeof t.qrPayload === "function" ? t.qrPayload() : null;
+    if (!payload) throw malaPeticion("No hay ningún QR que mostrar en este momento");
+
+    const svg = await QRCode.toString(payload, {
+      type: "svg",
+      margin: 2,
+      // `errorCorrectionLevel` alto: la pantalla del mesón está sucia y con
+      // reflejos, y el teléfono escanea de lejos y en diagonal.
+      errorCorrectionLevel: "H",
+    });
+
+    return reply
+      .header("content-type", "image/svg+xml")
+      .header("cache-control", "no-store")
+      .send(svg);
+  });
+
   app.put("/api/whatsapp/plantilla", soloAdmin, async (req) => {
     const { plantilla } = z
       .object({ plantilla: z.string().trim().min(1, "La plantilla no puede quedar vacía").max(800) })

@@ -65,6 +65,20 @@ export interface TransporteWhatsApp {
    * está en la lista de campos que nunca salen hacia un vendedor (decisión 17).
    */
   qr(): string | null;
+  /**
+   * El payload CRUDO del QR (`2@aBcD…`), para dibujarlo como imagen.
+   *
+   * Existe además del de caracteres porque los dos sirven para cosas
+   * distintas: el de caracteres se lee en un log o en una consola, pero
+   * depende de que la fuente tenga los medios bloques `▀▄█` y de que la altura
+   * de línea calce al píxel. Si algo de eso falla, el dibujo se ve «casi bien»
+   * y NO escanea — que es el peor resultado posible, porque nadie sospecha de
+   * la fuente. Con el payload, el servidor entrega un SVG y el problema
+   * desaparece.
+   *
+   * Opcional: un transporte que no lo tenga sigue cumpliendo la interfaz.
+   */
+  qrPayload?(): string | null;
   /** Desde cuándo está en el estado actual. Para el panel: "caída hace 2 h". */
   desde(): Date | null;
   enviar(e164: string, mensaje: string): Promise<ResultadoEnvio>;

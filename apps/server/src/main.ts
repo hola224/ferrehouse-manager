@@ -4,6 +4,7 @@ import { assertConnectionLimit, enableWAL, db } from "./db.js";
 import { assertStartupChecks } from "./startup-checks.js";
 import { iniciarWorker } from "./whatsapp/cola.js";
 import { iniciarWorkerImpresion, detenerWorkerImpresion } from "./impresion/cola.js";
+import { iniciarWhatsApp, detenerWhatsApp } from "./whatsapp/baileys.js";
 import { iniciarRespaldoDiario, detenerRespaldoDiario } from "./backup.js";
 import { servirLaInterfaz, CARPETA_WEB } from "./web.js";
 
@@ -29,6 +30,15 @@ async function main() {
    * pisarse entre ellas. Mientras no haya un número vinculado, cada pasada ve
    * "DESCONECTADA" y se va sin tocar nada.
    */
+  /**
+   * El adaptador de WhatsApp, ANTES del worker de la cola: registra el
+   * transporte, y si el worker corriera primero su primera pasada vería el
+   * transporte «sin vincular» y no haría nada. No cuesta nada esperar acá — la
+   * conexión se abre en segundo plano, y hasta que no esté el estado es
+   * DESCONECTADA, que es lo que el panel muestra.
+   */
+  iniciarWhatsApp();
+
   iniciarWorker();
 
   /**
@@ -88,6 +98,7 @@ async function main() {
         console.log(`\n${senal}: cerrando…`);
         detenerRespaldoDiario();
         detenerWorkerImpresion();
+        await detenerWhatsApp();
         try {
           await app.close();
           await db.$disconnect();

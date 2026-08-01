@@ -208,7 +208,10 @@ Get-ChildItem -Path (Join-Path $Destino "apps"), (Join-Path $Destino "packages")
   ForEach-Object { Remove-Item (Join-Path $_.FullName "dist") -Recurse -Force -ErrorAction SilentlyContinue }
 
 $argsRobo = @($origen, $Destino, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:2", "/W:2")
-$argsRobo += "/XD"; $argsRobo += $carpetasFuera; $argsRobo += @("node_modules", "respaldos", "logs")
+# `.wa-sesion` va en la lista por la misma razón que la base y el `.env`: son
+# las credenciales del número vinculado, y pisarlas obliga a escanear el QR de
+# nuevo con el teléfono en la mano.
+$argsRobo += "/XD"; $argsRobo += $carpetasFuera; $argsRobo += @("node_modules", "respaldos", "logs", ".wa-sesion")
 # `.env`, la base y sus archivos de WAL NO se pisan jamás: son lo único
 # irreemplazable que hay en ese PC.
 $argsRobo += "/XF"; $argsRobo += $archivosFuera; $argsRobo += @(".env", "*.db", "*.db-wal", "*.db-shm")

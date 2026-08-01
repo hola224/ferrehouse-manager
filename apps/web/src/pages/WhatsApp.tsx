@@ -27,6 +27,8 @@ type Panel = {
   sesion: {
     estado: EstadoSesion;
     qr: string | null;
+    /** Si hay un QR que pedir como imagen a `/api/whatsapp/qr.svg`. */
+    hayImagen?: boolean;
     desde: string | null;
     hace: string | null;
     pendienteDeInstalacion: boolean;
@@ -164,12 +166,36 @@ export function WhatsApp() {
         {panel.sesion.qr ? (
           <div className="mt-3">
             <p className="mb-2 text-sm text-ink-soft">
-              Escanéalo desde WhatsApp → Dispositivos vinculados. <strong>No lo compartas</strong>: quien lo escanee se
-              lleva la sesión de la ferretería.
+              Escanéalo desde WhatsApp → Ajustes → Dispositivos vinculados. <strong>No lo compartas</strong>: quien lo
+              escanee se lleva la sesión de la ferretería.
             </p>
-            <pre className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-bg p-3 text-[6px] leading-[6px]">
-              {panel.sesion.qr}
-            </pre>
+            {/*
+              UNA IMAGEN Y NO EL DIBUJO DE CARACTERES.
+
+              El servidor sabe entregar las dos cosas y la de caracteres se ve
+              bien… casi siempre. Depende de que la fuente del `<pre>` tenga los
+              medios bloques `▀▄█` y de que la altura de línea calce al píxel;
+              si algo de eso falla, el QR se ve «casi bien» y NO escanea. Nadie
+              sospecha de la tipografía: se culpa al teléfono, a la luz, a la
+              cámara. El SVG no depende de ninguna de esas cosas.
+
+              Se pide con la hora en la URL porque el QR rota cada veinte
+              segundos: sin eso el navegador serviría el primero desde su caché
+              y el teléfono estaría escaneando uno vencido.
+            */}
+            {panel.sesion.hayImagen ? (
+              <img
+                src={`/api/whatsapp/qr.svg?t=${panel.sesion.desde ?? ""}`}
+                alt="Código QR para vincular el número de WhatsApp"
+                width={260}
+                height={260}
+                className="rounded-[var(--fh-radio)] border border-line bg-surface p-3"
+              />
+            ) : (
+              <pre className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-bg p-3 text-[6px] leading-[6px]">
+                {panel.sesion.qr}
+              </pre>
+            )}
           </div>
         ) : null}
       </Tarjeta>
