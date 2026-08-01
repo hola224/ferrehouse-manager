@@ -88,7 +88,7 @@ export function ImportarProductos({ onCerrar, onImportado }: { onCerrar: () => v
   return (
     <Modal
       titulo="Importar productos desde Excel"
-      bajada="Se revisa primero y se escribe después. Si hay una sola fila con problemas, no entra ninguna."
+      bajada="Una fila con SKU actualiza ese producto; sin SKU, crea uno nuevo. Se revisa primero y se escribe después: si hay una sola fila con problemas, no entra ninguna."
       ancho="xl"
       onCerrar={onCerrar}
     >
@@ -139,8 +139,9 @@ export function ImportarProductos({ onCerrar, onImportado }: { onCerrar: () => v
                     : "border-line bg-bg text-ink"
               }`}
             >
+              {/* El mensaje del servidor ya dice cuántos se crean y cuántos se
+                  actualizan: acá no se le suma nada. */}
               {informe.mensaje}
-              {informe.importado ? ` ${informe.creados ?? 0} creados, ${informe.actualizados ?? 0} actualizados.` : ""}
             </p>
 
             {informe.conError > 0 ? (
@@ -224,7 +225,7 @@ export function ImportarProductos({ onCerrar, onImportado }: { onCerrar: () => v
           <Boton onClick={onCerrar}>{informe?.importado ? "Cerrar" : "Cancelar"}</Boton>
           {listo ? (
             <Boton variante="principal" onClick={confirmar} disabled={trabajando}>
-              Importar {informe!.validas} productos
+              Importar {informe!.validas} filas
             </Boton>
           ) : null}
         </Acciones>

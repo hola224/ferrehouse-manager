@@ -284,3 +284,139 @@ describe("el informe dice cómo entendió cada fila", () => {
     expect(body.validas).toBe(1);
   });
 });
+
+/**
+ * La otra mitad del importador: la fila con SKU ACTUALIZA ese producto. Es lo
+ * que vuelve re-importable al export del catálogo — bajar, corregir precios en
+ * Excel, subir — y por eso el último test de este bloque es el viaje redondo
+ * con el archivo del export tal cual, sin editar: tiene que pasar limpio y no
+ * cambiar nada.
+ */
+describe("actualizar por SKU", () => {
+  const CON_SKU = ["SKU", ...ENCABEZADO];
+  const CON_SKU_E_INICIAL = [...CON_SKU, "Stock inicial (en unidad base)"];
+
+  it("una fila con SKU cambia el producto en vez de crear otro", async () => {
+    const cable = await db.product.findFirstOrThrow({ where: { name: "Cable eléctrico 2,5 mm" } });
+    const fila = [cable.sku, "Cable eléctrico 2,5 mm", "", "", "", "", "m", "rl100", "750", "", "", ""];
+
+    const antes = await db.product.count();
+    const r = await subir(await excel([fila], CON_SKU), true);
+    expect(r.statusCode).toBe(200);
+
+    const body = JSON.parse(r.body);
+    expect(body.importado).toBe(true);
+    expect(body.creados).toBe(0);
+    expect(body.actualizados).toBe(1);
+    expect(body.rangoSku).toBeNull();
+    expect(await db.product.count()).toBe(antes);
+
+    const despues = await db.product.findUniqueOrThrow({ where: { id: cable.id }, include: { barcodes: true } });
+    expect(despues.priceGross).toBe(750);
+    // Las celdas vacías dejan lo que estaba: ni el costo ni los códigos se tocan.
+    expect(despues.costNetMilliPeso).toBe(410_000);
+    expect(despues.barcodes.map((b) => b.code)).toEqual(["7801111111111"]);
+  });
+
+  it("el informe escribe el cambio como antes → después", async () => {
+    const cable = await db.product.findFirstOrThrow({ where: { name: "Cable eléctrico 2,5 mm" } });
+    const fila = [cable.sku, "Cable eléctrico 2,5 mm", "", "", "", "", "m", "rl100", "890", "", "", ""];
+    const body = JSON.parse((await subir(await excel([fila], CON_SKU), false)).body);
+    expect(body.conError).toBe(0);
+    expect(body.porActualizar).toBe(1);
+    expect(body.interpretadas[0].dice).toContain(`actualiza ${cable.sku}`);
+    expect(body.interpretadas[0].dice).toContain("precio $750 → $890 por m");
+  });
+
+  it("un SKU que no existe se rechaza, con el camino correcto en el mensaje", async () => {
+    const fila = ["FH-99999", "Fantasma", "", "", "", "", "un", "un", "100", "", "", ""];
+    const body = JSON.parse((await subir(await excel([fila], CON_SKU), false)).body);
+    expect(body.conError).toBe(1);
+    expect(body.errores[0].errores.join(" ")).toContain("deja la celda SKU vacía");
+  });
+
+  it("el mismo SKU dos veces son dos filas peleando por el mismo producto", async () => {
+    const cable = await db.product.findFirstOrThrow({ where: { name: "Cable eléctrico 2,5 mm" } });
+    const a = [cable.sku, "Cable A", "", "", "", "", "m", "m", "700", "", "", ""];
+    const b = [cable.sku, "Cable B", "", "", "", "", "m", "m", "800", "", "", ""];
+    const body = JSON.parse((await subir(await excel([a, b], CON_SKU), false)).body);
+    expect(body.errores.map((e: { fila: number }) => e.fila)).toEqual([3]);
+    expect(body.errores[0].errores.join(" ")).toContain("este mismo archivo");
+  });
+
+  /** Exactamente lo que pasa al resubir el export sin editar nada. */
+  it("sus propios códigos no chocan; los ajenos sí", async () => {
+    const cable = await db.product.findFirstOrThrow({ where: { name: "Cable eléctrico 2,5 mm" } });
+    const propio = [cable.sku, "Cable eléctrico 2,5 mm", "", "", "", "", "m", "rl100", "750", "", "", "7801111111111"];
+    expect(JSON.parse((await subir(await excel([propio], CON_SKU), false)).body).conError).toBe(0);
+
+    const perno = await db.product.findFirstOrThrow({ where: { name: "Perno 5/8 galvanizado" } });
+    const ajeno = [perno.sku, "Perno 5/8 galvanizado", "", "", "", "", "un", "un", "350", "", "", "7801111111111"];
+    const body = JSON.parse((await subir(await excel([ajeno], CON_SKU), false)).body);
+    expect(body.errores[0].errores.join(" ")).toContain("ya es del producto");
+  });
+
+  it("el stock de un producto existente no entra por Excel", async () => {
+    const cable = await db.product.findFirstOrThrow({ where: { name: "Cable eléctrico 2,5 mm" } });
+    const fila = [cable.sku, "Cable eléctrico 2,5 mm", "", "", "", "", "m", "rl100", "750", "410", "", "", "30"];
+    const body = JSON.parse((await subir(await excel([fila], CON_SKU_E_INICIAL), false)).body);
+    expect(body.conError).toBe(1);
+    expect(body.errores[0].errores.join(" ")).toContain("compra o como ajuste");
+  });
+
+  it("el costo que ya manda el libro no se pisa desde el Excel — pero resubirlo igual no es cambiarlo", async () => {
+    // Nace con stock inicial: el movimiento INITIAL fija costo y lo bloquea.
+    const alta = ["", "Cemento con libro", "", "", "", "", "kg", "kg", "300", "200", "", "", "10"];
+    expect((await subir(await excel([alta], CON_SKU_E_INICIAL), true)).statusCode).toBe(200);
+    const cemento = await db.product.findFirstOrThrow({ where: { name: "Cemento con libro" } });
+
+    // Cambiarlo: rechazado con el mismo criterio que el formulario.
+    const cambia = [cemento.sku, "Cemento con libro", "", "", "", "", "kg", "kg", "300", "250", "", ""];
+    const conCambio = JSON.parse((await subir(await excel([cambia], CON_SKU), false)).body);
+    expect(conCambio.conError).toBe(1);
+    expect(conCambio.errores[0].errores.join(" ")).toContain("ya lo manda el libro de stock");
+
+    // El mismo costo que ya tiene (como lo escribe el export): no es un cambio.
+    const igual = [cemento.sku, "Cemento con libro", "", "", "", "", "kg", "kg", "300", "200", "", ""];
+    expect(JSON.parse((await subir(await excel([igual], CON_SKU), false)).body).conError).toBe(0);
+  });
+
+  /**
+   * EL VIAJE REDONDO, que es el contrato de toda la función: el export del
+   * catálogo se sube TAL CUAL, sin abrir siquiera el Excel, y el resultado es
+   * cero errores, cero creaciones, todo actualizaciones — y ningún dato
+   * cambiado. Si este test falla, "bajar, corregir, subir" dejó de ser cierto
+   * en alguna de sus letras chicas: un título desalineado, un costo que se
+   * redondea distinto, un código que choca consigo mismo.
+   */
+  it("el export del catálogo se resube tal cual: nada que crear, nada que cambiar", async () => {
+    const exportado = await app.inject({ method: "GET", url: "/api/products/export.xlsx", headers: como(tokenAdmin) });
+    expect(exportado.statusCode).toBe(200);
+
+    const foto = (await db.product.findMany({ orderBy: { id: "asc" }, include: { barcodes: true } })).map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      priceGross: p.priceGross,
+      costNetMilliPeso: p.costNetMilliPeso,
+      reorderLevelBaseMilli: p.reorderLevelBaseMilli,
+      codigos: p.barcodes.map((b) => b.code).sort(),
+    }));
+
+    const r = await subir(Buffer.from(exportado.rawPayload), true);
+    expect(r.statusCode).toBe(200);
+    const body = JSON.parse(r.body);
+    expect(body.conError).toBe(0);
+    expect(body.creados).toBe(0);
+    expect(body.actualizados).toBe(foto.length);
+
+    const despues = (await db.product.findMany({ orderBy: { id: "asc" }, include: { barcodes: true } })).map((p) => ({
+      sku: p.sku,
+      name: p.name,
+      priceGross: p.priceGross,
+      costNetMilliPeso: p.costNetMilliPeso,
+      reorderLevelBaseMilli: p.reorderLevelBaseMilli,
+      codigos: p.barcodes.map((b) => b.code).sort(),
+    }));
+    expect(despues).toEqual(foto);
+  });
+});

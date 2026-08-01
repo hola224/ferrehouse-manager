@@ -2,6 +2,11 @@
  * Importador de productos desde Excel (tarea 1.6, CAT-11).
  * Es cómo se carga el inventario inicial: 500 filas de una vez.
  *
+ * Y desde que el export del catálogo usa estas mismas columnas, también es
+ * cómo se corrige en masa: la columna SKU decide — vacía crea, con un SKU
+ * existente actualiza ese producto. Bajar el export, editar precios en Excel,
+ * subirlo de vuelta.
+ *
  * Dos decisiones que vale la pena entender antes de tocar esto:
  *
  * 1. **Valida con el MISMO esquema que el formulario** (`@ferrehouse/shared`).
@@ -34,6 +39,8 @@ import {
   buildSearchKey,
   parsePesos,
   parseCantidadMilli,
+  puedeEditarCosto,
+  TIPOS_QUE_FIJAN_COSTO,
   type UnitLike,
   roundSym,
 } from "@ferrehouse/shared";
@@ -53,6 +60,13 @@ import {
  * de reposición heredan el número equivocado para siempre.
  */
 const COLUMNAS = [
+  /**
+   * El SKU decide si la fila CREA o ACTUALIZA. Vacío = producto nuevo, que es
+   * lo único que este importador sabía hacer. Con un SKU existente, la fila
+   * actualiza ese producto — y eso es lo que vuelve re-importable al export
+   * del catálogo: bajar, corregir precios en Excel, subir.
+   */
+  { clave: "sku", titulo: "SKU", alias: [], obligatoria: false, ancho: 12 },
   { clave: "nombre", titulo: "Nombre", alias: [], obligatoria: true, ancho: 38 },
   { clave: "descripcion", titulo: "Descripción", alias: [], obligatoria: false, ancho: 30 },
   { clave: "categoria", titulo: "Categoría", alias: [], obligatoria: false, ancho: 18 },
@@ -91,6 +105,14 @@ type FilaRevisada = {
   /** Cómo quedó interpretada la fila, en castellano y con sus unidades. */
   interpretacion?: string;
   datos?: {
+    /**
+     * `null` = la fila CREA un producto. Con id, la fila ACTUALIZA ese
+     * producto. En una actualización los campos opcionales vacíos significan
+     * «no tocar» —el export trae los valores vigentes, así que subirlo sin
+     * editar nada deja todo igual—; acá llegan ya resueltos a su valor final.
+     */
+    productoId: number | null;
+    sku: string | null;
     name: string;
     description: string | null;
     categoria: string | null;
@@ -104,6 +126,8 @@ type FilaRevisada = {
     /** Lo que hay hoy en repisa. Entra al libro como movimiento `INITIAL`. */
     stockInicialBaseMilli: number;
     barcodes: string[];
+    /** `false` en una actualización con la celda vacía: los códigos quedan como están. */
+    tocaCodigos: boolean;
   };
 };
 
@@ -206,10 +230,48 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
   // el caso más común: copiar y pegar una fila y olvidar cambiar el código.
   const vistosEnElArchivo = new Map<string, number>();
 
+  /**
+   * Los productos que las filas con SKU van a actualizar, de una consulta.
+   * Y qué costos ya los manda el libro: la misma regla del formulario
+   * (`puedeEditarCosto`) — si el producto tiene movimientos que fijan costo,
+   * el costo no se edita ni por pantalla ni por Excel.
+   */
+  const skusPedidos = [...new Set(filas.map((f) => (f.sku ?? "").trim().toUpperCase()).filter(Boolean))];
+  const porSku = new Map(
+    (
+      await db.product.findMany({
+        where: { sku: { in: skusPedidos }, deletedAt: null },
+        include: { barcodes: true },
+      })
+    ).map((p) => [p.sku, p]),
+  );
+  const conCostoDelLibro = new Set(
+    (
+      await db.stockMovement.groupBy({
+        by: ["productId"],
+        where: { productId: { in: [...porSku.values()].map((p) => p.id) }, type: { in: TIPOS_QUE_FIJAN_COSTO } },
+      })
+    ).map((g) => g.productId),
+  );
+  // Un SKU dos veces en el archivo son dos filas peleando por el mismo
+  // producto: la segunda pisaría a la primera sin que nadie lo vea.
+  const skusVistos = new Map<string, number>();
+
   return filas.map((f, i) => {
     const numeroDeFila = i + 2; // +1 por el encabezado, +1 porque Excel cuenta desde 1
     const errores: string[] = [];
     const nombre = f.nombre ?? "";
+
+    const skuFila = (f.sku ?? "").trim().toUpperCase();
+    const actual = skuFila ? porSku.get(skuFila) : undefined;
+    if (skuFila) {
+      const filaPrevia = skusVistos.get(skuFila);
+      if (filaPrevia) errores.push(`El SKU ${skuFila} ya aparece en la fila ${filaPrevia} de este mismo archivo`);
+      else skusVistos.set(skuFila, numeroDeFila);
+      if (!actual) {
+        errores.push(`El SKU ${skuFila} no existe. Para crear un producto nuevo, deja la celda SKU vacía`);
+      }
+    }
 
     const uVenta = f.unidadVenta ? buscarUnidad(f.unidadVenta, unidades) : undefined;
     const uCompra = f.unidadCompra ? buscarUnidad(f.unidadCompra, unidades) : undefined;
@@ -244,6 +306,16 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
     if (inicial && uVenta && fraccionDeGrupo.get(uVenta.groupId) === false && inicial % 1000 !== 0) {
       errores.push(`${uVenta.name} no se cuenta fraccionado: el stock inicial tiene que ser un número entero`);
     }
+    /**
+     * El stock de un producto que YA existe no entra por acá: escribirlo como
+     * `INITIAL` sobre un saldo vivo es inventar mercadería. Lo que corresponde
+     * es una compra o un ajuste, que dejan su huella en el libro.
+     */
+    if (actual && inicial && inicial > 0) {
+      errores.push(
+        `${skuFila} ya existe: su stock no se carga por Excel. Regístralo como compra o como ajuste de inventario`,
+      );
+    }
 
     const codigos = (f.codigos ?? "")
       .split(/[,;|]/)
@@ -251,10 +323,35 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
       .filter(Boolean);
     for (const c of codigos) {
       const duenoPrevio = codigosUsados.get(c);
-      if (duenoPrevio) errores.push(`El código ${c} ya es del producto ${duenoPrevio}`);
+      // Que un producto traiga SUS PROPIOS códigos no es un choque: es
+      // exactamente lo que pasa al resubir el export sin editar nada.
+      if (duenoPrevio && duenoPrevio !== skuFila) errores.push(`El código ${c} ya es del producto ${duenoPrevio}`);
       const filaPrevia = vistosEnElArchivo.get(c);
       if (filaPrevia) errores.push(`El código ${c} ya aparece en la fila ${filaPrevia} de este mismo archivo`);
       else vistosEnElArchivo.set(c, numeroDeFila);
+    }
+
+    /**
+     * El costo de una actualización, resuelto ANTES de validar, con dos sutilezas:
+     *
+     * - El export escribe el costo redondeado a pesos, pero la base lo guarda
+     *   en milésimas (el promedio ponderado deja decimales). Si lo que dice la
+     *   celda redondea igual que lo guardado, NO es un cambio: se conserva el
+     *   valor exacto. Sin esto, resubir el export sin editar nada «cambiaría»
+     *   todos los costos por su versión redondeada.
+     * - Un cambio de verdad pasa por la misma puerta que el formulario: con
+     *   movimientos que fijan costo, el costo lo manda el libro y no se edita.
+     */
+    let costoMilliFinal = (costo ?? 0) * 1000;
+    if (actual) {
+      if (costo === null || costo === Math.round(actual.costNetMilliPeso / 1000)) {
+        costoMilliFinal = actual.costNetMilliPeso;
+      } else if (!puedeEditarCosto(conCostoDelLibro.has(actual.id) ? 1 : 0)) {
+        errores.push(
+          `El costo de ${skuFila} ya lo manda el libro de stock: se recalcula solo con cada compra. ` +
+            "Para corregirlo hay que registrar un ajuste, no editar el producto",
+        );
+      }
     }
 
     // El esquema compartido dice la última palabra sobre nombre, precio y todo
@@ -266,8 +363,9 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
       purchaseUnitId: uCompra?.id ?? 0,
       priceGross: precio ?? -1,
       // El costo se digita en PESOS por unidad base y se guarda en milésimas.
-      costNetMilliPeso: (costo ?? 0) * 1000,
-      reorderLevelBaseMilli: minimo ?? 0,
+      costNetMilliPeso: costoMilliFinal,
+      // En una actualización, la celda vacía deja el mínimo como estaba.
+      reorderLevelBaseMilli: minimo ?? (actual ? actual.reorderLevelBaseMilli : 0),
       barcodes: codigos,
       active: true,
     });
@@ -292,8 +390,22 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
      */
     const simboloBase = baseDeGrupo.get(uVenta.groupId) ?? "?";
     const pesos = (n: number) => "$" + new Intl.NumberFormat("es-CL", { maximumFractionDigits: 0 }).format(n);
-    const partes = [`${pesos(parsed.data.priceGross)} por ${uVenta.symbol}`];
-    if (costo) partes.push(`costo ${pesos(costo)} por ${simboloBase}`);
+    /**
+     * En una actualización, lo que CAMBIA se escribe como "antes → después".
+     * El informe previo es la única mirada antes de escribir 300 filas, y
+     * "precio $690 → $6.900 por m" delata el cero de más que "$6.900 por m"
+     * deja pasar.
+     */
+    const cambioDePrecio = actual && actual.priceGross !== parsed.data.priceGross;
+    const partes = [
+      cambioDePrecio
+        ? `precio ${pesos(actual.priceGross)} → ${pesos(parsed.data.priceGross)} por ${uVenta.symbol}`
+        : `${pesos(parsed.data.priceGross)} por ${uVenta.symbol}`,
+    ];
+    const costoAnteriorPesos = actual ? Math.round(actual.costNetMilliPeso / 1000) : null;
+    if (actual && costo !== null && costo !== costoAnteriorPesos) {
+      partes.push(`costo ${pesos(costoAnteriorPesos!)} → ${pesos(costo)} por ${simboloBase}`);
+    } else if (costo) partes.push(`costo ${pesos(costo)} por ${simboloBase}`);
     if (minimo) {
       partes.push(
         `mínimo ${new Intl.NumberFormat("es-CL", { maximumFractionDigits: 3 }).format(minimo / 1000)} ${simboloBase}`,
@@ -339,8 +451,10 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
       nombre,
       errores: [],
       avisos,
-      interpretacion: `${parsed.data.name} — ${partes.join(" · ")}`,
+      interpretacion: `${actual ? `actualiza ${skuFila}: ` : ""}${parsed.data.name} — ${partes.join(" · ")}`,
       datos: {
+        productoId: actual?.id ?? null,
+        sku: actual?.sku ?? null,
         name: parsed.data.name,
         description: parsed.data.description ?? null,
         categoria: f.categoria || null,
@@ -352,7 +466,10 @@ async function revisar(filas: Fila[]): Promise<FilaRevisada[]> {
         costNetMilliPeso: parsed.data.costNetMilliPeso ?? 0,
         reorderLevelBaseMilli: parsed.data.reorderLevelBaseMilli,
         stockInicialBaseMilli: inicial ?? 0,
-        barcodes: parsed.data.barcodes,
+        // La celda vacía en una actualización deja los códigos como están; los
+        // vigentes viajan igual porque la clave de búsqueda se arma con ellos.
+        barcodes: parsed.data.barcodes.length > 0 ? parsed.data.barcodes : (actual?.barcodes.map((b) => b.code) ?? []),
+        tocaCodigos: !actual || parsed.data.barcodes.length > 0,
       },
     };
   });
@@ -406,6 +523,9 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     // concreto. Es el error más caro de esta plantilla y el único que ninguna
     // validación puede atrapar, porque el número es perfectamente válido.
     const NOTAS: Partial<Record<Clave, string>> = {
+      sku:
+        "Déjala VACÍA para crear un producto nuevo: el SKU lo pone el sistema. " +
+        "Con un SKU que ya existe, la fila ACTUALIZA ese producto (es lo que trae el export del catálogo).",
       precio: "Por UNIDAD DE VENTA. Si vendes el cemento por kilo, va el precio del kilo — no el del saco.",
       costo: "Por UNIDAD BASE del grupo (kg, m, un, L). Ojo: no siempre es la misma unidad que el precio.",
       stockMinimo: "En unidad base. Acepta decimales con coma: 7,5",
@@ -422,6 +542,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
     // Una fila de ejemplo, para que se vea el formato de los códigos múltiples.
     hoja.addRow({
+      sku: "",
       nombre: "Cable eléctrico 2,5 mm rojo",
       descripcion: "Ejemplo: borra esta fila antes de subir",
       categoria: "Eléctrico",
@@ -473,11 +594,23 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
     const revisadas = await revisar(filas);
     const conError = revisadas.filter((r) => r.errores.length > 0);
     const validas = revisadas.filter((r) => r.datos);
+    const creaciones = validas.filter((r) => r.datos!.productoId === null);
+    const actualizaciones = validas.filter((r) => r.datos!.productoId !== null);
     const nuevos = await nuevosPorCrear(revisadas);
+
+    /** "3 por crear y 2 por actualizar", o solo la mitad que aplique. */
+    const enPalabras = [
+      creaciones.length > 0 ? `${creaciones.length} por crear` : null,
+      actualizaciones.length > 0 ? `${actualizaciones.length} por actualizar` : null,
+    ]
+      .filter(Boolean)
+      .join(" y ");
 
     const informe = {
       total: revisadas.length,
       validas: validas.length,
+      porCrear: creaciones.length,
+      porActualizar: actualizaciones.length,
       conError: conError.length,
       // Se devuelven TODAS las filas con error, no las primeras diez: el admin
       // arregla el Excel de una pasada, no de diez subidas.
@@ -497,7 +630,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
         mensaje:
           conError.length > 0
             ? `Hay ${conError.length} fila${conError.length > 1 ? "s" : ""} con problemas. No se importó nada.`
-            : `${validas.length} productos listos para importar. Revisa cómo quedaron entendidos y confirma.`,
+            : `${enPalabras}, todo listo. Revisa cómo quedó entendida cada fila y confirma.`,
       };
     }
 
@@ -511,10 +644,10 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
 
     // --- Escritura ---
     const ubicaciones = await db.location.findMany({ where: { active: true }, select: { id: true } });
-    // UN rango para las N filas, no un correlativo por fila: con
+    // UN rango para las N filas NUEVAS, no un correlativo por fila: con
     // connection_limit=1, pedir 500 números son 500 escrituras serializadas
-    // contra la misma fila de Counter.
-    const skus = await reserveSkuRange(validas.length);
+    // contra la misma fila de Counter. Las actualizaciones ya tienen su SKU.
+    const skus = creaciones.length > 0 ? await reserveSkuRange(creaciones.length) : [];
 
     const creados = await db.$transaction(async (tx) => {
       const idPorNombre = async (tabla: "category" | "brand" | "supplier", nombres: string[]) => {
@@ -535,7 +668,7 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
       const provs = await idPorNombre("supplier", validas.map((v) => v.datos!.proveedor).filter((x): x is string => !!x));
 
       let n = 0;
-      for (const v of validas) {
+      for (const v of creaciones) {
         const d = v.datos!;
         const sku = skus[n++]!;
         const producto = await tx.product.create({
@@ -580,22 +713,66 @@ export async function registerImportRoutes(app: FastifyInstance): Promise<void> 
           });
         }
       }
-      return validas.length;
+
+      /**
+       * Las actualizaciones, con las mismas reglas que el PATCH del catálogo:
+       * los códigos se reemplazan enteros solo si la celda traía algo, y la
+       * clave de búsqueda se rearma siempre — el nombre pudo cambiar.
+       *
+       * Los opcionales vacíos ya llegaron resueltos a «no tocar» desde
+       * `revisar`: acá la categoría/marca/proveedor en null simplemente no se
+       * escriben, que es distinto de escribir null (eso las borraría).
+       */
+      for (const v of actualizaciones) {
+        const d = v.datos!;
+        if (d.tocaCodigos) {
+          await tx.productBarcode.deleteMany({ where: { productId: d.productoId! } });
+          await tx.productBarcode.createMany({ data: d.barcodes.map((code) => ({ productId: d.productoId!, code })) });
+        }
+        await tx.product.update({
+          where: { id: d.productoId! },
+          data: {
+            name: d.name,
+            ...(d.description !== null ? { description: d.description } : {}),
+            ...(d.categoria !== null ? { categoryId: cats.get(d.categoria)! } : {}),
+            ...(d.marca !== null ? { brandId: marcas.get(d.marca)! } : {}),
+            ...(d.proveedor !== null ? { supplierId: provs.get(d.proveedor)! } : {}),
+            saleUnitId: d.saleUnitId,
+            purchaseUnitId: d.purchaseUnitId,
+            priceGross: d.priceGross,
+            costNetMilliPeso: d.costNetMilliPeso,
+            reorderLevelBaseMilli: d.reorderLevelBaseMilli,
+            searchKey: buildSearchKey({ name: d.name, sku: d.sku!, barcodes: d.barcodes }),
+          },
+        });
+      }
+      return creaciones.length;
     });
 
     await audit({
       userId: req.user.sub,
       action: "PRODUCTS_IMPORTED",
       entity: "Product",
-      payload: { cantidad: creados, desde: skus[0], hasta: skus[skus.length - 1] },
+      payload: {
+        cantidad: creados,
+        actualizados: actualizaciones.length,
+        ...(creados > 0 ? { desde: skus[0], hasta: skus[skus.length - 1] } : {}),
+      },
     });
 
+    const rango = creados > 0 ? `, del ${skus[0]} al ${skus[skus.length - 1]}` : "";
     return {
       ...informe,
       importado: true,
       creados,
-      rangoSku: { desde: skus[0], hasta: skus[skus.length - 1] },
-      mensaje: `${creados} productos cargados, del ${skus[0]} al ${skus[skus.length - 1]}.`,
+      actualizados: actualizaciones.length,
+      rangoSku: creados > 0 ? { desde: skus[0], hasta: skus[skus.length - 1] } : null,
+      mensaje:
+        creados > 0 && actualizaciones.length > 0
+          ? `${creados} productos nuevos${rango} y ${actualizaciones.length} actualizados.`
+          : creados > 0
+            ? `${creados} productos cargados${rango}.`
+            : `${actualizaciones.length} producto${actualizaciones.length === 1 ? "" : "s"} actualizado${actualizaciones.length === 1 ? "" : "s"}.`,
     };
   });
 }

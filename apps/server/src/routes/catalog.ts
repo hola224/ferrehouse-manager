@@ -35,7 +35,6 @@ import {
   normalizeSearch,
   normalizeBarcode,
   puedeEditarCosto,
-  costoMilliPorUnidadDeVenta,
   margenDeListaPct,
   type UnitLike,
   TIPOS_QUE_FIJAN_COSTO,
@@ -443,13 +442,15 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
   /**
    * El catálogo en un Excel. Solo el administrador: lleva costo y margen.
    *
-   * **NO es la plantilla de importación, y la hoja lo dice en su primera fila.**
-   * El importador solo CREA productos —reserva SKU nuevos con `reserveSkuRange`
-   * y llama a `product.create`; no existe ningún camino que actualice uno
-   * existente—, así que exportar con la forma de la plantilla y volver a
-   * subirla duplicaría la ferretería entera con SKU nuevos. Por eso este
-   * archivo lleva el SKU adelante, incluye columnas que la plantilla no tiene
-   * (margen, estado, saldo) y no pretende viajar de vuelta.
+   * **VIAJA DE VUELTA.** Las columnas compartidas usan los títulos exactos de
+   * la plantilla de importación, y el importador entiende la columna SKU: una
+   * fila con SKU actualiza ese producto. El ciclo completo es bajar esto,
+   * corregir precios en Excel y subirlo en «Importar» — las columnas
+   * informativas (Margen, Saldo, Estado) se ignoran solas al subir.
+   *
+   * Por lo mismo, el COSTO sale por unidad BASE —que es como lo pide la
+   * plantilla y como lo guarda la base— y no por unidad de venta como salía
+   * antes, cuando el título decía «unidad base» y el número era otro.
    */
   app.get("/api/products/export.xlsx", soloAdmin, async (_req, reply) => {
     const productos = await db.product.findMany({
@@ -465,51 +466,58 @@ export async function registerCatalogRoutes(app: FastifyInstance): Promise<void>
     hoja.columns = [
       { header: "SKU", key: "sku", width: 12 },
       { header: "Nombre", key: "nombre", width: 40 },
+      { header: "Descripción", key: "descripcion", width: 26 },
       { header: "Categoría", key: "categoria", width: 18 },
       { header: "Marca", key: "marca", width: 16 },
       { header: "Proveedor", key: "proveedor", width: 20 },
       { header: "Unidad de venta", key: "unidad", width: 16 },
-      { header: "Precio con IVA", key: "precio", width: 15 },
-      { header: "Costo neto (unidad base)", key: "costo", width: 22 },
+      { header: "Unidad de compra", key: "unidadCompra", width: 17 },
+      { header: "Precio con IVA (por unidad de venta)", key: "precio", width: 30 },
+      { header: "Costo neto (por unidad base)", key: "costo", width: 26 },
+      { header: "Stock mínimo (en unidad base)", key: "minimo", width: 26 },
+      { header: "Códigos de barra", key: "codigos", width: 32 },
+      // De acá para abajo es solo lectura: el importador no las mira.
       { header: "Margen %", key: "margen", width: 11 },
       { header: "Saldo (unidad base)", key: "saldo", width: 18 },
-      { header: "Stock mínimo", key: "minimo", width: 14 },
       { header: "Estado", key: "estado", width: 14 },
-      { header: "Códigos de barra", key: "codigos", width: 32 },
     ];
     hoja.getRow(1).font = { bold: true };
     hoja.getRow(1).getCell(1).note =
-      "Este archivo es para LEER, no para volver a subir. La importación solo crea productos nuevos: " +
-      "si subes esto, la ferretería queda duplicada con SKU nuevos. Para cambiar precios, edítalos en el sistema.";
+      "Este archivo se puede volver a subir en Importar: cada fila ACTUALIZA el producto de su SKU. " +
+      "No cambies los SKU. Una fila con el SKU vacío crea un producto nuevo. " +
+      "Margen, Saldo y Estado son informativos y se ignoran al subir; el stock no se cambia por acá.";
 
     for (const p of productos) {
       const saldoMilli = p.stockLevels.reduce((s, n) => s + n.qtyBaseMilli, 0);
       /*
-        El costo y el margen salen de `@ferrehouse/shared`, NO de una cuenta
-        escrita acá. El costo se guarda por unidad BASE y el precio por unidad
-        de VENTA, y mezclarlos es un error que ya ocurrió: un saco de 25 kg
-        aparecía con 96,7% de margen cuando el real era 17,5%. La conversión
-        vive en un solo lugar justamente para que no vuelva a pasar.
+        El margen sale de `@ferrehouse/shared`, NO de una cuenta escrita acá.
+        El costo se guarda por unidad BASE y el precio por unidad de VENTA, y
+        mezclarlos es un error que ya ocurrió: un saco de 25 kg aparecía con
+        96,7% de margen cuando el real era 17,5%. La conversión vive en un solo
+        lugar justamente para que no vuelva a pasar.
       */
-      const costoVenta = costoMilliPorUnidadDeVenta(p);
       const margen = margenDeListaPct(p);
       const bajo = saldoMilli <= p.reorderLevelBaseMilli;
       hoja.addRow({
         sku: p.sku,
         nombre: p.name,
+        descripcion: p.description ?? "",
         categoria: p.category?.name ?? "",
         marca: p.brand?.name ?? "",
         proveedor: p.supplier?.name ?? "",
         unidad: p.saleUnit.symbol,
+        unidadCompra: p.purchaseUnit.symbol,
         precio: p.priceGross,
         // Costo cero es «todavía no se cargó», no «sale gratis»: va vacío, que
-        // es lo que la pantalla muestra como raya.
-        costo: p.costNetMilliPeso === 0 ? "" : Math.round(costoVenta / 1000),
+        // es lo que la pantalla muestra como raya. Redondeado a pesos: al
+        // resubir, el importador reconoce el redondeo como «sin cambio» y
+        // conserva las milésimas guardadas.
+        costo: p.costNetMilliPeso === 0 ? "" : Math.round(p.costNetMilliPeso / 1000),
+        minimo: p.reorderLevelBaseMilli / 1000,
+        codigos: p.barcodes.map((b) => b.code).join(", "),
         margen: margen === null ? "" : Number(margen.toFixed(1)),
         saldo: saldoMilli / 1000,
-        minimo: p.reorderLevelBaseMilli / 1000,
         estado: !p.active ? "Inactivo" : bajo ? "Stock bajo" : "OK",
-        codigos: p.barcodes.map((b) => b.code).join(", "),
       });
     }
 

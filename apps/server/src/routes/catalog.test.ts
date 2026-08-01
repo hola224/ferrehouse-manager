@@ -485,22 +485,40 @@ describe("exportar el catálogo", () => {
   });
 
   /**
-   * El guardián del error caro: este archivo NO es la plantilla de importación.
-   * El importador solo crea —reserva SKU nuevos y llama a `create`, no existe
-   * ningún camino que actualice— así que subir esto duplicaría la ferretería
-   * entera. Si algún día alguien alinea las columnas con las de la plantilla
-   * "para que se pueda reimportar", este test tiene que hacerlo pensar.
+   * El sucesor del guardián que vivía acá. El test anterior verificaba que el
+   * export NO tuviera la forma de la plantilla, porque el importador solo
+   * sabía crear y resubir esto duplicaba la ferretería entera. Ese camino ya
+   * existe —la columna SKU actualiza— y ahora lo que se protege es el viaje
+   * de vuelta: los títulos compartidos tienen que ser EXACTAMENTE los de la
+   * plantilla, porque el importador calza las columnas por nombre. Un título
+   * que se desalinee no rompe nada a la vista: la columna se ignora en
+   * silencio y "corregí los precios en Excel" deja de hacer efecto.
    */
-  it("no tiene la forma de la plantilla de importación", async () => {
+  it("tiene la forma de la plantilla de importación, para poder viajar de vuelta", async () => {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load((await pedir(tokenAdmin)).rawPayload as unknown as ArrayBuffer);
     const hoja = wb.getWorksheet("Catálogo");
-    expect(hoja, "la hoja se llama Catálogo, no Productos como la plantilla").toBeDefined();
+    expect(hoja).toBeDefined();
 
     const encabezados = (hoja!.getRow(1).values as unknown[]).filter(Boolean).map(String);
-    // La plantilla NO tiene SKU —los genera el servidor— y esta sí.
     expect(encabezados[0]).toBe("SKU");
+    for (const titulo of [
+      "Nombre",
+      "Descripción",
+      "Categoría",
+      "Marca",
+      "Proveedor",
+      "Unidad de venta",
+      "Unidad de compra",
+      "Precio con IVA (por unidad de venta)",
+      "Costo neto (por unidad base)",
+      "Stock mínimo (en unidad base)",
+      "Códigos de barra",
+    ]) {
+      expect(encabezados, `falta la columna "${titulo}" con su título exacto`).toContain(titulo);
+    }
+    // Las informativas siguen: el importador las ignora por nombre desconocido.
     expect(encabezados).toContain("Margen %");
-    expect(hoja!.getRow(1).getCell(1).note, "la advertencia va en el archivo, no solo en el código").toBeDefined();
+    expect(hoja!.getRow(1).getCell(1).note, "las instrucciones van en el archivo, no solo en el código").toBeDefined();
   });
 });

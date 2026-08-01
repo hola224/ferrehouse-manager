@@ -236,14 +236,13 @@ export function Catalogo() {
   );
 
   /**
-   * El catálogo en un Excel, para revisar precios fuera del sistema o mandarle
-   * la lista a alguien.
-   *
-   * **No es la plantilla de importación y no se puede volver a subir**: el
-   * importador solo crea productos nuevos, así que reimportar esto duplicaría
-   * la ferretería entera con SKU nuevos. La advertencia va también dentro del
-   * archivo, en una nota sobre la primera celda, porque el archivo se abre en
-   * otro computador y en otro momento — donde este comentario no llega.
+   * El catálogo en un Excel, para revisar precios fuera del sistema, mandarle
+   * la lista a alguien — o corregir en masa: el archivo usa las columnas de la
+   * plantilla de importación y **se puede volver a subir en «Importar»**. Cada
+   * fila actualiza el producto de su SKU; las columnas informativas (margen,
+   * saldo, estado) se ignoran al subir. Las instrucciones van también dentro
+   * del archivo, en una nota sobre la primera celda, porque el archivo se abre
+   * en otro computador y en otro momento — donde este comentario no llega.
    */
   async function exportar() {
     setExportando(true);
