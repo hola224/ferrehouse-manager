@@ -304,10 +304,36 @@ if (Get-ScheduledTask -TaskName $SERVICIO -ErrorAction SilentlyContinue) {
   # El lazo supervisor relanza `node` a los 5 segundos, así que detener la
   # tarea no alcanza: hay que bajar también el proceso que ya está sirviendo,
   # o el `dist\main.js` sigue abierto y la copia falla a medias.
+  # OJO: `-like` no es regex — el backslash es literal. Doblar los backslash
+  # del destino (como se hacía antes) armaba un patrón que no calzaba con
+  # ninguna ruta real y ese filtro no mataba nada.
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*$($Destino.Replace('\','\\'))*" -or $_.CommandLine -like "*dist\main.js*" } |
+    Where-Object { $_.CommandLine -like "*$Destino*" -or $_.CommandLine -like "*dist\main.js*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 3
+}
+
+<#
+  EL LANZADOR QUE EJECUTÓ ESTA ACTUALIZACIÓN ESTÁ EN USO, y Windows no deja
+  sobreescribir un .exe corriendo. El ZIP de GitHub trae TODOS los archivos con
+  hora nueva (la hora en que GitHub armó el archivo), así que robocopy siempre
+  quiere pisar también ACTUALIZAR.exe — que es exactamente el proceso que está
+  corriendo esta actualización — y la copia entera muere con código 10.
+
+  Lo que Windows SÍ permite es RENOMBRAR un .exe en uso: el proceso sigue vivo
+  con su archivo renombrado, y robocopy escribe el nuevo con el nombre real.
+  Los `.exe.viejo` se limpian acá mismo en la corrida siguiente, cuando ya
+  nadie los tiene abiertos (por eso el borrado es best-effort).
+#>
+$carpetaLanzadores = Join-Path $Destino "instalacion"
+if (Test-Path $carpetaLanzadores) {
+  Get-ChildItem $carpetaLanzadores -Filter "*.exe.viejo" -ErrorAction SilentlyContinue |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+  foreach ($exe in Get-ChildItem $carpetaLanzadores -Filter "*.exe" -ErrorAction SilentlyContinue) {
+    try { Rename-Item $exe.FullName "$($exe.Name).viejo" -Force -ErrorAction Stop } catch {
+      # Si ni siquiera se deja renombrar, robocopy va a contar el resto igual.
+    }
+  }
 }
 
 # Un respaldo antes de tocar nada, si ya había una instalación con base.
@@ -328,7 +354,10 @@ New-Item -ItemType Directory -Force $Destino | Out-Null
 Get-ChildItem -Path (Join-Path $Destino "apps"), (Join-Path $Destino "packages") -Directory -ErrorAction SilentlyContinue |
   ForEach-Object { Remove-Item (Join-Path $_.FullName "dist") -Recurse -Force -ErrorAction SilentlyContinue }
 
-$argsRobo = @($origen, $Destino, "/E", "/NFL", "/NDL", "/NJH", "/NJS", "/NP", "/R:2", "/W:2")
+# Sin /NFL: la salida se captura a una variable (no ensucia la consola) y si
+# algo falla se imprimen las líneas de ERROR — «robocopy 10» a secas obligaba
+# a adivinar cuál de doscientos archivos no se dejó copiar.
+$argsRobo = @($origen, $Destino, "/E", "/NDL", "/NJH", "/NJS", "/NP", "/R:2", "/W:2")
 # `.wa-sesion` va en la lista por la misma razón que la base y el `.env`: son
 # las credenciales del número vinculado, y pisarlas obliga a escanear el QR de
 # nuevo con el teléfono en la mano.
@@ -336,8 +365,11 @@ $argsRobo += "/XD"; $argsRobo += $carpetasFuera; $argsRobo += @("node_modules", 
 # `.env`, la base y sus archivos de WAL NO se pisan jamás: son lo único
 # irreemplazable que hay en ese PC.
 $argsRobo += "/XF"; $argsRobo += @(".env", "*.db", "*.db-wal", "*.db-shm")
-& robocopy.exe @argsRobo | Out-Null
-if ($LASTEXITCODE -ge 8) { Morir "Falló la copia de archivos a $Destino (robocopy $LASTEXITCODE)" }
+$salidaRobo = & robocopy.exe @argsRobo
+if ($LASTEXITCODE -ge 8) {
+  $salidaRobo | Where-Object { $_ -match "ERROR" } | Select-Object -First 10 | ForEach-Object { Ojo $_.Trim() }
+  Morir "Falló la copia de archivos a $Destino (robocopy $LASTEXITCODE)"
+}
 Bien "Código instalado en $Destino"
 
 # --------------------------------------------------------------- 4. El .env
