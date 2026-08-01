@@ -5,7 +5,9 @@ title Ferrehouse Manager - actualizar
 rem ===========================================================================
 rem  Actualizar el sistema a la ultima version publicada.
 rem
-rem  Hace lo mismo que INSTALAR.bat —que es idempotente a proposito— pero
+rem  OJO: este archivo es ASCII puro, a proposito -- ver INSTALAR.bat.
+rem
+rem  Hace lo mismo que INSTALAR.bat (que es idempotente a proposito) pero
 rem  ademas RESPALDA ANTES de tocar nada y comprueba que el sistema quede
 rem  contestando al final. Existe como archivo aparte por una razon que no es
 rem  tecnica: quien lo va a correr no es quien lo escribio, y "ACTUALIZAR" es
@@ -20,7 +22,11 @@ if not errorlevel 1 goto :soy_admin
 echo.
 echo  Pidiendo permisos de administrador...
 echo.
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+if "%~1"=="" (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+) else (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -ArgumentList '%*' -Verb RunAs"
+)
 exit /b
 
 :soy_admin
