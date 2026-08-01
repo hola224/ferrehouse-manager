@@ -37,7 +37,16 @@ $ProgressPreference = "SilentlyContinue"   # las barras de Invoke-WebRequest son
 $SERVICIO   = "FerrehouseManager"
 $NOMBRE     = "Ferrehouse Manager"
 $AQUI       = Split-Path -Parent $MyInvocation.MyCommand.Path
-$TRABAJO    = Join-Path $env:TEMP "ferrehouse-instalador"
+
+<#
+  La carpeta de trabajo NO va en $env:TEMP. Si el usuario de Windows tiene
+  espacio en el nombre ("MESON 2"), TEMP llega en nombre corto de DOS
+  (C:\Users\MESON2~1\...) y los cmdlets de PowerShell 5.1 tienen un defecto
+  conocido con el carácter `~` en rutas: lo intentan expandir como "home" y
+  mueren con InvalidArgument — saltándose incluso -ErrorAction. ProgramData
+  es una ruta fija, sin usuario en el medio, y este script ya corre elevado.
+#>
+$TRABAJO    = Join-Path $env:ProgramData "Ferrehouse\instalador"
 
 # ---------------------------------------------------------------- utilidades
 
