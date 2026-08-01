@@ -132,7 +132,8 @@ async function sembrarUbicacion() {
 }
 
 async function sembrarUsuarios() {
-  const nuevos: Array<[string, string]> = [];
+  /** `[nombre, pin, vino de SEED_*_PIN]` — el tercero decide qué aviso sale. */
+  const nuevos: Array<[string, string, boolean]> = [];
 
   // SYSTEM: autor de lo que hacen los jobs. Hash imposible de satisfacer, y el
   // login además rechaza role=SYSTEM antes de comparar nada.
@@ -162,16 +163,28 @@ async function sembrarUsuarios() {
   ] as const) {
     const existe = await db.user.findFirst({ where: { role } });
     if (existe) continue; // ya hay alguien con ese rol: no se toca nada
-    const pin = process.env[envKey]?.trim() || porDefecto;
+    const delEntorno = process.env[envKey]?.trim();
+    const pin = delEntorno || porDefecto;
     await db.user.create({ data: { name, role, active: true, pinHash: await hash(pin) } });
-    nuevos.push([name, pin]);
+    nuevos.push([name, pin, Boolean(delEntorno)]);
   }
 
   console.log(`  usuarios: ${await db.user.count()}`);
   if (nuevos.length) {
     console.log("\n  ┌─ PIN de entrada:");
     for (const [name, pin] of nuevos) console.log(`  │  ${name.padEnd(16)} ${pin}`);
-    console.log("  └─ SON PÚBLICOS: están en el README. Cámbialos antes de abrir la tienda.\n");
+    /**
+     * El aviso solo cuando corresponde. Antes se imprimía siempre, y en una
+     * instalación de verdad —donde el instalador sortea los PIN y los pasa por
+     * `SEED_*_PIN`— decía "son públicos, están en el README" de dos números
+     * que no están en ninguna parte. Un aviso que miente es peor que ninguno:
+     * enseña a no leerlos.
+     */
+    if (nuevos.every(([, , delEntorno]) => delEntorno)) {
+      console.log("  └─ Anótalos ahora: no se pueden volver a ver.\n");
+    } else {
+      console.log("  └─ SON PÚBLICOS: están en el README. Cámbialos antes de abrir la tienda.\n");
+    }
   }
 }
 

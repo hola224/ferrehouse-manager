@@ -26,11 +26,21 @@ pnpm preparar   # compila, migra, siembra y carga el catálogo de prueba
 pnpm dev        # servidor en :3000, web en :5173
 ```
 
-> **Si esto va a una tienda, cambia `JWT_SECRET` en `apps/server/.env` antes de
-> nada.** El archivo de ejemplo trae `cambiar-en-instalacion`, y ese valor está
-> publicado en este repositorio: cualquiera que lo lea puede firmar un token de
-> administrador válido contra una instalación que lo haya dejado puesto. Sirve
-> cualquier cadena larga y al azar — por ejemplo `openssl rand -base64 48`.
+> **Si esto va a una tienda, no lo instales a mano: usa
+> [`instalacion/INSTALAR.bat`](instalacion/README.md).** Hace todo esto y además
+> genera la clave, sortea los PIN, deja el arranque automático y crea el acceso
+> directo.
+
+> **Si aun así lo instalas a mano, cambia `JWT_SECRET` en `apps/server/.env`
+> antes de nada.** El archivo de ejemplo trae `cambiar-en-instalacion`, y ese
+> valor está publicado en este repositorio: cualquiera que lo lea puede firmar
+> un token de administrador válido. Sirve cualquier cadena larga y al azar — por
+> ejemplo `openssl rand -base64 48`. **El servidor se niega a arrancar** con la
+> clave de ejemplo o con una de menos de 32 caracteres.
+
+**En producción no hace falta Vite:** `pnpm build` y `node apps/server/dist/main.js`
+sirven el API *y* la pantalla en el mismo puerto 3000. Los `:5173` de abajo son
+solo del modo desarrollo.
 
 Abre <http://localhost:5173> y entra con:
 

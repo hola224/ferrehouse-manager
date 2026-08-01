@@ -7,8 +7,11 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname, basename } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const RAIZ = new URL("..", import.meta.url).pathname;
+// fileURLToPath y no .pathname: en Windows el pathname llega como "/C:/…" y
+// join() lo trata como ruta relativa, produciendo "C:\C:\…".
+const RAIZ = fileURLToPath(new URL("..", import.meta.url));
 const EXT = new Set([".ts", ".tsx", ".css", ".jsx", ".js"]);
 const IGNORAR = new Set(["node_modules", "dist", ".git", "public", "migrations"]);
 // El único archivo con colores, más el que documenta la paleta.

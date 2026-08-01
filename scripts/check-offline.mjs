@@ -8,8 +8,11 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const RAIZ = new URL("..", import.meta.url).pathname;
+// fileURLToPath y no .pathname: en Windows el pathname llega como "/C:/…" y
+// join() lo trata como ruta relativa, produciendo "C:\C:\…".
+const RAIZ = fileURLToPath(new URL("..", import.meta.url));
 const EXT = new Set([".ts", ".tsx", ".css", ".html", ".js", ".jsx", ".json"]);
 // `public` NO se excluye: es justo donde viviría un CSS vendorizado con un
 // @import remoto, que es el modo de fallar que este script existe para atrapar.

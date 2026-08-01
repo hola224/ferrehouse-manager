@@ -1,64 +1,90 @@
 # Instalar Ferrehouse Manager en la tienda
 
-> Sprint 7, tareas 7.1, 7.4 y 7.5. Léelo entero antes de empezar: hay dos
-> decisiones —la carpeta de respaldo y la clave— que después cuesta cambiar.
-
 Al terminar, el PC del mostrador queda sirviendo el sistema a los otros
-terminales, arranca solo cuando se enciende, se levanta solo si se cae y se
-respalda todos los días.
+terminales, arranca solo cuando se enciende, se levanta solo si se cae, se
+respalda todos los días y tiene un ícono en el escritorio que abre la
+aplicación como si fuera un programa instalado.
 
-**Qué está probado y qué no.** El respaldo y la restauración tienen 25 pruebas
-automáticas que borran la base de verdad y la recuperan. Los scripts `.bat` de
-esta carpeta **no están probados**: se escribieron sin una máquina Windows a
-mano. Léelos antes de correrlos —son cortos y están comentados— y ten esta
-página al lado.
+## Lo corto
+
+1. Copia esta carpeta `instalacion` a un pendrive (o clona el repositorio).
+2. En el PC del mostrador, **doble clic en `INSTALAR.bat`** y acepta el aviso de
+   administrador.
+3. Espera. Baja Node si falta, baja la aplicación, compila, prepara la base,
+   abre el firewall, deja el arranque automático y crea el acceso directo.
+4. **Anota los dos PIN que muestra al final.** No se pueden volver a ver.
+5. Haz los dos pasos que el instalador no puede hacer solo: **la impresora**
+   (§3) y **la carpeta de respaldo** (§6).
+
+Correr `INSTALAR.bat` otra vez **actualiza** la instalación: baja la versión
+nueva, recompila y reinicia, sin tocar la base de datos, el `.env` ni los
+respaldos. Respalda antes de empezar, por si acaso.
 
 ---
 
 ## 1. Antes de tocar nada: el PC
 
+El instalador se encarga del firewall y de que el PC no se duerma. Lo que sigue
+queda en tus manos:
+
 | # | Qué | Por qué |
 |---|---|---|
 | 1 | **IP fija** en el PC servidor (ej. `192.168.1.10`) | Los terminales guardan la dirección en un acceso directo. Si el router le cambia la IP un lunes, dejan de entrar y nadie sabe por qué |
-| 2 | **Suspensión y hibernación desactivadas**, también con la tapa cerrada si es notebook | Un servidor suspendido es un servidor caído. Es la causa número uno de "no funciona" a las 15:00 |
-| 3 | **Apagado de disco duro: nunca** | SQLite con el disco dormido da errores de escritura raros e intermitentes |
-| 4 | **Actualizaciones de Windows en horario fuera de tienda** (Configuración → Windows Update → Horas activas 8:00–21:00) | Un reinicio a las 11 de la mañana cierra la caja abierta sin cerrarla |
-| 5 | **Firewall: permitir el puerto 3000 en la red privada** | Sin esto el servidor anda perfecto… y ningún terminal lo alcanza |
-| 6 | **UPS** en el PC servidor y en el router | Un corte de luz con la base a medio escribir es justo lo que el modo WAL protege, pero el equipo que se apaga en seco igual pierde la venta que se estaba tecleando |
-| 7 | Antivirus: **excluir la carpeta del sistema** | Algunos antivirus abren el `.db` mientras SQLite escribe y lo bloquean |
-
-Para el firewall, en PowerShell como administrador:
-
-```powershell
-New-NetFirewallRule -DisplayName "Ferrehouse Manager" -Direction Inbound -LocalPort 3000 -Protocol TCP -Action Allow -Profile Private
-```
+| 2 | **Actualizaciones de Windows en horario fuera de tienda** (Configuración → Windows Update → Horas activas 8:00–21:00) | Un reinicio a las 11 de la mañana cierra la caja abierta sin cerrarla |
+| 3 | **UPS** en el PC servidor y en el router | Un corte de luz con la base a medio escribir es justo lo que el modo WAL protege, pero el equipo que se apaga en seco igual pierde la venta que se estaba tecleando |
+| 4 | Antivirus: **excluir `C:\Ferrehouse`** | Algunos antivirus abren el `.db` mientras SQLite escribe y lo bloquean |
 
 ---
 
-## 2. Instalar
+## 2. Qué hace `INSTALAR.bat`, paso por paso
 
-1. Instalar **Node 22** (el instalador `.msi` de nodejs.org, opciones por
-   defecto).
-2. Copiar el repositorio a `C:\Ferrehouse`.
-3. Bajar **nssm** de nssm.cc y dejar `nssm.exe` en `C:\Ferrehouse\instalacion`.
-   Es un solo archivo, no se instala.
-4. Abrir una consola en `C:\Ferrehouse` y correr:
+| Paso | Qué | Detalle |
+|---|---|---|
+| 1 | **Node 22** | Si falta, lo baja de nodejs.org **verificando el SHA-256 publicado** y lo instala en silencio |
+| 2 | **pnpm** | Por corepack, en la versión exacta que fija el `package.json` |
+| 3 | **La aplicación** | ZIP de GitHub → `C:\Ferrehouse`. **No copia** los papeles de desarrollo (`CLAUDE.md`, `.agents/`, `BITACORA.md`, `STATE*.md`, `SPRINTS.md`, `REVISION.md`, `USE-CASES.md`, `UI-BRIEF.md`, `design_handoff/`, `.github/`) |
+| 4 | **`.env`** | Clave de firma de 64 caracteres al azar y dos PIN sorteados. Si ya existe, **no lo toca** |
+| 5 | **Compilar** | `pnpm install` + `pnpm build`. Verifica que quedó `apps/web/dist/index.html` |
+| 6 | **Base de datos** | `prisma generate`, migraciones y seed. El seed es idempotente: no pisa nada existente |
+| 7 | **Energía** | Sin suspensión, sin hibernación, sin apagado de disco, y la tapa cerrada no apaga nada |
+| 8 | **Firewall** | Abre el puerto 3000 **solo en el perfil de red privada** |
+| 9 | **Arranque automático** | Tarea programada como SYSTEM al encender, con supervisor que relanza a los 5 s |
+| 10 | **Acceso directo** | Escritorio, menú Inicio y arranque de sesión |
+| 11 | **Comprobar** | Pregunta por `/api/health` y verifica que la pantalla se sirva |
 
-   ```
-   pnpm install
-   pnpm build
-   pnpm --filter @ferrehouse/server db:migrate
-   pnpm --filter @ferrehouse/server db:seed
-   ```
+**Un solo puerto.** El servidor sirve el API **y** la interfaz en el 3000. En
+desarrollo la pantalla la sirve Vite en el 5173; en la tienda no hay Vite. Un
+solo puerto es una sola regla de firewall y una sola dirección que recordar.
 
-   El seed **anota los PIN que generó**. Cópialos antes de cerrar esa ventana:
-   no se pueden volver a ver, y el seed no los pisa si se corre otra vez.
-5. Clic derecho en `instalacion\instalar-servicio.bat` → **Ejecutar como
-   administrador**.
+### Opciones
 
-El script crea el `.env` con una clave nueva si no existe. **Guarda una copia de
-ese archivo**: la clave firma las sesiones, y si se pierde, todos los terminales
-quedan afuera en el próximo reinicio.
+```
+INSTALAR.bat -Puerto 3001                        otro puerto
+INSTALAR.bat -Destino "D:\Ferrehouse"            otra carpeta
+INSTALAR.bat -DesdeCarpeta "E:\ferrehouse"       desde pendrive, sin bajar
+INSTALAR.bat -ConDemo                            40 productos de EJEMPLO
+INSTALAR.bat -SinTocarEnergia                    no cambiar el plan de energía
+```
+
+`-ConDemo` **no se usa en una tienda de verdad**: esos 40 productos se mezclan
+con el catálogo real y después hay que ir a buscarlos uno por uno.
+
+### Por qué una tarea programada y no un servicio de Windows
+
+Node no sabe hablar con el administrador de servicios, así que un servicio de
+verdad necesita un supervisor externo. El candidato clásico es NSSM, y hay que
+bajarlo de nssm.cc: un sitio que se cae, que no publica hash de sus binarios y
+que desde varias redes simplemente no responde. Un instalador que no puede
+terminar porque un sitio de terceros está caído es un instalador roto.
+
+El Programador de tareas ya viene con Windows. Corre como SYSTEM al encender,
+antes de que nadie inicie sesión, igual que un servicio, y no hay nada que bajar
+ni que verificar.
+
+**Lo que se pierde, dicho derecho:** NSSM apaga mandando un Ctrl+C, que
+`main.ts` sabe atender para consolidar el WAL antes del corte. Acá el apagado es
+abrupto. No corrompe nada —el WAL de SQLite existe justamente para eso y se
+reproduce solo al abrir la base— pero es menos prolijo.
 
 ---
 
@@ -93,6 +119,8 @@ después el turno.
 Un terminal de consulta —uno que solo mira precios y stock— se deja **sin
 impresora** a propósito: es la forma de decir que no imprime.
 
+---
+
 ## 4. Comprobar que quedó bien
 
 ```
@@ -104,27 +132,35 @@ Tiene que responder `{"ok":true,...}`. Si no:
 | Lo que dice `logs\error.log` | Qué hacer |
 |---|---|
 | `DATABASE_URL debe llevar connection_limit=1` | Falta en el `.env`. Sin eso, dos ventas simultáneas corrompen el stock **en silencio** |
+| `JWT_SECRET todavía tiene el valor de ejemplo` | El `.env` quedó con la clave del repositorio, que es pública. Corre `INSTALAR.bat` de nuevo: la reemplaza |
 | `El servidor no puede arrancar: faltan settings…` | Correr `pnpm --filter @ferrehouse/server db:seed` |
-| `EADDRINUSE` | Otra cosa ocupa el 3000. Cambiar `PORT` en el `.env` |
-| Nada, el archivo está vacío | El servicio no llegó a arrancar: revisar la ruta de `node.exe` en NSSM |
+| `EADDRINUSE` | Otra cosa ocupa el 3000. Reinstalar con `INSTALAR.bat -Puerto 3001` |
+| `interfaz: NO hay build en …` | Faltó compilar. Correr `pnpm build` en `C:\Ferrehouse` |
+| Nada, el archivo está vacío | La tarea no llegó a arrancar: `schtasks /Query /TN FerrehouseManager /V /FO LIST` |
 
 **El servidor se niega a arrancar antes que arrancar mintiendo.** Si el seed
-está incompleto o falta `connection_limit`, no levanta y dice por qué. Eso es a
-propósito: un servidor que arranca con el stock mal serializado no da ningún
-síntoma hasta que los números no cuadran, semanas después.
+está incompleto, falta `connection_limit` o la clave de firma es la pública del
+repositorio, no levanta y dice por qué. Eso es a propósito: un servidor que
+arranca con el stock mal serializado no da ningún síntoma hasta que los números
+no cuadran, semanas después.
 
 ---
 
-## 5. Los terminales (tarea 7.5)
+## 5. Los terminales
 
-En cada terminal, un acceso directo en el escritorio a Chrome:
+En cada terminal, corre **`Acceso directo en este terminal.bat`** desde el
+pendrive. Pregunta la dirección del PC del mostrador, comprueba que conteste
+antes de crear nada, se baja el ícono del propio servidor y deja el acceso en el
+escritorio. **No instala nada y no pide administrador.**
+
+Si prefieres hacerlo a mano, el acceso directo apunta a:
 
 ```
 "C:\Program Files\Google\Chrome\Application\chrome.exe" --app=http://192.168.1.10:3000
 ```
 
-`--app` abre sin barra de direcciones: nadie navega a otra parte sin querer y la
-pantalla gana el alto de la barra, que a 1366×768 se nota.
+`--app` abre sin barra de direcciones: nadie navega a otra parte sin querer, y
+la pantalla gana el alto de la barra, que a 1366×768 se nota.
 
 **Cada terminal entra con su estación.** La estación se elige en la pantalla de
 entrada, junto al usuario, y define dos cosas: de qué ubicación sale el stock y
@@ -137,7 +173,7 @@ normaliza solo.
 
 ---
 
-## 6. El respaldo (tarea 7.2) — **esto es lo que hay que dejar andando**
+## 6. El respaldo — **esto es lo que hay que dejar andando**
 
 El sistema respalda **solo, una vez al día**, a las 13:00 por defecto, y también
 apenas se enciende el PC si el último respaldo tiene más de 24 horas. No hay que
@@ -163,23 +199,25 @@ externa quedó atrasada porque el pendrive no estaba puesto.
 Se guardan **30 días**, y siempre los **7 más nuevos** aunque estén todos
 vencidos — un equipo apagado seis semanas vuelve y no se queda sin nada.
 
+**Y guarda una copia de `C:\Ferrehouse\apps\server\.env` fuera de ese PC.** Esa
+clave firma las sesiones: sin ella, restaurar la base en otro equipo deja a
+todos los terminales afuera.
+
 ---
 
-## 7. Restaurar (tarea 7.3)
+## 7. Restaurar
 
-Si se perdió el PC o la base quedó mal:
+Si se perdió el PC o la base quedó mal, doble clic en
+**`Restaurar respaldo.bat`**. Pide administrador, detiene el servidor, lista lo
+que hay y deja una consola abierta para elegir:
 
-1. **Detener el servicio.** En consola de administrador: `nssm stop FerrehouseManager`
-2. Si el respaldo está en el pendrive, cópialo a
-   `C:\Ferrehouse\apps\server\prisma\respaldos`
-3. En `C:\Ferrehouse\apps\server`:
+```
+node dist\restaurar-cli.js --ultimo            volver al más reciente
+node dist\restaurar-cli.js --archivo NOMBRE    uno en particular
+```
 
-   ```
-   node dist\restaurar-cli.js --lista      ver qué hay
-   node dist\restaurar-cli.js --ultimo     volver al más reciente
-   ```
-
-4. `nssm start FerrehouseManager`
+Si el respaldo está en el pendrive, cópialo antes a
+`C:\Ferrehouse\apps\server\prisma\respaldos`.
 
 El programa **se niega a correr si el servidor está arriba** —pregunta por
 `/api/health` antes de tocar nada—, verifica el respaldo antes de reemplazar la
@@ -198,10 +236,12 @@ en `logs\`. Anota a mano en un cuaderno qué día se restauró y por qué.
 
 ## 8. Mantención, en una línea cada una
 
-- **Actualizar el sistema**: `nssm stop`, `git pull`, `pnpm install`, `pnpm build`,
-  `db:migrate`, `nssm start`. **Respalda antes** (`instalacion\Respaldar ahora.bat`).
-- **Ver qué pasó**: `logs\servidor.log` y `logs\error.log`. Los rota NSSM cada
-  10 MB, no hay que limpiarlos.
-- **Reiniciar**: `nssm restart FerrehouseManager`.
-- **Quitar el servicio**: `desinstalar-servicio.bat`. No borra la base ni los
-  respaldos.
+- **Actualizar**: `INSTALAR.bat` de nuevo. **Respalda antes**
+  (`Respaldar ahora.bat`).
+- **Ver qué pasó**: `logs\servidor.log` y `logs\error.log`. Rotan solos a los
+  10 MB, al arrancar.
+- **Reiniciar**: `schtasks /End /TN FerrehouseManager` y después
+  `schtasks /Run /TN FerrehouseManager`.
+- **Ver si está andando**: `schtasks /Query /TN FerrehouseManager`.
+- **Quitarlo de este PC**: `DESINSTALAR.bat`. No borra la base, ni los
+  respaldos, ni el `.env`.

@@ -8,6 +8,19 @@
  * con el límite en 1. Por eso el arranque se niega a seguir si falta.
  */
 import { PrismaClient } from "@prisma/client";
+import { cargarEnv } from "./entorno.js";
+
+/**
+ * Va acá, antes de construir el cliente, y no en `main.ts`: los imports de un
+ * módulo ESM se evalúan antes que cualquier línea del archivo que los pide, así
+ * que una llamada en `main.ts` llegaría tarde. Puesto acá lo alcanzan también
+ * el seed y los dos CLI de respaldo, que necesitan `DATABASE_URL` igual y no
+ * pasan por `main.ts`.
+ *
+ * Hasta ahora esto lo hacía Prisma sola al importarse; deja de hacerlo en
+ * Prisma 7 (lo avisa en cada corrida). Ver `entorno.ts`.
+ */
+cargarEnv();
 
 export const db = new PrismaClient({
   log: process.env.NODE_ENV === "production" ? ["warn", "error"] : ["warn", "error"],

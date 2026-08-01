@@ -19,7 +19,7 @@ Software de gestión para una ferretería en Concepción. Corre **en local**, so
 | Frontend | React 18 + Vite, Tailwind, shadcn/ui |
 | Validación | Zod end-to-end |
 | Monorepo | pnpm workspaces |
-| Servicio Windows | NSSM (auto-arranque + auto-restart) |
+| Arranque en Windows | Tarea programada como SYSTEM + supervisor que relanza a los 5 s |
 
 SQLite en vez de MariaDB: una sola tienda, 2-3 terminales, respaldo = copiar un archivo. Si crece a sucursales, Prisma migra a MySQL sin reescribir la capa de datos.
 
