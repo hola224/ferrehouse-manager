@@ -222,6 +222,34 @@ if ($nodeSirve) {
   Bien "Instalado: $(& node --version)"
 }
 
+<#
+  Los módulos nativos del proyecto (argon2, el que cifra los PIN) vienen
+  compilados con MSVC y cargan `vcruntime140.dll` al arrancar. Un PC recién
+  formateado no la trae; todo PC de desarrollo sí — por eso esto no se ve
+  hasta instalar en la tienda: el seed y el login mueren con
+  ERR_DLOPEN_FAILED "no se puede encontrar el módulo" apuntando a un archivo
+  que existe, porque la que falta es la DLL de la que ese archivo depende.
+#>
+if (Test-Path "$env:WINDIR\System32\vcruntime140.dll") {
+  Bien "Runtime de Visual C++: ya está"
+} else {
+  Dato "Falta el runtime de Visual C++ (lo usan los módulos nativos). Bajándolo..."
+  $vcr = Join-Path $TRABAJO "vc_redist.x64.exe"
+  # Microsoft no publica hashes estables para este enlace "siempre el último";
+  # viene por HTTPS del dominio de Microsoft, que es la misma garantía que
+  # tiene cualquier Windows Update.
+  BajarVerificando "https://aka.ms/vs/17/release/vc_redist.x64.exe" $vcr $null
+  $vcProc = Start-Process $vcr -ArgumentList "/install", "/quiet", "/norestart" -Wait -PassThru
+  if ($vcProc.ExitCode -eq 3010) {
+    Ojo "Runtime instalado, pero Windows quiere reiniciar. La instalación sigue;"
+    Ojo "reinicia el PC cuando termine."
+  } elseif ($vcProc.ExitCode -ne 0) {
+    Morir "Falló la instalación del runtime de Visual C++ (código $($vcProc.ExitCode))"
+  } else {
+    Bien "Runtime de Visual C++ instalado"
+  }
+}
+
 # ------------------------------------------------------------------- 2. pnpm
 
 Paso "pnpm"
