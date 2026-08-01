@@ -8,7 +8,7 @@ aplicación como si fuera un programa instalado.
 ## Lo corto
 
 1. Copia esta carpeta `instalacion` a un pendrive (o clona el repositorio).
-2. En el PC del mostrador, **doble clic en `INSTALAR.bat`** y acepta el aviso de
+2. En el PC del mostrador, **doble clic en `INSTALAR.exe`** y acepta el aviso de
    administrador.
 3. Espera. Baja Node si falta, baja la aplicación, compila, prepara la base,
    abre el firewall, deja el arranque automático y crea el acceso directo.
@@ -16,9 +16,27 @@ aplicación como si fuera un programa instalado.
 5. Haz los dos pasos que el instalador no puede hacer solo: **la impresora**
    (§3) y **la carpeta de respaldo** (§6).
 
-Correr `INSTALAR.bat` otra vez **actualiza** la instalación: baja la versión
-nueva, recompila y reinicia, sin tocar la base de datos, el `.env` ni los
-respaldos. Respalda antes de empezar, por si acaso.
+Para actualizar después, `ACTUALIZAR.exe`. Para sacarlo de un PC,
+`DESINSTALAR.exe`.
+
+### Los tres programas, y por qué hay además unos `.bat`
+
+| Doble clic | Qué hace |
+|---|---|
+| **`INSTALAR.exe`** | Instala, y correrlo de nuevo también actualiza |
+| **`ACTUALIZAR.exe`** | Respalda, actualiza y comprueba que quedó andando |
+| **`DESINSTALAR.exe`** | Saca el arranque automático, los accesos y el firewall |
+
+Los `.exe` llevan el ícono de la marca y piden los permisos de administrador
+**antes** de abrirse — por eso el ícono tiene el escudito. Los `.bat` del mismo
+nombre hacen exactamente lo mismo y quedan por si un antivirus mira con malos
+ojos un ejecutable que no conoce.
+
+> **La primera vez, Windows puede decir «Windows protegió tu PC».** Es porque
+> el programa no está firmado con un certificado de empresa, no porque tenga
+> algo raro: pasa con cualquier ejecutable descargado que no venga de una firma
+> pagada. Haz clic en **Más información → Ejecutar de todas formas**. Si
+> prefieres no ver ese aviso, usa el `.bat`, que hace lo mismo.
 
 ---
 
@@ -36,7 +54,7 @@ queda en tus manos:
 
 ---
 
-## 2. Qué hace `INSTALAR.bat`, paso por paso
+## 2. Qué hace `INSTALAR.exe`, paso por paso
 
 | Paso | Qué | Detalle |
 |---|---|---|
@@ -76,11 +94,11 @@ solo puerto es una sola regla de firewall y una sola dirección que recordar.
 ### Opciones
 
 ```
-INSTALAR.bat -Puerto 3001                        otro puerto
-INSTALAR.bat -Destino "D:\Ferrehouse"            otra carpeta
-INSTALAR.bat -DesdeCarpeta "E:\ferrehouse"       desde pendrive, sin bajar
-INSTALAR.bat -ConDemo                            40 productos de EJEMPLO
-INSTALAR.bat -SinTocarEnergia                    no cambiar el plan de energía
+INSTALAR.exe -Puerto 3001                        otro puerto
+INSTALAR.exe -Destino "D:\Ferrehouse"            otra carpeta
+INSTALAR.exe -DesdeCarpeta "E:\ferrehouse"       desde pendrive, sin bajar
+INSTALAR.exe -ConDemo                            40 productos de EJEMPLO
+INSTALAR.exe -SinTocarEnergia                    no cambiar el plan de energía
 ```
 
 `-ConDemo` **no se usa en una tienda de verdad**: esos 40 productos se mezclan
@@ -149,9 +167,9 @@ Tiene que responder `{"ok":true,...}`. Si no:
 | Lo que dice `logs\error.log` | Qué hacer |
 |---|---|
 | `DATABASE_URL debe llevar connection_limit=1` | Falta en el `.env`. Sin eso, dos ventas simultáneas corrompen el stock **en silencio** |
-| `JWT_SECRET todavía tiene el valor de ejemplo` | El `.env` quedó con la clave del repositorio, que es pública. Corre `INSTALAR.bat` de nuevo: la reemplaza |
+| `JWT_SECRET todavía tiene el valor de ejemplo` | El `.env` quedó con la clave del repositorio, que es pública. Corre `INSTALAR.exe` de nuevo: la reemplaza |
 | `El servidor no puede arrancar: faltan settings…` | Correr `pnpm --filter @ferrehouse/server db:seed` |
-| `EADDRINUSE` | Otra cosa ocupa el 3000. Reinstalar con `INSTALAR.bat -Puerto 3001` |
+| `EADDRINUSE` | Otra cosa ocupa el 3000. Reinstalar con `INSTALAR.exe -Puerto 3001` |
 | `interfaz: NO hay build en …` | Faltó compilar. Correr `pnpm build` en `C:\Ferrehouse` |
 | Nada, el archivo está vacío | La tarea no llegó a arrancar: `schtasks /Query /TN FerrehouseManager /V /FO LIST` |
 
@@ -253,7 +271,7 @@ en `logs\`. Anota a mano en un cuaderno qué día se restauró y por qué.
 
 ## 8. Actualizar
 
-Doble clic en **`ACTUALIZAR.bat`**. Respalda antes de tocar nada, baja la
+Doble clic en **`ACTUALIZAR.exe`**. Respalda antes de tocar nada, baja la
 versión publicada, recompila, migra y reinicia. **No toca** la base de datos, ni
 el `.env`, ni los respaldos, ni la sesión de WhatsApp: solo el código.
 
@@ -272,11 +290,11 @@ Después de actualizar, **haz una venta de prueba antes de irte**.
 
 ## 9. Mantención, en una línea cada una
 
-- **Actualizar**: `ACTUALIZAR.bat` (ver arriba).
+- **Actualizar**: `ACTUALIZAR.exe` (ver arriba).
 - **Ver qué pasó**: `logs\servidor.log` y `logs\error.log`. Rotan solos a los
   10 MB, al arrancar.
 - **Reiniciar**: `schtasks /End /TN FerrehouseManager` y después
   `schtasks /Run /TN FerrehouseManager`.
 - **Ver si está andando**: `schtasks /Query /TN FerrehouseManager`.
-- **Quitarlo de este PC**: `DESINSTALAR.bat`. No borra la base, ni los
+- **Quitarlo de este PC**: `DESINSTALAR.exe`. No borra la base, ni los
   respaldos, ni el `.env`.
