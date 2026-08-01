@@ -22,8 +22,15 @@ import { getSetting, setSetting } from "../settings.js";
 import { transporte } from "../whatsapp/transporte.js";
 import { procesarPendientes, reintentar, cancelar, resumenDeCola } from "../whatsapp/cola.js";
 import { darDeBaja } from "../whatsapp/entrante.js";
+import { capturarCliente } from "../customers.js";
 import { haceCuanto } from "../alerts.js";
-import { formatTelefono, renderPlantilla, variablesDesconocidas, VARIABLES_PLANTILLA } from "@ferrehouse/shared";
+import {
+  formatTelefono,
+  normalizarTelefono,
+  renderPlantilla,
+  variablesDesconocidas,
+  VARIABLES_PLANTILLA,
+} from "@ferrehouse/shared";
 
 function malaPeticion(mensaje: string): Error & { statusCode: number } {
   const e = new Error(mensaje) as Error & { statusCode: number };
@@ -223,6 +230,109 @@ export async function registerWhatsAppRoutes(app: FastifyInstance): Promise<void
         compras: c._count.sales,
       })),
     };
+  });
+
+  /**
+   * Alta a mano. El camino normal es el mesón —el cliente dicta su número al
+   * cobrar—, pero hace falta poder cargar uno sin una venta detrás: el que
+   * pidió que le avisen cuando llegue un producto, o el que quedó mal escrito
+   * y hay que volver a ingresar.
+   */
+  app.post("/api/whatsapp/clientes", soloAdmin, async (req, reply) => {
+    const datos = z
+      .object({
+        nombre: z.string().trim().max(80).optional(),
+        telefono: z.string().trim().min(1, "Escribe el teléfono"),
+        consentimiento: z.boolean().default(false),
+      })
+      .parse(req.body ?? {});
+
+    const tel = normalizarTelefono(datos.telefono);
+    if (!tel.ok) throw malaPeticion(tel.error);
+
+    /**
+     * Se avisa que ya existe en vez de actualizarlo en silencio. Acá no hay una
+     * venta en curso que proteger —ese es el caso de `capturarCliente`—, hay
+     * alguien tecleando: decirle «ese número ya estaba» le ahorra buscar por
+     * qué no aparece un cliente nuevo en la lista.
+     */
+    const existente = await db.customer.findUnique({ where: { phone: tel.e164 } });
+    if (existente) {
+      throw malaPeticion(
+        existente.optOutAt
+          ? `${formatTelefono(tel.e164)} ya está registrado y dado de baja. No se le puede volver a suscribir desde acá.`
+          : `${formatTelefono(tel.e164)} ya estaba registrado.`,
+      );
+    }
+
+    const r = await capturarCliente({
+      nombre: datos.nombre,
+      telefono: datos.telefono,
+      consentimiento: datos.consentimiento,
+    });
+    if (!r.ok) throw malaPeticion(r.error);
+
+    await audit({
+      userId: req.user.sub,
+      action: "CUSTOMER_CREATED",
+      entity: "Customer",
+      entityId: String(r.customerId),
+      payload: { telefono: tel.e164, consentimiento: datos.consentimiento },
+    });
+
+    return reply.code(201).send({
+      ok: true,
+      id: r.customerId,
+      mensaje: datos.consentimiento
+        ? `${formatTelefono(tel.e164)} agregado. Va a recibir los mensajes.`
+        : `${formatTelefono(tel.e164)} agregado, SIN consentimiento: no se le va a escribir.`,
+    });
+  });
+
+  /**
+   * Borrar de verdad, que NO es lo mismo que dar de baja — y la diferencia
+   * importa tanto que el endpoint se niega cuando corresponde:
+   *
+   *   - **Baja**: el cliente sigue existiendo, sus compras siguen atribuidas, y
+   *     queda registrado que pidió que no le escriban. Es lo que exige la ley y
+   *     es lo que hay que hacer casi siempre.
+   *   - **Borrar**: se va la fila. Solo tiene sentido para lo que nunca debió
+   *     existir — un número mal tecleado, una prueba.
+   *
+   * POR ESO UN CLIENTE CON COMPRAS NO SE BORRA. Prisma pondría `customerId` en
+   * null y las ventas quedarían sin dueño: la venta seguiría ahí, cuadrando, y
+   * la pregunta «¿a quién le vendimos esto?» dejaría de tener respuesta sin que
+   * nada avise. Si lo que se quiere es que no le escriban más, eso es la baja.
+   */
+  app.delete("/api/whatsapp/clientes/:id", soloAdmin, async (req) => {
+    const { id } = idCliente.parse(req.params);
+
+    const cliente = await db.customer.findUnique({
+      where: { id },
+      include: { _count: { select: { sales: true } } },
+    });
+    if (!cliente) throw malaPeticion("Ese cliente no existe.");
+
+    if (cliente._count.sales > 0) {
+      throw malaPeticion(
+        `No se puede borrar: tiene ${cliente._count.sales} ${cliente._count.sales === 1 ? "compra" : "compras"} ` +
+          `y sus ventas quedarían sin dueño. Para que no le escriban más, dale de baja.`,
+      );
+    }
+
+    // Los mensajes en cola sí se van con él: son una cola, no un registro.
+    await db.whatsAppJob.deleteMany({ where: { customerId: id } });
+    await db.customer.delete({ where: { id } });
+
+    await audit({
+      userId: req.user.sub,
+      action: "CUSTOMER_DELETED",
+      entity: "Customer",
+      entityId: String(id),
+      payload: { telefono: cliente.phone, nombre: cliente.name },
+    });
+
+    return { ok: true, mensaje: `${formatTelefono(cliente.phone)} borrado.` };
   });
 
   /**

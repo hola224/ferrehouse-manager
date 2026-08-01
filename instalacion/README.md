@@ -49,8 +49,25 @@ queda en tus manos:
 | 7 | **Energía** | Sin suspensión, sin hibernación, sin apagado de disco, y la tapa cerrada no apaga nada |
 | 8 | **Firewall** | Abre el puerto 3000 **solo en el perfil de red privada** |
 | 9 | **Arranque automático** | Tarea programada como SYSTEM al encender, con supervisor que relanza a los 5 s |
-| 10 | **Acceso directo** | Escritorio, menú Inicio y arranque de sesión |
+| 10 | **Acceso directo** | Escritorio, menú Inicio y arranque de sesión, más el vigilante de la bandeja |
 | 11 | **Comprobar** | Pregunta por `/api/health` y verifica que la pantalla se sirva |
+
+### El vigilante de la bandeja
+
+Queda un ícono al lado del reloj que le pregunta al sistema cada 15 segundos si
+está vivo. Cuando deja de contestar dos veces seguidas, el ícono se pone rojo y
+sale un aviso que dice **qué hacer**, no solo que algo pasa. Cuando vuelve,
+también avisa — quien vio el aviso rojo necesita saber cuándo puede seguir
+vendiendo sin tener que ir probando.
+
+Vigila que **conteste**, no que el proceso exista: un servidor vivo con la base
+bloqueada por el antivirus aparece en el administrador de tareas y no sirve para
+vender. `/api/health` toca la base, así que responder es la única prueba que
+vale.
+
+Vive en la sesión del usuario y no en el servicio porque ahí es donde hay
+bandeja —el servidor corre como SYSTEM, en la sesión 0, sin escritorio— y porque
+tiene que seguir vivo justamente cuando el servidor no está.
 
 **Un solo puerto.** El servidor sirve el API **y** la interfaz en el 3000. En
 desarrollo la pantalla la sirve Vite en el 5173; en la tienda no hay Vite. Un
@@ -234,10 +251,28 @@ en `logs\`. Anota a mano en un cuaderno qué día se restauró y por qué.
 
 ---
 
-## 8. Mantención, en una línea cada una
+## 8. Actualizar
 
-- **Actualizar**: `INSTALAR.bat` de nuevo. **Respalda antes**
-  (`Respaldar ahora.bat`).
+Doble clic en **`ACTUALIZAR.bat`**. Respalda antes de tocar nada, baja la
+versión publicada, recompila, migra y reinicia. **No toca** la base de datos, ni
+el `.env`, ni los respaldos, ni la sesión de WhatsApp: solo el código.
+
+Si al terminar el sistema no contesta, te muestra las últimas líneas del log y
+los tres pasos para volver atrás con el respaldo que acaba de hacer.
+
+> **No vuelve atrás sola, y es a propósito.** Deshacer una migración de base de
+> datos automáticamente es la clase de operación que cuando falla deja las cosas
+> peor que el problema que venía a arreglar. Lo que sí hace es dejar el respaldo
+> hecho, nombrado y a la vista, para que volver atrás sea una decisión de una
+> persona y un solo comando.
+
+Después de actualizar, **haz una venta de prueba antes de irte**.
+
+---
+
+## 9. Mantención, en una línea cada una
+
+- **Actualizar**: `ACTUALIZAR.bat` (ver arriba).
 - **Ver qué pasó**: `logs\servidor.log` y `logs\error.log`. Rotan solos a los
   10 MB, al arrancar.
 - **Reiniciar**: `schtasks /End /TN FerrehouseManager` y después

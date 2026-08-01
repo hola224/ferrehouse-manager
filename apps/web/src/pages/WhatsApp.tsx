@@ -70,6 +70,8 @@ export function WhatsApp() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [dandoDeBaja, setDandoDeBaja] = useState<Cliente | null>(null);
+  const [agregando, setAgregando] = useState(false);
+  const [borrando, setBorrando] = useState<Cliente | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -294,11 +296,18 @@ export function WhatsApp() {
         )}
       </Tarjeta>
 
-      {/* --- 6.5: los clientes y sus bajas --- */}
+      {/* --- 6.5: los clientes, su alta, su baja y su borrado --- */}
       <Tarjeta titulo={`Clientes${dadosDeBaja > 0 ? ` — ${dadosDeBaja} dados de baja` : ""}`}>
+        <Acciones>
+          <Boton variante="secundaria" onClick={() => setAgregando(true)}>
+            + Agregar cliente
+          </Boton>
+        </Acciones>
+
         {clientes.length === 0 ? (
-          <p className="text-sm text-ink-soft">
-            Todavía ninguno. El cliente se captura al cobrar, y solo si él acepta.
+          <p className="mt-3 text-sm text-ink-soft">
+            Todavía ninguno. El camino normal es el mesón —el cliente dicta su número al cobrar— pero también se puede
+            cargar acá a mano.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -328,6 +337,18 @@ export function WhatsApp() {
                     </td>
                     <td className="fh-num px-3 py-2 text-right">{c.compras}</td>
                     <td className="px-3 py-2 text-right">
+                      {/*
+                        BORRAR SOLO APARECE SIN COMPRAS, y no es para ahorrar un
+                        clic: con compras el servidor lo rechaza igual —las
+                        ventas quedarían sin dueño—, así que ofrecer el botón
+                        sería prometer algo que no se puede hacer. Lo que
+                        corresponde ahí es la baja, que es lo único que queda.
+                      */}
+                      {c.compras === 0 ? (
+                        <Boton variante="fantasma" onClick={() => setBorrando(c)}>
+                          Borrar
+                        </Boton>
+                      ) : null}
                       {c.baja ? null : (
                         <Boton variante="fantasma" onClick={() => setDandoDeBaja(c)}>
                           Dar de baja
@@ -365,6 +386,29 @@ export function WhatsApp() {
           onCerrar={() => setDandoDeBaja(null)}
           onLista={async (m) => {
             setDandoDeBaja(null);
+            setAviso(m);
+            await cargar();
+          }}
+        />
+      ) : null}
+
+      {agregando ? (
+        <AgregarCliente
+          onCerrar={() => setAgregando(false)}
+          onAgregado={async (m) => {
+            setAgregando(false);
+            setAviso(m);
+            await cargar();
+          }}
+        />
+      ) : null}
+
+      {borrando ? (
+        <BorrarCliente
+          cliente={borrando}
+          onCerrar={() => setBorrando(null)}
+          onBorrado={async (m) => {
+            setBorrando(null);
             setAviso(m);
             await cargar();
           }}
@@ -547,6 +591,175 @@ function DarDeBaja({
         </Boton>
         <Boton variante="principal" disabled={enviando} onClick={() => void confirmar()}>
           Dar de baja
+        </Boton>
+      </Acciones>
+    </Modal>
+  );
+}
+
+/**
+ * El alta a mano.
+ *
+ * El camino normal sigue siendo el mesón: el cliente dicta su número al cobrar
+ * y marca que acepta. Esto es para lo que ese camino no cubre — el que pidió
+ * que le avisen cuando llegue un producto, o el que quedó mal escrito.
+ *
+ * **El consentimiento arranca DESMARCADO**, y eso no es un descuido de diseño:
+ * marcarlo por omisión sería que el sistema afirme que alguien aceptó recibir
+ * mensajes sin que nadie se lo haya preguntado. La casilla la marca quien sabe
+ * si el cliente dijo que sí.
+ */
+function AgregarCliente({
+  onCerrar,
+  onAgregado,
+}: {
+  onCerrar: () => void;
+  onAgregado: (mensaje: string) => void | Promise<void>;
+}) {
+  const [nombre, setNombre] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [consiente, setConsiente] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function guardar() {
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>("/whatsapp/clientes", {
+        method: "POST",
+        body: JSON.stringify({
+          nombre: nombre.trim() || undefined,
+          telefono: telefono.trim(),
+          consentimiento: consiente,
+        }),
+      });
+      await onAgregado(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo agregar el cliente");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal titulo="Agregar un cliente" bajada="El teléfono es la llave: se guarda normalizado." onCerrar={onCerrar}>
+      <div className="mt-4 grid gap-3">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-ink-soft">Nombre (opcional)</span>
+          <input
+            value={nombre}
+            onChange={(e) => setNombre(e.target.value)}
+            placeholder="Como lo saluda"
+            className="min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-ink-soft">Teléfono</span>
+          <input
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            placeholder="9 1234 5678"
+            inputMode="tel"
+            className="fh-num min-h-touch w-full rounded-[var(--fh-radio)] border border-line bg-surface px-3"
+            autoFocus
+          />
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={consiente}
+            onChange={(e) => setConsiente(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-ink"
+          />
+          <span>
+            El cliente aceptó recibir un WhatsApp de sus compras.
+            {!consiente ? (
+              <span className="block text-xs text-ink-soft">Sin marcar esto queda cargado, pero no se le escribe.</span>
+            ) : null}
+          </span>
+        </label>
+        {error ? <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</div> : null}
+      </div>
+
+      <Acciones>
+        <Boton variante="fantasma" onClick={onCerrar}>
+          Cancelar
+        </Boton>
+        <Boton variante="principal" disabled={enviando || telefono.trim() === ""} onClick={() => void guardar()}>
+          Agregar
+        </Boton>
+      </Acciones>
+    </Modal>
+  );
+}
+
+/**
+ * Borrar de verdad, que es distinto de dar de baja — y el diálogo tiene que
+ * decirlo, porque los dos botones están uno al lado del otro:
+ *
+ *   - La BAJA deja al cliente y registra que pidió que no le escriban. Es lo
+ *     que exige la ley y es lo correcto casi siempre.
+ *   - BORRAR hace desaparecer la fila. Solo tiene sentido para lo que nunca
+ *     debió existir: un número mal tecleado, una prueba.
+ *
+ * Por eso el botón solo aparece sin compras, y por eso acá se repite el
+ * teléfono: es lo único que distingue a dos clientes sin nombre.
+ */
+function BorrarCliente({
+  cliente,
+  onCerrar,
+  onBorrado,
+}: {
+  cliente: Cliente;
+  onCerrar: () => void;
+  onBorrado: (mensaje: string) => void | Promise<void>;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function confirmar() {
+    setEnviando(true);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>(`/whatsapp/clientes/${cliente.id}`, { method: "DELETE" });
+      await onBorrado(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo borrar");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal
+      titulo={`Borrar ${cliente.telefono}`}
+      bajada="Se va la fila entera. No queda registro de que existió, más que en la bitácora."
+      onCerrar={onCerrar}
+    >
+      <div className="mt-4 grid gap-3 text-sm">
+        <p>
+          {cliente.nombre ? (
+            <>
+              <strong>{cliente.nombre}</strong> — {cliente.telefono}
+            </>
+          ) : (
+            <>Sin nombre — {cliente.telefono}</>
+          )}
+        </p>
+        <p className="text-ink-soft">
+          No tiene compras, así que no hay ninguna venta que quede sin dueño. Si en cambio lo que quieres es que no le
+          escriban más, eso es <strong>dar de baja</strong>.
+        </p>
+        {error ? <div className="border border-accent bg-accent-tint p-3 text-sm text-accent-ink">{error}</div> : null}
+      </div>
+
+      <Acciones>
+        <Boton variante="fantasma" onClick={onCerrar}>
+          Cancelar
+        </Boton>
+        <Boton variante="principal" disabled={enviando} onClick={() => void confirmar()}>
+          Borrar
         </Boton>
       </Acciones>
     </Modal>

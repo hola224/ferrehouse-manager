@@ -474,6 +474,38 @@ $inicio = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\Star
 CrearAcceso $inicio $NOMBRE
 Bien "Y al encender el PC se abre sola"
 
+<#
+  El vigilante de la bandeja del sistema, también al iniciar sesión.
+
+  Va en la sesión del usuario y no en el servicio porque ahí es donde hay
+  bandeja: el servidor corre como SYSTEM, en la sesión 0, donde no existe el
+  escritorio. Y tiene que seguir vivo justamente cuando el servidor NO está,
+  así que no puede depender de él para nada más que preguntarle.
+#>
+$vigilanteScript = Join-Path $Destino "instalacion\vigilante.ps1"
+if (Test-Path $vigilanteScript) {
+  $lnkVigilante = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\StartUp\$NOMBRE - vigilante.lnk"
+  $sh = New-Object -ComObject WScript.Shell
+  $l = $sh.CreateShortcut($lnkVigilante)
+  $l.TargetPath = "powershell.exe"
+  # `-WindowStyle Hidden` y `-NoProfile`: nadie tiene que ver una consola azul
+  # abrirse al encender el PC del mesón, y el perfil del usuario no tiene por
+  # qué influir en un vigilante.
+  $l.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$vigilanteScript`" -Puerto $Puerto"
+  $l.Description = "Avisa si $NOMBRE deja de responder"
+  $l.WorkingDirectory = Join-Path $Destino "instalacion"
+  if (Test-Path $icono) { $l.IconLocation = "$icono,0" }
+  $l.Save()
+  Bien "Vigilante en la bandeja: avisa si el sistema deja de responder"
+
+  # Y arrancarlo ahora, para no obligar a cerrar sesión para verlo.
+  Start-Process "powershell.exe" `
+    -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", $vigilanteScript, "-Puerto", $Puerto `
+    -WindowStyle Hidden -ErrorAction SilentlyContinue
+} else {
+  Ojo "No encontré vigilante.ps1: el aviso de caída no queda instalado."
+}
+
 # --------------------------------------------------------- 11. Comprobación
 
 Paso "Comprobar que quedó andando"

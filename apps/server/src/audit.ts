@@ -33,6 +33,13 @@ export type AuditAction =
   | "ALERT_RESOLVED"
   | "WHATSAPP_OPT_OUT"
   | "WHATSAPP_TEMPLATE_CHANGED"
+  | "CUSTOMER_CREATED"
+  /**
+   * Borrar un cliente es lo único de esta lista que hace desaparecer una fila,
+   * así que es lo que más falta hace tener anotado: después no queda a quién
+   * preguntarle. Solo se permite sobre clientes sin compras — ver la ruta.
+   */
+  | "CUSTOMER_DELETED"
   | "CASH_MOVEMENT"
   | "CASH_SESSION_OPENED"
   | "CASH_SESSION_CLOSED"

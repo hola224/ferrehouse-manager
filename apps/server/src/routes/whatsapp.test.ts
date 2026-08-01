@@ -450,6 +450,95 @@ describe("baja del cliente (6.5, WA-03)", () => {
     expect(t.enviados).toEqual([]);
   });
 
+  it("el admin puede agregar un cliente a mano, sin una venta detrás", async () => {
+    const r = await post("/api/whatsapp/clientes", {
+      nombre: "Ana Torres",
+      telefono: "9 1234 5678",
+      consentimiento: true,
+    });
+    expect(r.statusCode).toBe(201);
+    expect(cuerpo(r).mensaje).toMatch(/Va a recibir los mensajes/);
+
+    const c = await db.customer.findFirstOrThrow();
+    expect(c.name).toBe("Ana Torres");
+    // Normalizado: la llave es el teléfono, y dos formas de escribirlo serían
+    // dos clientes con el opt-out de uno protegiendo a uno solo.
+    expect(c.phone).toBe("+56912345678");
+    expect(c.whatsappConsent).toBe(true);
+  });
+
+  it("sin marcar el consentimiento queda cargado pero no se le escribe", async () => {
+    const r = await post("/api/whatsapp/clientes", { telefono: "912345678", consentimiento: false });
+    expect(r.statusCode).toBe(201);
+    expect(cuerpo(r).mensaje).toMatch(/SIN consentimiento/);
+    expect((await db.customer.findFirstOrThrow()).whatsappConsent).toBe(false);
+  });
+
+  it("un teléfono que no sirve se rechaza con el motivo", async () => {
+    const r = await post("/api/whatsapp/clientes", { telefono: "123", consentimiento: true });
+    expect(r.statusCode).toBe(400);
+    expect(await db.customer.count()).toBe(0);
+  });
+
+  /** Avisar que ya estaba le ahorra buscar por qué no aparece un cliente nuevo. */
+  it("un número repetido lo dice en vez de actualizarlo en silencio", async () => {
+    await post("/api/whatsapp/clientes", { nombre: "Ana", telefono: "912345678", consentimiento: true });
+    const r = await post("/api/whatsapp/clientes", { nombre: "Otra", telefono: "+56 9 1234 5678", consentimiento: true });
+    expect(r.statusCode).toBe(400);
+    expect(cuerpo(r).error).toMatch(/ya estaba registrado/);
+    expect((await db.customer.findFirstOrThrow()).name).toBe("Ana");
+  });
+
+  it("y si estaba dado de baja, lo dice y no lo resucita", async () => {
+    await post("/api/whatsapp/clientes", { telefono: "912345678", consentimiento: true });
+    const id = (await db.customer.findFirstOrThrow()).id;
+    await post(`/api/whatsapp/clientes/${id}/baja`, {});
+
+    const r = await post("/api/whatsapp/clientes", { telefono: "912345678", consentimiento: true });
+    expect(r.statusCode).toBe(400);
+    expect(cuerpo(r).error).toMatch(/dado de baja/);
+    expect((await db.customer.findFirstOrThrow()).optOutAt).not.toBeNull();
+  });
+
+  it("borrar uno cargado por error lo saca de verdad, con su cola", async () => {
+    await post("/api/whatsapp/clientes", { telefono: "912345678", consentimiento: true });
+    const id = (await db.customer.findFirstOrThrow()).id;
+    await db.whatsAppJob.create({ data: { customerId: id, phone: "+56912345678", message: "hola" } });
+
+    const r = await app.inject({ method: "DELETE", url: `/api/whatsapp/clientes/${id}`, headers: como(tokenAdmin) });
+    expect(r.statusCode).toBe(200);
+    expect(await db.customer.count()).toBe(0);
+    expect(await db.whatsAppJob.count()).toBe(0);
+  });
+
+  /**
+   * EL INVARIANTE QUE SOSTIENE LA DIFERENCIA ENTRE BORRAR Y DAR DE BAJA.
+   * Prisma pondría `customerId` en null y las ventas quedarían sin dueño:
+   * seguirían ahí, cuadrando, y la pregunta «¿a quién le vendimos esto?»
+   * dejaría de tener respuesta sin que nada avise.
+   */
+  it("un cliente CON compras no se puede borrar: manda a darlo de baja", async () => {
+    await vender({ telefono: "912345678", consentimiento: true });
+    const id = (await db.customer.findFirstOrThrow()).id;
+
+    const r = await app.inject({ method: "DELETE", url: `/api/whatsapp/clientes/${id}`, headers: como(tokenAdmin) });
+    expect(r.statusCode).toBe(400);
+    expect(cuerpo(r).error).toMatch(/dale de baja/);
+    expect(await db.customer.count()).toBe(1);
+    expect(await db.sale.count({ where: { customerId: id } })).toBe(1);
+  });
+
+  it("el vendedor no administra clientes", async () => {
+    const alta = await post("/api/whatsapp/clientes", { telefono: "912345678" }, tokenVendedor);
+    expect(alta.statusCode).toBe(403);
+    const borrado = await app.inject({
+      method: "DELETE",
+      url: "/api/whatsapp/clientes/1",
+      headers: como(tokenVendedor),
+    });
+    expect(borrado.statusCode).toBe(403);
+  });
+
   it("el admin puede registrar la baja que le pidieron por teléfono", async () => {
     await vender({ telefono: "912345678", consentimiento: true });
     const id = (await db.customer.findFirstOrThrow()).id;

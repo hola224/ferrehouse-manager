@@ -56,13 +56,25 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyCon
 $accesos = @(
   (Join-Path $env:PUBLIC "Desktop\$NOMBRE.lnk"),
   (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\$NOMBRE.lnk"),
-  (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\StartUp\$NOMBRE.lnk")
+  (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\StartUp\$NOMBRE.lnk"),
+  (Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\StartUp\$NOMBRE - vigilante.lnk")
 )
 $quitados = 0
 foreach ($a in $accesos) {
   if (Test-Path $a) { Remove-Item $a -Force -ErrorAction SilentlyContinue; $quitados++ }
 }
 if ($quitados) { Bien "$quitados acceso(s) directo(s) quitado(s)" } else { Dato "No había accesos directos" }
+
+# --- El vigilante de la bandeja ---
+# Corre en la sesión del usuario, así que no lo alcanza nada de lo de arriba:
+# hay que bajarlo por su línea de comandos, que es lo único que lo distingue de
+# cualquier otro PowerShell abierto.
+$vigilantes = Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -like "*vigilante.ps1*" }
+if ($vigilantes) {
+  $vigilantes | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Bien "Vigilante de la bandeja detenido"
+}
 
 # --- El firewall ---
 $regla = Get-NetFirewallRule -DisplayName "Ferrehouse Manager*" -ErrorAction SilentlyContinue
