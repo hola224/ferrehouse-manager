@@ -34,3 +34,21 @@ export async function api<T>(ruta: string, init: RequestInit = {}): Promise<T> {
   }
   return r.json() as Promise<T>;
 }
+
+/**
+ * Como `api`, pero devuelve el cuerpo como texto. Existe por las respuestas que
+ * no son JSON —el SVG del QR de WhatsApp— y que igual necesitan el token: una
+ * etiqueta `<img>` no manda el encabezado de autorización, así que lo que es
+ * solo-admin no se puede pedir por `src`.
+ */
+export async function apiTexto(ruta: string): Promise<string> {
+  const token = getToken();
+  const r = await fetch(`/api${ruta}`, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  if (!r.ok) {
+    const cuerpo = await r.json().catch(() => ({}));
+    throw new ApiError(cuerpo.error ?? "No se pudo conectar con el servidor", r.status);
+  }
+  return r.text();
+}

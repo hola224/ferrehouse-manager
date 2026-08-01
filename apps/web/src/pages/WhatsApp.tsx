@@ -12,7 +12,7 @@
  * pensar que algo se rompió.
  */
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError } from "@/lib/api";
+import { api, apiTexto, ApiError } from "@/lib/api";
 import { Acciones, Boton, Chip, Modal, Tarjeta } from "@/components/ui";
 import {
   ESTADO_JOB_TEXT,
@@ -64,6 +64,7 @@ type Cliente = {
 
 export function WhatsApp() {
   const [panel, setPanel] = useState<Panel | null>(null);
+  const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +80,17 @@ export function WhatsApp() {
       setPanel(p);
       setClientes(c.clientes);
       setError(null);
+      /*
+        El SVG se pide con `apiTexto` y se incrusta, NO con un `<img src>`: la
+        etiqueta no manda el token de autorización, el endpoint es solo-admin,
+        y la respuesta era un 401 que el navegador mostraba como imagen rota.
+        Si esta pedida falla queda el dibujo de caracteres, que es el respaldo.
+      */
+      if (p.sesion.hayImagen) {
+        setQrSvg(await apiTexto("/whatsapp/qr.svg").catch(() => null));
+      } else {
+        setQrSvg(null);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo cargar el panel");
     } finally {
@@ -89,6 +101,18 @@ export function WhatsApp() {
   useEffect(() => {
     void cargar();
   }, [cargar]);
+
+  /*
+    Mientras se espera el escaneo la pantalla se refresca sola, y no es un
+    adorno: el QR de WhatsApp ROTA cada veinte segundos. Sin esto, el que llega
+    con el teléfono escanea uno vencido y "no funciona" sin ninguna pista de por
+    qué. De paso, apenas el escaneo entra, el chip pasa solo a "Conectada".
+  */
+  useEffect(() => {
+    if (panel?.sesion.estado !== "ESPERANDO_QR") return;
+    const cada = setInterval(() => void cargar(), 15_000);
+    return () => clearInterval(cada);
+  }, [panel?.sesion.estado, cargar]);
 
   async function accion(url: string, exito?: string) {
     setError(null);
@@ -172,26 +196,26 @@ export function WhatsApp() {
               escanee se lleva la sesión de la ferretería.
             </p>
             {/*
-              UNA IMAGEN Y NO EL DIBUJO DE CARACTERES.
+              UN SVG INCRUSTADO Y NO EL DIBUJO DE CARACTERES.
 
-              El servidor sabe entregar las dos cosas y la de caracteres se ve
-              bien… casi siempre. Depende de que la fuente del `<pre>` tenga los
-              medios bloques `▀▄█` y de que la altura de línea calce al píxel;
-              si algo de eso falla, el QR se ve «casi bien» y NO escanea. Nadie
-              sospecha de la tipografía: se culpa al teléfono, a la luz, a la
-              cámara. El SVG no depende de ninguna de esas cosas.
+              El de caracteres se ve bien… casi siempre. Depende de que la
+              fuente del `<pre>` tenga los medios bloques `▀▄█` y de que la
+              altura de línea calce al píxel; si algo de eso falla, el QR se ve
+              «casi bien» y NO escanea. Nadie sospecha de la tipografía: se
+              culpa al teléfono, a la luz, a la cámara.
 
-              Se pide con la hora en la URL porque el QR rota cada veinte
-              segundos: sin eso el navegador serviría el primero desde su caché
-              y el teléfono estaría escaneando uno vencido.
+              Y se incrusta el texto del SVG en vez de un `<img src>`: el
+              endpoint es solo-admin y una etiqueta `<img>` no manda el token,
+              así que el `src` directo era siempre un 401 — la imagen rota que
+              nadie podía escanear. El SVG llega por `apiTexto`, con el token,
+              y se refresca con el resto del panel porque el QR rota.
             */}
-            {panel.sesion.hayImagen ? (
-              <img
-                src={`/api/whatsapp/qr.svg?t=${panel.sesion.desde ?? ""}`}
-                alt="Código QR para vincular el número de WhatsApp"
-                width={260}
-                height={260}
-                className="rounded-[var(--fh-radio)] border border-line bg-surface p-3"
+            {qrSvg ? (
+              <div
+                role="img"
+                aria-label="Código QR para vincular el número de WhatsApp"
+                className="w-[260px] rounded-[var(--fh-radio)] border border-line bg-surface p-3 [&>svg]:h-auto [&>svg]:w-full"
+                dangerouslySetInnerHTML={{ __html: qrSvg }}
               />
             ) : (
               <pre className="overflow-x-auto rounded-[var(--fh-radio)] border border-line bg-bg p-3 text-[6px] leading-[6px]">
