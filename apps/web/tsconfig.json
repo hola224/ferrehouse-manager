@@ -8,5 +8,8 @@
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src"]
+  // `vitest.setup.ts` va incluido aunque viva fuera de `src`: es el archivo que
+  // importa los matchers de jest-dom, y ese import es lo que hace que
+  // `toBeDisabled()` y compañía existan para TypeScript en todos los tests.
+  "include": ["src", "vitest.setup.ts"]
 }
