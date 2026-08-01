@@ -3,6 +3,7 @@ import { assertJwtSecret } from "./entorno.js";
 import { assertConnectionLimit, enableWAL, db } from "./db.js";
 import { assertStartupChecks } from "./startup-checks.js";
 import { iniciarWorker } from "./whatsapp/cola.js";
+import { iniciarWorkerImpresion, detenerWorkerImpresion } from "./impresion/cola.js";
 import { iniciarRespaldoDiario, detenerRespaldoDiario } from "./backup.js";
 import { servirLaInterfaz, CARPETA_WEB } from "./web.js";
 
@@ -29,6 +30,14 @@ async function main() {
    * "DESCONECTADA" y se va sin tocar nada.
    */
   iniciarWorker();
+
+  /**
+   * El consumidor de la cola de impresión, acá por la misma razón que los
+   * otros dos: un temporizador vivo por cada app construida haría que los
+   * tests se pisen. Y con más motivo que los otros — este manda bytes a una
+   * impresora, y una suite que imprime de verdad gasta el papel de la tienda.
+   */
+  iniciarWorkerImpresion();
 
   /**
    * El respaldo diario, acá por la misma razón que el worker: un temporizador
@@ -78,6 +87,7 @@ async function main() {
       void (async () => {
         console.log(`\n${senal}: cerrando…`);
         detenerRespaldoDiario();
+        detenerWorkerImpresion();
         try {
           await app.close();
           await db.$disconnect();

@@ -23,8 +23,68 @@ const ESC = 0x1b;
 const GS = 0x1d;
 const ANCHO = 32; // caracteres por línea en papel de 58 mm
 
-/** La térmica usa una tabla tipo CP437: sin tildes, o imprime basura. */
-const t = (s: string) => Buffer.from(stripDiacritics(s), "ascii");
+/**
+ * Las fracciones que un catálogo de ferretería tiene sí o sí: media pulgada,
+ * tres cuartos, un cuarto. `stripDiacritics` no las toca —no son letras con
+ * tilde— y sin esto terminaban convertidas en un carácter cualquiera.
+ */
+const FRACCIONES: Record<string, string> = {
+  "½": "1/2",
+  "¼": "1/4",
+  "¾": "3/4",
+  "⅓": "1/3",
+  "⅔": "2/3",
+  "⅛": "1/8",
+  "⅜": "3/8",
+  "⅝": "5/8",
+  "⅞": "7/8",
+  "”": '"',
+  "“": '"',
+  "″": '"',
+  "’": "'",
+  "‘": "'",
+  "–": "-",
+  "—": "-",
+  "º": "o",
+  "°": "o",
+};
+
+/**
+ * La térmica usa una tabla tipo CP437: sin tildes, o imprime basura.
+ *
+ * Y lo que sobrevive a `stripDiacritics` se reemplaza por `?` A PROPÓSITO, en
+ * vez de dejar que `Buffer.from(..., "ascii")` le corte el bit de más alto
+ * orden. Ese corte no falla: convierte el carácter en OTRO. Una «Cañería ½»
+ * salía impresa como «Caneria =», que no se parece a un error —se parece a un
+ * dato— y nadie lo relaciona con el catálogo. Un `?` visible manda a arreglar
+ * el nombre del producto, que es lo que hay que hacer.
+ */
+const t = (s: string) => {
+  const sinFracciones = [...s].map((c) => FRACCIONES[c] ?? c).join("");
+  const plano = [...stripDiacritics(sinFracciones)].map((c) => (c.charCodeAt(0) > 126 ? "?" : c)).join("");
+  return Buffer.from(plano, "ascii");
+};
+
+/**
+ * El isotipo, en ocho caracteres: la casa y el monograma FH.
+ *
+ * TODO ES ASCII PURO —solo `/`, `\`, `_` y letras— y no es una limitación
+ * estética sino la única forma de que salga. La térmica imprime con una tabla
+ * tipo CP437: cualquier carácter de dibujo de líneas, cualquier bloque, sale
+ * como basura distinta según el modelo de impresora. Un logo que se ve
+ * perfecto en la pantalla del desarrollador y sale como «Ã©Â±â' en el mesón es
+ * peor que no poner nada.
+ *
+ * Tres líneas y no diez: el papel de 58 mm es angosto y el rollo se paga. El
+ * detalle tiene que caber en el espacio que igual se iba a gastar en el
+ * encabezado, o deja de ser un detalle y pasa a ser un costo por venta.
+ *
+ * No se manda como imagen (`GS v 0`) aunque quedaría más fino: eso obliga a
+ * conocer el ancho en puntos del cabezal, que cambia entre modelos, y una
+ * imagen mal dimensionada sale estirada o cortada. Con texto no hay nada que
+ * calibrar.
+ */
+const MARCA = ["   /\\", "  /  \\", " /_FH_\\", ""].join("\n");
 
 function linea(izq: string, der: string): string {
   const a = stripDiacritics(izq);
@@ -71,6 +131,7 @@ export function ticketEscPos(
 
   b.push(Buffer.from([ESC, 0x40])); // reiniciar
   b.push(Buffer.from([ESC, 0x61, 0x01])); // centrado
+  b.push(t(MARCA));
   b.push(Buffer.from([ESC, 0x21, 0x20])); // doble ancho
   b.push(t(opciones.tienda + "\n"));
   b.push(Buffer.from([ESC, 0x21, 0x00]));
@@ -118,9 +179,28 @@ export function ticketEscPos(
     b.push(t(linea("Redondeo efectivo", formatCLP(venta.roundingAmount))));
   }
 
-  // --- El total, en grande ---
-  b.push(Buffer.from([ESC, 0x21, 0x30]));
-  b.push(t(linea("TOTAL", formatCLP(venta.totalGross)).replace(/ {2,}/, "  ")));
+  /**
+   * El total, en grande — pero SOLO si cabe.
+   *
+   * En doble ancho cada carácter ocupa dos columnas, así que en 58 mm entran
+   * 16 y no 32. «TOTAL  $1.234.567» son 17: se pasaba, y la impresora no avisa
+   * —parte la línea donde le toca y el total termina solo en el renglón de
+   * abajo, o se pierde—. Un millón de pesos en un sábado no es un caso raro en
+   * una ferretería.
+   *
+   * Cuando no cabe se baja a doble ALTO, que no gasta columnas de más: el
+   * número sigue leyéndose de pie frente al mesón y usa el ancho completo. Es
+   * preferible un total un poco menos grande a un total partido en dos.
+   */
+  const totalTexto = formatCLP(venta.totalGross);
+  const enDobleAncho = `TOTAL  ${totalTexto}`;
+  if (enDobleAncho.length * 2 <= ANCHO) {
+    b.push(Buffer.from([ESC, 0x21, 0x30])); // doble ancho + doble alto
+    b.push(t(enDobleAncho + "\n"));
+  } else {
+    b.push(Buffer.from([ESC, 0x21, 0x10])); // solo doble alto
+    b.push(t(linea("TOTAL", totalTexto)));
+  }
   b.push(Buffer.from([ESC, 0x21, 0x00]));
 
   b.push(t(linea(`Neto`, formatCLP(neto))));
