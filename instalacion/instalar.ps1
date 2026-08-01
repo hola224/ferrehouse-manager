@@ -202,7 +202,20 @@ if ($nodeSirve) {
   Dato "Bajando $archivo ..."
   BajarVerificando "https://nodejs.org/dist/latest-v22.x/$archivo" $msi $sha
   Dato "Instalando en silencio (esto tarda un poco)..."
-  Correr "msiexec.exe" @("/i", $msi, "/qn", "/norestart") "Falló la instalación de Node"
+  <#
+    msiexec es un programa de ventanas, no de consola: llamarlo con `&` no lo
+    espera y no deja código de salida. El instalador declaraba la falla —con
+    el código en blanco— mientras el MSI seguía instalando por detrás.
+    `Start-Process -Wait` sí lo espera de verdad. Y 3010 no es un error: es
+    "instalado, falta reiniciar".
+  #>
+  $msiProc = Start-Process "msiexec.exe" -ArgumentList "/i", "`"$msi`"", "/qn", "/norestart" -Wait -PassThru
+  if ($msiProc.ExitCode -eq 3010) {
+    Ojo "Node quedó instalado, pero Windows quiere reiniciar. La instalación sigue;"
+    Ojo "reinicia el PC cuando termine."
+  } elseif ($msiProc.ExitCode -ne 0) {
+    Morir "Falló la instalación de Node (código $($msiProc.ExitCode))"
+  }
 
   RefrescarPath
   if (-not (Existe "node")) { Morir "Node quedó instalado pero no aparece en el PATH. Reinicia el PC y vuelve a correr esto." }
