@@ -191,6 +191,74 @@ describe("el isotipo", () => {
   });
 });
 
+describe("el encabezado y la despedida del administrador", () => {
+  it("el encabezado sale entre el nombre de la tienda y la primera separadora", () => {
+    const { texto } = desarmar(
+      ticketEscPos(VENTA, {
+        tienda: "FERREHOUSE",
+        encabezado: "Av. Los Carrera 1234, Concepcion\n+56 9 1234 5678",
+        abrirCajon: false,
+      }),
+    );
+    const nombre = texto.indexOf("FERREHOUSE");
+    const direccion = texto.indexOf("Av. Los Carrera 1234, Concepcion");
+    const telefono = texto.indexOf("+56 9 1234 5678");
+    const separadora = texto.indexOf("-".repeat(32));
+    expect(direccion).toBeGreaterThan(nombre);
+    expect(telefono).toBeGreaterThan(direccion);
+    expect(separadora).toBeGreaterThan(telefono);
+  });
+
+  it("la despedida reemplaza al «Gracias por su compra»", () => {
+    const { texto } = desarmar(
+      ticketEscPos(VENTA, { tienda: "F", pie: "Cambios hasta 30 dias con boleta", abrirCajon: false }),
+    );
+    expect(texto).toContain("Cambios hasta 30 dias con boleta");
+    expect(texto).not.toContain("Gracias por su compra");
+  });
+
+  it("sin configurar, el ticket es el de siempre", () => {
+    const { texto } = desarmar(ticketEscPos(VENTA, { tienda: "F", abrirCajon: false }));
+    expect(texto).toContain("Gracias por su compra");
+  });
+
+  it("despedida vacía a propósito = sin despedida", () => {
+    const { texto } = desarmar(ticketEscPos(VENTA, { tienda: "F", pie: "", abrirCajon: false }));
+    expect(texto).not.toContain("Gracias por su compra");
+  });
+
+  /**
+   * El texto lo escribe el administrador con tildes, porque así se escribe: la
+   * transliteración es problema del generador, no suyo. La misma regla que el
+   * catálogo.
+   */
+  it("las tildes del administrador se transliteran igual que las del catálogo", () => {
+    const { texto } = desarmar(
+      ticketEscPos(VENTA, {
+        tienda: "F",
+        encabezado: "Concepción, Ñuñoa 42 ½",
+        pie: "¡Vuelva pronto!",
+        abrirCajon: false,
+      }),
+    );
+    expect(texto).toContain("Concepcion, Nunoa 42 1/2");
+    expect(texto).toContain("Vuelva pronto!");
+    const raros = [...texto].filter((c) => c.charCodeAt(0) > 126);
+    expect(raros).toEqual([]);
+  });
+
+  it("las líneas vacías de los extremos no gastan papel; las del medio sí", () => {
+    const { lineas } = desarmar(
+      ticketEscPos(VENTA, { tienda: "F", encabezado: "\n\nArriba\n\nAbajo\n\n", abrirCajon: false }),
+    );
+    const textos = lineas.map((l) => l.texto);
+    const arriba = textos.indexOf("Arriba");
+    expect(arriba).toBeGreaterThanOrEqual(0);
+    expect(textos[arriba + 1]).toBe("");
+    expect(textos[arriba + 2]).toBe("Abajo");
+  });
+});
+
 describe("el cajón", () => {
   /**
    * El pulso VA DESPUÉS DEL CORTE: así el cajón se abre cuando el papel ya

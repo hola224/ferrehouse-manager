@@ -22,9 +22,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "@/lib/api";
-import { Acciones, Boton, Campo, Chip, Modal, Selector } from "@/components/ui";
+import { Acciones, Area, Boton, Campo, Chip, Modal, Selector } from "@/components/ui";
 import { ProbadorDeTeclas } from "@/components/ProbadorDeTeclas";
-import { formatHora } from "@ferrehouse/shared";
+import { formatHora, stripDiacritics } from "@ferrehouse/shared";
 
 type Estacion = {
   id: number;
@@ -203,6 +203,13 @@ export function Estaciones() {
         />
       ) : null}
       {/*
+        Va acá y no en una pantalla nueva: el ticket es la otra mitad de la
+        pregunta que esta pantalla ya contesta — a qué impresora sale, y qué
+        dice.
+      */}
+      <ConfigTicket />
+
+      {/*
         Va acá y no en una pantalla nueva: esta es la pantalla de instalación
         —se toca al instalar y casi nunca más— y comprobar los atajos es
         exactamente una tarea de instalación, una por terminal.
@@ -210,6 +217,136 @@ export function Estaciones() {
       <ProbadorDeTeclas />
 
     </div>
+  );
+}
+
+/**
+ * Lo que el ticket dice, editable: el nombre, el encabezado (dirección,
+ * teléfono) y la despedida, que el administrador rota cuando quiere.
+ *
+ * La vista previa pasa el texto por `stripDiacritics`, la MISMA transformación
+ * del generador: la térmica no sabe imprimir tildes y es mejor descubrirlo
+ * mirando la pantalla que mirando el papel.
+ */
+function ConfigTicket() {
+  const [tienda, setTienda] = useState("");
+  const [encabezado, setEncabezado] = useState("");
+  const [pie, setPie] = useState("");
+  const [cargado, setCargado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void api<{ tienda: string; encabezado: string; pie: string }>("/ticket/config")
+      .then((r) => {
+        setTienda(r.tienda);
+        setEncabezado(r.encabezado);
+        setPie(r.pie);
+        setCargado(true);
+      })
+      .catch((e) => setError(e instanceof ApiError ? e.message : "No se pudo cargar la configuración del ticket"));
+  }, []);
+
+  async function guardar() {
+    setEnviando(true);
+    setAviso(null);
+    setError(null);
+    try {
+      const r = await api<{ mensaje: string }>("/ticket/config", {
+        method: "PUT",
+        body: JSON.stringify({ tienda: tienda.trim(), encabezado, pie }),
+      });
+      setAviso(r.mensaje);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "No se pudo guardar");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!cargado && !error) return null;
+
+  const aPapel = (s: string) =>
+    s
+      .split("\n")
+      .map((l) => stripDiacritics(l.trim()))
+      .filter((l, i, todas) => l !== "" || (i > 0 && i < todas.length - 1))
+      .join("\n");
+
+  return (
+    <section className="grid gap-4 rounded-[var(--fh-radio)] border border-line bg-surface p-5">
+      <div>
+        <h2 className="text-lg font-black tracking-tight">El ticket</h2>
+        <p className="text-sm text-ink-soft">
+          Lo que el papel dice antes y después de la venta. Se aplica a todas las cajas desde el próximo ticket — los
+          que ya están en cola salen como estaban.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid content-start gap-4">
+          <Campo
+            etiqueta="Nombre de la tienda"
+            hint="Sale en letra doble de ancho, bajo el logo."
+            value={tienda}
+            onChange={(e) => setTienda(e.target.value)}
+            maxLength={24}
+          />
+          <Area
+            etiqueta="Encabezado"
+            hint="Hasta 5 líneas bajo el nombre: dirección, teléfono, redes. Vacío = nada."
+            value={encabezado}
+            onChange={(e) => setEncabezado(e.target.value)}
+            rows={3}
+            placeholder={"Av. Siempreviva 742, Concepcion\n+56 9 1234 5678"}
+          />
+          <Area
+            etiqueta="Despedida"
+            hint="El final del ticket. Rótala cuando quieras. Vacío = sin despedida."
+            value={pie}
+            onChange={(e) => setPie(e.target.value)}
+            rows={2}
+          />
+        </div>
+
+        {/*
+          La vista previa es el papel: mono, angosta y centrada como la térmica.
+          Las tildes ya salen transliteradas — véase el comentario de arriba.
+        */}
+        <div className="grid content-start gap-1">
+          <span className="text-[11px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">Así va a salir</span>
+          <pre className="overflow-x-auto border border-line bg-bg px-4 py-3 text-center font-mono text-xs leading-5 text-ink">
+            {[
+              "   /\\",
+              "  /  \\",
+              " /_FH_\\",
+              "",
+              stripDiacritics(tienda.trim() || "Ferrehouse").toUpperCase(),
+              aPapel(encabezado),
+              "--------------------------------",
+              // El folio de ejemplo tiene UN dígito: con tres, check:tokens
+              // leería el «#» seguido de cifras como un color hexadecimal.
+              "Venta #9 · los productos · el total",
+              "--------------------------------",
+              "",
+              aPapel(pie),
+            ]
+              .filter((l, i) => l !== "" || i === 3 || i === 9)
+              .join("\n")}
+          </pre>
+        </div>
+      </div>
+
+      {error ? <p className="text-sm text-error">{error}</p> : null}
+      {aviso ? <p className="text-sm text-ok">{aviso}</p> : null}
+
+      <div>
+        <Boton variante="principal" disabled={enviando || tienda.trim().length === 0} onClick={() => void guardar()}>
+          {enviando ? "Guardando…" : "Guardar el ticket"}
+        </Boton>
+      </div>
+    </section>
   );
 }
 

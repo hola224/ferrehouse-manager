@@ -16,7 +16,13 @@
  */
 import { clsx } from "clsx";
 import { forwardRef } from "react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+  ReactNode,
+} from "react";
 
 type Variante = "principal" | "secundaria" | "fantasma";
 
@@ -110,6 +116,29 @@ export const Campo = forwardRef<HTMLInputElement, CampoProps>(function Campo(
         className={clsx(
           "min-h-touch w-full rounded-[var(--fh-radio)] px-3.5 text-ink placeholder:text-ink-soft/60",
           protagonista ? "border-2 border-ink bg-bg" : "border border-line-field bg-surface",
+          className,
+        )}
+        {...props}
+      />
+      {hint ? <span className="mt-1 block text-xs text-ink-soft">{hint}</span> : null}
+    </label>
+  );
+});
+
+/** El `textarea` con la misma pinta que `Campo`: para los textos multilínea del ticket. */
+export const Area = forwardRef<
+  HTMLTextAreaElement,
+  TextareaHTMLAttributes<HTMLTextAreaElement> & { etiqueta: string; hint?: string }
+>(function Area({ etiqueta, hint, className, ...props }, ref) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[11px] font-extrabold uppercase tracking-[0.12em] text-ink-soft">
+        {etiqueta}
+      </span>
+      <textarea
+        ref={ref}
+        className={clsx(
+          "w-full rounded-[var(--fh-radio)] border border-line-field bg-surface px-3.5 py-2.5 text-ink placeholder:text-ink-soft/60",
           className,
         )}
         {...props}

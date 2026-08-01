@@ -98,6 +98,19 @@ function linea(ancho: number, izq: string, der: string): string {
   return a + " ".repeat(relleno) + der + "\n";
 }
 
+/**
+ * Un texto multilínea del administrador, hecho líneas imprimibles: sin las
+ * vacías de los extremos (papel gratis para nadie), conservando las del medio
+ * (si las puso, son espaciado a propósito).
+ */
+function lineasDe(texto: string | undefined): string[] {
+  if (!texto) return [];
+  const lineas = texto.split("\n").map((l) => l.trim());
+  while (lineas.length > 0 && lineas[0] === "") lineas.shift();
+  while (lineas.length > 0 && lineas[lineas.length - 1] === "") lineas.pop();
+  return lineas;
+}
+
 export type VentaParaTicket = {
   id: number;
   createdAt: Date;
@@ -129,7 +142,21 @@ export type VentaParaTicket = {
 
 export function ticketEscPos(
   venta: VentaParaTicket,
-  opciones: { tienda: string; ancho?: number; esReimpresion?: boolean; abrirCajon?: boolean },
+  opciones: {
+    tienda: string;
+    /**
+     * Encabezado y despedida que escribe el administrador (settings
+     * `ticket.header` y `ticket.footer`). Multilínea con `\n`; las líneas
+     * vacías de los extremos no se imprimen y cada línea se corta al ancho
+     * del papel — la impresora partiría donde le toque, y un teléfono
+     * partido en dos renglones parece dos números.
+     */
+    encabezado?: string;
+    pie?: string;
+    ancho?: number;
+    esReimpresion?: boolean;
+    abrirCajon?: boolean;
+  },
 ): Buffer {
   const b: Buffer[] = [];
   const ancho = opciones.ancho ?? ANCHO_58MM;
@@ -143,6 +170,12 @@ export function ticketEscPos(
   b.push(Buffer.from([ESC, 0x21, 0x20])); // doble ancho
   b.push(t(opciones.tienda + "\n"));
   b.push(Buffer.from([ESC, 0x21, 0x00]));
+
+  // El encabezado del administrador: dirección, teléfono. Centrado, tamaño
+  // normal, debajo del nombre — sigue siendo parte de la cabecera.
+  for (const l of lineasDe(opciones.encabezado)) {
+    b.push(t(l.slice(0, ancho) + "\n"));
+  }
 
   if (opciones.esReimpresion) {
     // POS-18: la copia sale marcada, y en grande. Un ticket reimpreso que se
@@ -230,9 +263,16 @@ export function ticketEscPos(
     b.push(Buffer.from([ESC, 0x21, 0x00]));
   }
 
-  b.push(t("\n"));
-  b.push(Buffer.from([ESC, 0x61, 0x01]));
-  b.push(t("Gracias por su compra\n"));
+  /**
+   * La despedida es del administrador (`ticket.footer`): la rota cuando
+   * quiere. `undefined` = el clásico de siempre; vacío a propósito = nada.
+   */
+  const pie = lineasDe(opciones.pie ?? "Gracias por su compra");
+  if (pie.length > 0) {
+    b.push(t("\n"));
+    b.push(Buffer.from([ESC, 0x61, 0x01]));
+    for (const l of pie) b.push(t(l.slice(0, ancho) + "\n"));
+  }
   b.push(t("\n\n\n"));
   b.push(Buffer.from([GS, 0x56, 0x00])); // cortar papel
 

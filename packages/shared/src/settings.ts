@@ -44,6 +44,13 @@ const booleano = (def: boolean, descripcion: string): Entry<boolean> => ({
 
 export const SETTINGS = {
   "store.name": texto("Ferrehouse", "Nombre que sale en el ticket"),
+  /**
+   * El ticket configurable (encabezado y despedida). Multilínea: se guarda con
+   * `\n` y el generador imprime línea por línea. Vacío = no se imprime nada,
+   * que es el comportamiento de siempre.
+   */
+  "ticket.header": texto("", "Líneas bajo el nombre en el ticket: dirección, teléfono. Vacío = nada"),
+  "ticket.footer": texto("Gracias por su compra", "Despedida del ticket. Vacío = sin despedida"),
   "tax.rate": entero(19, "IVA vigente en %. Se congela en cada venta", (s) => s.min(0).max(100)),
   "cash.roundTo": entero(10, "Múltiplo de redondeo del efectivo", (s) => s.min(1)),
   "stock.allowNegative": booleano(false, "Permitir vender bajo cero sin autorización"),

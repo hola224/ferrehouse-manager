@@ -237,7 +237,11 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
-    const tienda = (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse";
+    const [tienda, encabezado, pie] = await Promise.all([
+      getSetting("store.name"),
+      getSetting("ticket.header"),
+      getSetting("ticket.footer"),
+    ]);
     const estacion = await db.station.findUniqueOrThrow({ where: { id: req.user.stationId } });
 
     /**
@@ -411,6 +415,8 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
           saleId: creada.id,
           payload: ticketEscPos(completa, {
             tienda,
+            encabezado,
+            pie,
             ancho: estacion.printerWidth,
             // El cajón se abre solo si entró efectivo: no hay nada que guardar
             // ni vuelto que dar en una venta pagada entera con tarjeta.
@@ -586,7 +592,11 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
     const estacion = await db.station.findUniqueOrThrow({ where: { id: req.user.stationId } });
     if (!estacion.printerTarget) throw malaPeticion(`${estacion.name} no tiene impresora configurada`);
 
-    const tienda = (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse";
+    const [tienda, encabezado, pie] = await Promise.all([
+      getSetting("store.name"),
+      getSetting("ticket.header"),
+      getSetting("ticket.footer"),
+    ]);
     const trabajo = await db.printJob.create({
       data: {
         stationId: estacion.id,
@@ -595,6 +605,8 @@ export async function registerSaleRoutes(app: FastifyInstance): Promise<void> {
         isReprint: true,
         payload: ticketEscPos(venta, {
           tienda,
+          encabezado,
+          pie,
           ancho: estacion.printerWidth,
           esReimpresion: true,
           // La copia NO abre el cajón: abrirlo sin una venta detrás es

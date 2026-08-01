@@ -22,6 +22,7 @@ import { db } from "../db.js";
 import { audit } from "../audit.js";
 import { requireRole } from "../roles.js";
 import { verificarLogin } from "../auth.js";
+import { getSetting } from "../settings.js";
 import { registrarMovimiento } from "../stock-ledger.js";
 import { ticketEscPos } from "../ticket.js";
 import {
@@ -179,7 +180,11 @@ export async function registerReturnRoutes(app: FastifyInstance): Promise<void> 
       if (!autorizadoPor) throw malaPeticion("Ese PIN de administrador no es correcto.");
     }
 
-    const tienda = (await db.setting.findUnique({ where: { key: "store.name" } }))?.value ?? "Ferrehouse";
+    const [tienda, encabezado, pie] = await Promise.all([
+      getSetting("store.name"),
+      getSetting("ticket.header"),
+      getSetting("ticket.footer"),
+    ]);
     const estacion = await db.station.findUniqueOrThrow({ where: { id: req.user.stationId } });
 
     const creada = await db.$transaction(async (tx) => {
@@ -378,6 +383,8 @@ export async function registerReturnRoutes(app: FastifyInstance): Promise<void> 
           saleId: completa.id,
           payload: ticketEscPos(completa, {
             tienda,
+            encabezado,
+            pie,
             ancho: estacion.printerWidth,
             // El cajón se abre porque hay que SACAR plata, igual que se abre
             // para guardarla. Con tarjeta no: la plata vuelve por el POS.

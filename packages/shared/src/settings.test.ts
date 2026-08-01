@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { SETTING_KEYS, parseSetting, serializeSetting, defaultSettingRaw, SETTINGS } from "./settings.js";
 
 describe("registro de settings", () => {
-  it("son las 18 claves de SEED.md", () => {
-    expect(SETTING_KEYS).toHaveLength(18);
+  it("son las 18 claves originales más las 2 del ticket configurable", () => {
+    expect(SETTING_KEYS).toHaveLength(20);
   });
 
   it("ida y vuelta por texto no pierde el valor", () => {
