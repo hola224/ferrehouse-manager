@@ -1,0 +1,5 @@
+# cmd relee los .bat mientras los ejecuta y su busqueda de etiquetas "goto"
+# tiene fallas conocidas con finales de linea LF: los archivos de lotes
+# viajan SIEMPRE con CRLF, tambien dentro del ZIP que genera GitHub.
+*.bat text eol=crlf
+*.cmd text eol=crlf
