@@ -23,10 +23,29 @@ set "SERVIDOR=%RAIZ%\apps\server"
 set "LOGS=%RAIZ%\logs"
 if not exist "%LOGS%" mkdir "%LOGS%"
 
-set "SALIDA=%LOGS%\servidor.log"
-set "ERRORES=%LOGS%\error.log"
+rem ---------------------------------------------------------------------------
+rem  LA RUTA COMPLETA DE node.exe, que el instalador resuelve y pasa como
+rem  primer argumento.
+rem
+rem  Escribir "node" a secas parece equivalente y no lo es: esta tarea corre
+rem  como SYSTEM, y SYSTEM solo ve el PATH DE MAQUINA. Node instalado por
+rem  usuario —nvm, fnm, volta, o un zip descomprimido en AppData, que es lo mas
+rem  comun en un PC donde alguien ya programaba— vive en el PATH del USUARIO y
+rem  SYSTEM no lo encuentra jamas.
+rem
+rem  Medido: la instalacion terminaba con todo en verde salvo el ultimo paso, y
+rem  error.log repetia «"node" no se reconoce como un comando» cada cinco
+rem  segundos. Todo estaba bien puesto y nada funcionaba.
+rem
+rem  El respaldo a "node" a secas queda por si alguien corre este .cmd a mano.
+rem ---------------------------------------------------------------------------
+set "NODE=%~1"
+if "%NODE%"=="" set "NODE=node"
 
 cd /d "%SERVIDOR%"
+
+set "SALIDA=%LOGS%\servidor.log"
+set "ERRORES=%LOGS%\error.log"
 
 :lazo
 call :rotar "%SALIDA%"
@@ -35,7 +54,7 @@ call :rotar "%ERRORES%"
 echo. >> "%SALIDA%"
 echo === arrancando %DATE% %TIME% === >> "%SALIDA%"
 
-node "dist\main.js" >> "%SALIDA%" 2>> "%ERRORES%"
+"%NODE%" "dist\main.js" >> "%SALIDA%" 2>> "%ERRORES%"
 
 echo === se cayo con codigo %ERRORLEVEL% el %DATE% %TIME%, reintento en 5s === >> "%ERRORES%"
 

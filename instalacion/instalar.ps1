@@ -41,16 +41,67 @@ $TRABAJO    = Join-Path $env:TEMP "ferrehouse-instalador"
 
 # ---------------------------------------------------------------- utilidades
 
+<#
+  La presentación.
+
+  TODO ES ASCII PURO, y no por gusto: la consola de Windows arranca en una
+  página de códigos que no es UTF-8, y aunque el script haga `chcp 65001` la
+  fuente por omisión no tiene medios bloques ni bordes finos. Medido en este
+  mismo instalador: el `│` que imprime el seed salía como `Ôöé`. Un instalador
+  que se ve roto inspira exactamente la confianza que se merece.
+
+  Con `/`, `\`, `_`, `=` y `|` se dibuja lo mismo y se ve igual en cualquier
+  Windows, incluido el de la tienda con una consola que nadie configuró.
+#>
+$ROJO = "Red"; $TINTA = "White"; $SUAVE = "DarkGray"
+
+function Marca {
+  Write-Host ""
+  Write-Host "      /\" -ForegroundColor $ROJO
+  Write-Host "     /  \      FERREHOUSE" -ForegroundColor $ROJO -NoNewline
+  Write-Host ""
+  Write-Host "   /_FH_\      MANAGER" -ForegroundColor $ROJO
+  Write-Host ""
+  Write-Host "  ============================================================" -ForegroundColor $TINTA
+  Write-Host "   Punto de venta, inventario y caja. Corre en la tienda." -ForegroundColor $SUAVE
+  Write-Host "  ============================================================" -ForegroundColor $TINTA
+}
+
 $script:paso = 0
+$script:TOTAL = 11
+
 function Paso([string]$titulo) {
   $script:paso++
   Write-Host ""
-  Write-Host ("  [{0}] {1}" -f $script:paso, $titulo) -ForegroundColor Cyan
+  # `[ 3/11]` alineado: los pasos de un dígito y los de dos no pueden bailar,
+  # porque la columna de la izquierda es la que se sigue con la vista.
+  Write-Host ("  [{0,2}/{1}] " -f $script:paso, $script:TOTAL) -ForegroundColor $ROJO -NoNewline
+  Write-Host $titulo -ForegroundColor $TINTA
+  Write-Host ("         " + ("-" * ($titulo.Length + 2))) -ForegroundColor $SUAVE
 }
-function Bien([string]$m) { Write-Host "      $m" -ForegroundColor Green }
-function Dato([string]$m) { Write-Host "      $m" -ForegroundColor Gray }
-function Ojo ([string]$m) { Write-Host "      $m" -ForegroundColor Yellow }
-function Morir([string]$m) { Write-Host ""; Write-Host "  $m" -ForegroundColor Red; Write-Host ""; exit 1 }
+
+function Bien([string]$m) {
+  Write-Host "         ok   " -ForegroundColor Green -NoNewline
+  Write-Host $m
+}
+function Dato([string]$m) {
+  Write-Host "         ..   " -ForegroundColor $SUAVE -NoNewline
+  Write-Host $m -ForegroundColor $SUAVE
+}
+function Ojo([string]$m) {
+  Write-Host "         !    " -ForegroundColor Yellow -NoNewline
+  Write-Host $m -ForegroundColor Yellow
+}
+function Morir([string]$m) {
+  Write-Host ""
+  Write-Host "  +----------------------------------------------------------+" -ForegroundColor Red
+  Write-Host "  |  NO SE PUDO INSTALAR                                     |" -ForegroundColor Red
+  Write-Host "  +----------------------------------------------------------+" -ForegroundColor Red
+  Write-Host ""
+  Write-Host "   $m" -ForegroundColor Red
+  Write-Host ""
+  exit 1
+}
 
 <#
   Correr un ejecutable y MORIR si falla, en vez de seguir con el paso
@@ -62,12 +113,34 @@ function Morir([string]$m) { Write-Host ""; Write-Host "  $m" -ForegroundColor R
 function Correr([string]$exe, [string[]]$argumentos, [string]$dondeFalla, [string]$cwd = $null) {
   $anterior = $null
   if ($cwd) { $anterior = (Get-Location).Path; Set-Location $cwd }
+
+  <#
+    `ErrorActionPreference = Continue` MIENTRAS corre el programa externo, y el
+    éxito se decide SOLO por el código de salida.
+
+    En PowerShell 5.1, cada línea que un ejecutable escribe en su salida de
+    errores se convierte en un ErrorRecord, y con la preferencia en `Stop` eso
+    aborta el script — aunque el programa haya terminado bien. No es
+    hipotético: `prisma generate` escribe un aviso de obsolescencia en stderr
+    en CADA corrida, así que la instalación moría después de copiar el código y
+    crear el `.env`, con un mensaje que hablaba de un archivo de configuración
+    de Prisma y no de nada que el instalador hiciera mal.
+
+    Lo peor era que dependía de cómo se lo invocara: por `-File`, la salida de
+    errores va directo a la consola y no pasa nada; canalizada, revienta. Un
+    instalador que funciona o no según quién lo llame no es un instalador.
+  #>
+  $preferenciaPrevia = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
   try {
     & $exe @argumentos
-    if ($LASTEXITCODE -ne 0) { Morir "$dondeFalla (código $LASTEXITCODE)" }
+    $codigo = $LASTEXITCODE
   } finally {
+    $ErrorActionPreference = $preferenciaPrevia
     if ($anterior) { Set-Location $anterior }
   }
+
+  if ($codigo -ne 0) { Morir "$dondeFalla (código $codigo)" }
 }
 
 function RefrescarPath {
@@ -90,12 +163,12 @@ function BajarVerificando([string]$url, [string]$destino, [string]$sha256) {
   }
 }
 
+Marca
 Write-Host ""
-Write-Host "  ============================================" -ForegroundColor White
-Write-Host "   Ferrehouse Manager - instalar en la tienda" -ForegroundColor White
-Write-Host "  ============================================" -ForegroundColor White
-Dato "Destino: $Destino"
-Dato "Puerto:  $Puerto"
+Write-Host "   Instalador" -ForegroundColor $TINTA
+Write-Host "     destino   $Destino" -ForegroundColor $SUAVE
+Write-Host "     puerto    $Puerto" -ForegroundColor $SUAVE
+Write-Host "     origen    $(if ($DesdeCarpeta) { $DesdeCarpeta } else { "$Repo ($Rama)" })" -ForegroundColor $SUAVE
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
       ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -393,7 +466,27 @@ if (-not (Test-Path $supervisor)) { Morir "Falta $supervisor. La copia del códi
 
 Unregister-ScheduledTask -TaskName $SERVICIO -Confirm:$false -ErrorAction SilentlyContinue
 
-$accion = New-ScheduledTaskAction -Execute $supervisor -WorkingDirectory (Join-Path $Destino "instalacion")
+<#
+  La ruta COMPLETA de node.exe va como argumento del supervisor.
+
+  La tarea corre como SYSTEM, y SYSTEM solo ve el PATH de máquina. Si Node vino
+  instalado por usuario —nvm, fnm, volta, o un zip en AppData— está en el PATH
+  del USUARIO y SYSTEM no lo encuentra. Medido en una corrida real: los once
+  pasos daban verde salvo el último, y `error.log` repetía «"node" no se
+  reconoce como un comando» cada cinco segundos. Todo bien puesto y nada
+  andando.
+#>
+$nodeExe = (Get-Command node).Source
+Dato "node.exe: $nodeExe"
+if ($nodeExe -like "$env:LOCALAPPDATA*" -or $nodeExe -like "$env:APPDATA*") {
+  Ojo "Ese Node está instalado solo para tu usuario. El servicio corre como SYSTEM"
+  Ojo "y usa la ruta completa, así que va a funcionar — pero si algún día borras"
+  Ojo "esa carpeta, el sistema deja de arrancar. Conviene instalar Node para toda"
+  Ojo "la máquina con el .msi de nodejs.org."
+}
+
+$accion = New-ScheduledTaskAction -Execute $supervisor -Argument "`"$nodeExe`"" `
+  -WorkingDirectory (Join-Path $Destino "instalacion")
 $disparo = New-ScheduledTaskTrigger -AtStartup
 $quien = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $opciones = New-ScheduledTaskSettingsSet `
@@ -541,30 +634,49 @@ $ip = (Get-NetIPAddress -AddressFamily IPv4 |
        Select-Object -First 1).IPAddress
 
 Write-Host ""
-Write-Host "  ============================================" -ForegroundColor Green
-Write-Host "   Listo." -ForegroundColor Green
-Write-Host "  ============================================" -ForegroundColor Green
+Write-Host "  +----------------------------------------------------------+" -ForegroundColor Green
+Write-Host "  |   /\                                                     |" -ForegroundColor Green
+Write-Host "  |  /  \    FERREHOUSE MANAGER instalado y andando          |" -ForegroundColor Green
+Write-Host "  | /_FH_\                                                   |" -ForegroundColor Green
+Write-Host "  +----------------------------------------------------------+" -ForegroundColor Green
 Write-Host ""
-Write-Host "   En este PC:      el acceso directo del escritorio"
-Write-Host "   Los terminales:  http://$ip`:$Puerto"
+Write-Host "   En este PC        el acceso directo del escritorio" -ForegroundColor $TINTA
+Write-Host "   Los terminales    http://$ip`:$Puerto" -ForegroundColor $TINTA
 Write-Host ""
 
 if ($pinAdmin) {
-  Write-Host "  ANOTA ESTO AHORA. No se puede volver a ver:" -ForegroundColor Yellow
+  <#
+    Los PIN, en un recuadro y solos.
+
+    Salen UNA vez y no se pueden volver a ver —el seed los guarda hasheados—,
+    así que compiten por la atención de alguien que lleva diez minutos mirando
+    pasar texto. El recuadro existe para que sea lo único que se mire cuando
+    esto termina.
+  #>
+  Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
+  Write-Host "  |  ANOTALO AHORA. No se puede volver a ver.                |" -ForegroundColor Yellow
+  Write-Host "  |                                                          |" -ForegroundColor Yellow
+  Write-Host ("  |      Administrador   {0,-33} |" -f $pinAdmin) -ForegroundColor $TINTA
+  Write-Host ("  |      Vendedor        {0,-33} |" -f $pinVendedor) -ForegroundColor $TINTA
+  Write-Host "  |                                                          |" -ForegroundColor Yellow
+  Write-Host "  +----------------------------------------------------------+" -ForegroundColor Yellow
   Write-Host ""
-  Write-Host "      Administrador   $pinAdmin" -ForegroundColor White
-  Write-Host "      Vendedor        $pinVendedor" -ForegroundColor White
-  Write-Host ""
-  Write-Host "  Y guarda una copia de $envPath en otra parte:" -ForegroundColor Yellow
-  Write-Host "  esa clave firma las sesiones. Sin ella, en el proximo reinicio" -ForegroundColor Yellow
-  Write-Host "  ningun terminal puede entrar." -ForegroundColor Yellow
+  Write-Host "   Y guarda una copia de este archivo en otra parte:" -ForegroundColor Yellow
+  Write-Host "     $envPath" -ForegroundColor $SUAVE
+  Write-Host "   Esa clave firma las sesiones. Sin ella, en el proximo" -ForegroundColor Yellow
+  Write-Host "   reinicio ningun terminal puede entrar." -ForegroundColor Yellow
   Write-Host ""
 }
 
-Write-Host "  Falta lo que el instalador no puede hacer solo:" -ForegroundColor Cyan
-Write-Host "    1. La impresora de CAJA-1 (Usuarios - Cajas y terminales)."
-Write-Host "       Sin eso vende, pero no imprime ni abre el cajon."
-Write-Host "    2. La carpeta de respaldo externa (Panel - Configurar la copia)."
-Write-Host "       Por omision el respaldo queda en ESTE MISMO PC."
-Write-Host "    Los dos pasos estan en instalacion\README.md, secciones 3 y 6."
+Write-Host "   FALTAN DOS COSAS que el instalador no puede hacer solo" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "     1.  La impresora de CAJA-1" -ForegroundColor $TINTA
+Write-Host "         Usuarios > Cajas y terminales > Editar CAJA-1" -ForegroundColor $SUAVE
+Write-Host "         Sin eso vende, pero no imprime ni abre el cajon." -ForegroundColor $SUAVE
+Write-Host ""
+Write-Host "     2.  La carpeta de respaldo externa" -ForegroundColor $TINTA
+Write-Host "         Panel > Configurar la copia" -ForegroundColor $SUAVE
+Write-Host "         Por omision el respaldo queda en ESTE MISMO PC." -ForegroundColor $SUAVE
+Write-Host ""
+Write-Host "   Los dos estan explicados en instalacion\README.md, 3 y 6." -ForegroundColor $SUAVE
 Write-Host ""
