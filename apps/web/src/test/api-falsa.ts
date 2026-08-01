@@ -33,8 +33,16 @@ export type ApiFalsa = {
  * Las claves son `"GET /api/auth/users"`. Se escribe la ruta completa, con el
  * `/api`, para que se lea igual que en la pestaña de red del navegador y que
  * en las rutas del servidor.
+ *
+ * Una clave puede terminar en `*` para atrapar todo lo que empiece igual:
+ * `"GET /api/products/search*"` cubre cualquier `?q=…&limit=8` sin que el test
+ * tenga que adivinar la cadena exacta. La respuesta puede ser una función, y
+ * entonces recibe la llamada — que es como se devuelve un resultado distinto
+ * según lo que se buscó.
  */
-export function montarApi(rutas: Record<string, RespuestaFalsa | (() => RespuestaFalsa)>): ApiFalsa {
+export function montarApi(
+  rutas: Record<string, RespuestaFalsa | ((llamada: Llamada) => RespuestaFalsa)>,
+): ApiFalsa {
   const llamadas: Llamada[] = [];
 
   vi.stubGlobal(
@@ -52,9 +60,16 @@ export function montarApi(rutas: Record<string, RespuestaFalsa | (() => Respuest
           cuerpoEnviado = init.body;
         }
       }
-      llamadas.push({ metodo, ruta, cuerpo: cuerpoEnviado });
+      const llamada: Llamada = { metodo, ruta, cuerpo: cuerpoEnviado };
+      llamadas.push(llamada);
 
-      const declarada = rutas[clave];
+      // Primero la coincidencia exacta; después los comodines. Al revés, un
+      // `"GET /api/products/search*"` se tragaría una respuesta puntual que el
+      // test declaró para un caso particular.
+      const declarada =
+        rutas[clave] ??
+        Object.entries(rutas).find(([k]) => k.endsWith("*") && clave.startsWith(k.slice(0, -1)))?.[1];
+
       if (!declarada) {
         throw new Error(
           `El test no declaró ninguna respuesta para «${clave}».\n` +
@@ -62,7 +77,7 @@ export function montarApi(rutas: Record<string, RespuestaFalsa | (() => Respuest
         );
       }
 
-      const { estado = 200, cuerpo } = typeof declarada === "function" ? declarada() : declarada;
+      const { estado = 200, cuerpo } = typeof declarada === "function" ? declarada(llamada) : declarada;
       return {
         ok: estado >= 200 && estado < 300,
         status: estado,
